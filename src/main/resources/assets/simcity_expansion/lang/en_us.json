@@ -1,1 +1,76 @@
-{}
+{
+  "key.categories.simcity_expansion": "SimCity Expansion",
+  "key.simcity_expansion.buildpack": "Open Building Pack Manager",
+
+  "buildpack.title": "Building Pack Manager",
+
+  "buildpack.action.refresh": "Refresh",
+  "buildpack.action.open_folder": "Open Folder",
+  "buildpack.action.close": "Close",
+  "buildpack.action.install": "Install to SimuKraft",
+  "buildpack.action.uninstall": "Uninstall",
+
+  "buildpack.tab.import": "Import Files",
+  "buildpack.tab.packs": "Packs",
+  "buildpack.tab.installed": "Installed",
+
+  "buildpack.category.residential": "Residential",
+  "buildpack.category.commercial": "Commercial",
+  "buildpack.category.industry": "Industry",
+  "buildpack.category.public": "Public",
+  "buildpack.category.other": "Other",
+
+  "buildpack.info.name": "Name: %s",
+  "buildpack.info.author": "Author: %s",
+  "buildpack.info.size": "Size: %s",
+  "buildpack.info.blocks": "Blocks / Volume: %s / %s",
+  "buildpack.info.regions": "Regions: %s",
+  "buildpack.info.data_version": "DataVersion: %s",
+  "buildpack.info.version": "Version: %s",
+  "buildpack.info.buildings": "Buildings: %s",
+  "buildpack.info.category": "Category: %s",
+  "buildpack.info.pack_installed": "Status: Installed",
+  "buildpack.info.pack_not_installed": "Status: Not installed",
+  "buildpack.info.from_pack": "Source: pack %s",
+  "buildpack.info.managed": "Source: installed by this mod",
+  "buildpack.info.external": "Source: external (read-only)",
+
+  "buildpack.form.title": "Install Info",
+  "buildpack.form.category": "Category",
+  "buildpack.form.name": "Name",
+  "buildpack.form.amount": "Price",
+  "buildpack.form.author": "Author",
+  "buildpack.form.description": "Desc",
+  "buildpack.form.tags": "Tags",
+  "buildpack.form.job_type": "Job",
+
+  "buildpack.preview.none": "No preview",
+  "buildpack.detail.empty": "Select a file to view details",
+  "buildpack.search.placeholder": "Search...",
+
+  "buildpack.status.count": "%1$s entries · %2$s buildings installed",
+  "buildpack.status.hint": "Backslash to toggle",
+  "buildpack.status.remote_warning": "Connected to a remote server: files are installed locally only; a dedicated server needs server-side installation",
+
+  "buildpack.msg.installed": "Installed: %s",
+  "buildpack.msg.uninstalled": "Uninstalled: %s",
+  "buildpack.msg.pack_installed": "Pack installed: %1$s (%2$s buildings)",
+  "buildpack.msg.parse_failed": "Failed to parse: %s",
+  "buildpack.msg.dataversion_mismatch": "Structure DataVersion (%1$s) differs from current (%2$s); construction may misbehave",
+  "buildpack.msg.large_structure": "Large structure (%s); construction may take a long time",
+  "buildpack.msg.name_conflict": "Name conflict, renamed to %s",
+  "buildpack.msg.invalid_pack": "Invalid pack: %s",
+
+  "buildpack.error.no_regions": "The litematic contains no regions",
+  "buildpack.error.zero_region": "A litematic region has zero size",
+  "buildpack.error.volume_exceeded": "Merged volume exceeds the limit (%s)",
+  "buildpack.error.blockstates_truncated": "BlockStates data truncated (needs %1$s longs, found %2$s)",
+  "buildpack.error.invalid_nbt": "Not a valid vanilla NBT structure (missing palette/blocks)",
+  "buildpack.error.unknown_format": "Unknown structure format",
+  "buildpack.error.zip_entry_missing": "Missing zip entry: %s",
+  "buildpack.error.pack_empty": "Pack contains no buildings (no structure files under buildings/<category>/)",
+  "buildpack.error.pack_no_manifest": "Missing pack.json",
+  "buildpack.error.pack_bad_manifest": "Failed to parse pack.json: %s",
+  "buildpack.error.pack_format": "Unsupported pack format version: %s",
+  "buildpack.error.pack_no_id": "pack.json is missing an id"
+}
