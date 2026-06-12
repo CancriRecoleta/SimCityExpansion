@@ -14,6 +14,7 @@ import org.jetbrains.annotations.Nullable;
  * @param totalVolume 包围体积
  * @param regionCount 区域数（原版 .nbt 恒为 1）
  * @param dataVersion 结构保存时的 Minecraft DataVersion
+ * @param timeCreated 结构创建时间（epoch 毫秒；litematic 元数据自带，其余格式为 0 表示未知）
  * @param previewArgb litematic 内嵌预览图（方形 ARGB 像素，无则为 null）
  * @param previewSize 预览图边长（无预览时为 0）
  */
@@ -27,6 +28,7 @@ public record StructureInfo(
     long totalVolume,
     int regionCount,
     int dataVersion,
+    long timeCreated,
     @Nullable int[] previewArgb,
     int previewSize) {
 

@@ -68,10 +68,10 @@ public final class StructureNbtReader {
     return new NbtStructure(sizeX, sizeY, sizeZ, root.getInt("DataVersion"), palette, blocks);
   }
 
-  /** 生成只读摘要（原版 .nbt 无内嵌名称/作者/预览）。 */
+  /** 生成只读摘要（原版 .nbt / .schem 无内嵌名称、作者、创建时间与预览）。 */
   public static StructureInfo summarize(NbtStructure structure) {
     return new StructureInfo(null, null,
         structure.sizeX, structure.sizeY, structure.sizeZ,
-        structure.countNonAir(), structure.volume(), 1, structure.dataVersion, null, 0);
+        structure.countNonAir(), structure.volume(), 1, structure.dataVersion, 0L, null, 0);
   }
 }

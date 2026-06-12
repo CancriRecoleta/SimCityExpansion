@@ -71,6 +71,7 @@ public final class LitematicReader {
         metadata.getInt("TotalVolume"),
         metadata.getInt("RegionCount"),
         root.getInt("MinecraftDataVersion"),
+        metadata.getLong("TimeCreated"),
         preview, previewSize);
   }
 

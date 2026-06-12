@@ -19,44 +19,61 @@ import org.slf4j.LoggerFactory;
 
 /**
  * 结构预览：litematic 内嵌的 PreviewImageData（方形 ARGB 像素）注册为动态纹理后渲染；
- * 原版 .nbt 无内嵌预览，显示占位文本。
+ * 任意 ARGB 像素阵列（如俯视图）也走同一管线。
  */
 public final class StructurePreview {
   private StructurePreview() {}
 
   private static final Logger LOGGER = LoggerFactory.getLogger(StructurePreview.class);
-  private static final float SIZE = 90.0f;
+  private static final float MAX_SIZE = 90.0f;
 
-  /** 已注册动态纹理缓存：像素数据哈希 → 纹理路径，避免重复注册。 */
-  private static final Map<Integer, ResourceLocation> TEXTURE_CACHE = new HashMap<>();
+  /** 已注册动态纹理缓存：像素数据+尺寸哈希 → 纹理路径，避免重复注册。 */
+  private static final Map<Long, ResourceLocation> TEXTURE_CACHE = new HashMap<>();
 
-  /** 为结构摘要构建预览元素。 */
-  public static UIElement create(StructureInfo info) {
-    if (info.previewArgb() != null && info.previewSize() > 0) {
-      try {
-        ResourceLocation texture = registerPreview(info.previewArgb(), info.previewSize());
-        UIElement image = new UIElement();
-        image.addClass(BuildPack.cls("preview-image"));
-        image.layout(layout -> layout.width(SIZE).height(SIZE));
-        image.style(style -> style.background(SpriteTexture.of(texture)));
-        return image;
-      } catch (RuntimeException e) {
-        LOGGER.warn("BuildPack: 预览图注册失败", e);
-      }
+  /** litematic 内嵌缩略图预览；无内嵌图时返回 null（调用方决定回退）。 */
+  public static UIElement embedded(StructureInfo info) {
+    if (info.previewArgb() == null || info.previewSize() <= 0) {
+      return null;
     }
+    return fromPixels(info.previewArgb(), info.previewSize(), info.previewSize());
+  }
+
+  /**
+   * 把 ARGB 像素阵列注册为动态纹理并构建展示元素（最长边 {@value MAX_SIZE}px，保持纵横比）；
+   * 注册失败时回退占位文本。
+   */
+  public static UIElement fromPixels(int[] argb, int width, int height) {
+    try {
+      ResourceLocation texture = registerTexture(argb, width, height);
+      float scale = MAX_SIZE / Math.max(width, height);
+      float drawWidth = Math.max(1.0f, width * scale);
+      float drawHeight = Math.max(1.0f, height * scale);
+      UIElement image = new UIElement();
+      image.addClass(BuildPack.cls("preview-image"));
+      image.layout(layout -> layout.width(drawWidth).height(drawHeight));
+      image.style(style -> style.background(SpriteTexture.of(texture)));
+      return image;
+    } catch (RuntimeException e) {
+      LOGGER.warn("BuildPack: 预览图注册失败", e);
+      return placeholder();
+    }
+  }
+
+  /** 「暂无预览」占位。 */
+  public static UIElement placeholder() {
     Label placeholder = new Label();
     placeholder.addClass(BuildPack.cls("preview-none"));
     placeholder.setValue(Component.translatable("buildpack.preview.none"));
     return placeholder;
   }
 
-  private static ResourceLocation registerPreview(int[] argb, int side) {
-    int hash = Arrays.hashCode(argb);
-    return TEXTURE_CACHE.computeIfAbsent(hash, key -> {
-      NativeImage image = new NativeImage(side, side, false);
-      for (int y = 0; y < side; y++) {
-        for (int x = 0; x < side; x++) {
-          int pixel = argb[y * side + x];
+  private static ResourceLocation registerTexture(int[] argb, int width, int height) {
+    long key = (long) Arrays.hashCode(argb) * 31L + (long) width * 31L + height;
+    return TEXTURE_CACHE.computeIfAbsent(key, unused -> {
+      NativeImage image = new NativeImage(width, height, false);
+      for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+          int pixel = argb[y * width + x];
           // ARGB → ABGR（NativeImage 像素布局），交换红蓝通道。
           int abgr = (pixel & 0xFF00FF00)
               | ((pixel & 0x00FF0000) >>> 16)
@@ -64,7 +81,8 @@ public final class StructurePreview {
           image.setPixelRGBA(x, y, abgr);
         }
       }
-      ResourceLocation location = BuildPack.id("buildpack/preview_" + Integer.toHexString(key));
+      ResourceLocation location =
+          BuildPack.id("buildpack/preview_" + Long.toHexString(key & 0x7FFFFFFFFFFFFFFFL));
       Minecraft.getInstance().getTextureManager().register(location, new DynamicTexture(image));
       return location;
     });

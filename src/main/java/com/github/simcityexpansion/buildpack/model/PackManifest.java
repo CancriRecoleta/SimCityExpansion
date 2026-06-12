@@ -13,6 +13,12 @@ package com.github.simcityexpansion.buildpack.model;
 public record PackManifest(
     int format, String id, String name, String version, String author, String description) {
 
-  /** 当前支持的包格式版本。 */
-  public static final int CURRENT_FORMAT = 1;
+  /**
+   * 当前包格式版本。v2 起：{@code <名>.meta.json} 为本模组元数据，
+   * {@code <名>.json} 原样安装为 SimuKraft 的职业/交易定义。
+   */
+  public static final int CURRENT_FORMAT = 2;
+
+  /** 仍可读取的最旧格式版本。 */
+  public static final int MIN_FORMAT = 1;
 }

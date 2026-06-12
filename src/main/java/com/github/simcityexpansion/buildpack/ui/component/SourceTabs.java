@@ -24,7 +24,9 @@ public final class SourceTabs {
       toggle.addClass(BuildPack.cls("tab"));
       toggle.setText(tab.displayName());
       toggle.setToggleGroup(group);
-      toggle.layout(layout -> layout.height(20.0f).width(80.0f));
+      toggle.style(style -> style.tooltips(tab.tooltip()));
+      // 90px 容纳英文页签文本（"Import Files" 在 80px 下贴边）。
+      toggle.layout(layout -> layout.height(20.0f).width(90.0f));
       toggle.setOn(tab == initial, false);
       toggle.setOnToggleChanged(on -> {
         if (on) {

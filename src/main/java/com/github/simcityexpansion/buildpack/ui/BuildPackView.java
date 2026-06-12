@@ -1,6 +1,7 @@
 package com.github.simcityexpansion.buildpack.ui;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -8,19 +9,20 @@ import java.util.Locale;
 
 import com.github.simcityexpansion.buildpack.BuildPack;
 import com.github.simcityexpansion.buildpack.LocalizedIOException;
-import com.github.simcityexpansion.buildpack.convert.LitematicReader;
-import com.github.simcityexpansion.buildpack.convert.StructureNbtReader;
+import com.github.simcityexpansion.buildpack.convert.ParsedStructure;
 import com.github.simcityexpansion.buildpack.install.BuildingInstaller;
 import com.github.simcityexpansion.buildpack.install.InstallRegistry;
+import com.github.simcityexpansion.buildpack.install.PackExporter;
 import com.github.simcityexpansion.buildpack.install.PackInstaller;
 import com.github.simcityexpansion.buildpack.install.PackReader;
+import com.github.simcityexpansion.buildpack.install.SkFileReader;
+import com.github.simcityexpansion.buildpack.model.BuildingCategory;
 import com.github.simcityexpansion.buildpack.model.BuildingMetadata;
 import com.github.simcityexpansion.buildpack.model.ImportFile;
 import com.github.simcityexpansion.buildpack.model.ImportScanner;
 import com.github.simcityexpansion.buildpack.model.InstalledBuilding;
 import com.github.simcityexpansion.buildpack.model.InstalledScanner;
 import com.github.simcityexpansion.buildpack.model.PackArchive;
-import com.github.simcityexpansion.buildpack.model.StructureInfo;
 import com.github.simcityexpansion.buildpack.ui.component.BottomBar;
 import com.github.simcityexpansion.buildpack.ui.component.FileListPanel;
 import com.github.simcityexpansion.buildpack.ui.component.InfoPanel;
@@ -56,13 +58,19 @@ public final class BuildPackView {
   private final BottomBar bottomBar;
   private final InstallRegistry registry;
 
-  private SourceTab currentTab = SourceTab.IMPORT;
+  /** 会话内记住上次停留的页签。 */
+  private static SourceTab lastTab = SourceTab.IMPORT;
+
+  private SourceTab currentTab = lastTab;
+  private SortMode sortMode = SortMode.NAME;
   private String searchText = "";
   private List<ImportFile> importFiles = List.of();
   private List<PackArchive> packs = List.of();
   private List<String> invalidZips = List.of();
   private List<InstalledBuilding> installed = List.of();
   private Object selected;
+  /** 待确认删除的导入文件（两次点击确认模式）。 */
+  private Path pendingDelete;
 
   public BuildPackView() {
     registry = InstallRegistry.load();
@@ -88,6 +96,7 @@ public final class BuildPackView {
   /** 页签切换回调。 */
   public void onTabChanged(SourceTab tab) {
     currentTab = tab;
+    lastTab = tab;
     clearSelection();
     rebuildTree();
   }
@@ -96,6 +105,24 @@ public final class BuildPackView {
   public void onSearchText(String text) {
     searchText = text == null ? "" : text.toLowerCase(Locale.ROOT).trim();
     rebuildTree();
+  }
+
+  /** 当前排序方式。 */
+  public SortMode sortMode() {
+    return sortMode;
+  }
+
+  /** 排序方式变化回调。 */
+  public void onSortChanged(SortMode mode) {
+    if (mode != null && mode != sortMode) {
+      sortMode = mode;
+      rebuildTree();
+    }
+  }
+
+  /** 供界面外部（如文件拖入）显示状态消息。 */
+  public void showMessage(Component message, boolean error) {
+    bottomBar.setMessage(message, error);
   }
 
   /** 重新扫描三种来源并刷新列表。 */
@@ -125,9 +152,35 @@ public final class BuildPackView {
     }
   }
 
-  /** 用系统文件管理器打开导入目录。 */
-  public void openImportFolder() {
-    Util.getPlatform().openPath(ImportScanner.ensureImportDir());
+  /** 用系统文件管理器打开当前页签对应的目录（已安装 → SimuKraft 建筑目录，其余 → 导入目录）。 */
+  public void openFolder() {
+    if (currentTab == SourceTab.INSTALLED) {
+      try {
+        Files.createDirectories(BuildPack.simukraftDir());
+      } catch (IOException e) {
+        LOGGER.warn("BuildPack: 创建建筑目录失败", e);
+      }
+      Util.getPlatform().openPath(BuildPack.simukraftDir());
+    } else {
+      Util.getPlatform().openPath(ImportScanner.ensureImportDir());
+    }
+  }
+
+  /** 「导出为拓展包」按钮回调：把已安装建筑（按当前搜索过滤）打包为 zip。 */
+  public void runExport() {
+    List<InstalledBuilding> toExport = installed.stream()
+        .filter(building -> matches(building.name()))
+        .toList();
+    try {
+      Path zip = PackExporter.export(toExport);
+      bottomBar.setMessage(Component.translatable(
+          "buildpack.msg.exported", zip.getFileName().toString()), false);
+      Util.getPlatform().openPath(PackExporter.exportDir());
+    } catch (IOException | RuntimeException e) {
+      LOGGER.warn("BuildPack: 导出失败", e);
+      bottomBar.setMessage(Component.translatable(
+          "buildpack.msg.parse_failed", LocalizedIOException.messageOf(e)), true);
+    }
   }
 
   /** 关闭界面。 */
@@ -138,11 +191,15 @@ public final class BuildPackView {
   /** 列表选中回调（分支或清空选择时为 {@code null}）。 */
   private void onNodeSelected(Object content) {
     selected = content;
+    pendingDelete = null;
+    bottomBar.setDeleteEnabled(false);
     if (content instanceof ImportFile file) {
       showImportFile(file);
     } else if (content instanceof PackArchive pack) {
       infoPanel.showPack(pack, registry.find(pack.manifest().id()).isPresent());
       bottomBar.setActions(true, registry.find(pack.manifest().id()).isPresent());
+    } else if (content instanceof PackBuildingSelection selection) {
+      showPackBuilding(selection);
     } else if (content instanceof InstalledBuilding building) {
       infoPanel.showInstalled(building);
       bottomBar.setActions(false, building.managed());
@@ -153,14 +210,13 @@ public final class BuildPackView {
 
   private void showImportFile(ImportFile file) {
     try {
-      StructureInfo info = switch (file.format()) {
-        case LITEMATIC -> LitematicReader.readInfo(file.path());
-        case VANILLA_NBT -> StructureNbtReader.summarize(StructureNbtReader.read(file.path()));
-      };
+      ParsedStructure parsed = ParsedStructure.parse(file.path(), file.format());
       BuildingMetadata model = new BuildingMetadata();
-      model.prefill(info, file.baseName());
-      infoPanel.showImport(info, model);
+      model.prefill(parsed.info(), file.baseName());
+      prefillAuthor(model);
+      infoPanel.showImport(file, parsed.info(), parsed.structure(), model);
       bottomBar.setActions(true, false);
+      bottomBar.setDeleteEnabled(true);
     } catch (IOException | RuntimeException e) {
       LOGGER.warn("BuildPack: 解析结构失败 {}", file.path(), e);
       infoPanel.showEmpty();
@@ -170,17 +226,124 @@ public final class BuildPackView {
     }
   }
 
+  /** 包内建筑：直接从 zip 流解析展示，无需解压（「安装」按钮变为单独安装该建筑）。 */
+  private void showPackBuilding(PackBuildingSelection selection) {
+    try {
+      byte[] bytes = PackReader.readEntryBytes(
+          selection.pack().zipPath(), selection.entry().structureEntry());
+      ParsedStructure parsed = ParsedStructure.parse(bytes, selection.entry().format());
+      BuildingMetadata meta = readZipMeta(selection, parsed);
+      infoPanel.showPackBuilding(selection, parsed.info(), parsed.structure(), meta);
+      bottomBar.setActions(true, false);
+    } catch (IOException | RuntimeException e) {
+      LOGGER.warn("BuildPack: 读取包内建筑失败 {}", selection.entry().structureEntry(), e);
+      infoPanel.showEmpty();
+      bottomBar.setActions(false, false);
+      bottomBar.setMessage(Component.translatable(
+          "buildpack.msg.parse_failed", LocalizedIOException.messageOf(e)), true);
+    }
+  }
+
+  /** 按包内元数据优先级（.sk > .meta.json > 自动）构建展示用元数据。 */
+  private static BuildingMetadata readZipMeta(
+      PackBuildingSelection selection, ParsedStructure parsed) throws IOException {
+    BuildingMetadata meta;
+    if (selection.entry().skEntry() != null) {
+      var fields = SkFileReader.parseFields(PackReader.readEntryBytes(
+          selection.pack().zipPath(), selection.entry().skEntry()));
+      meta = new BuildingMetadata();
+      meta.name = fields.getOrDefault("name", "");
+      meta.amount = fields.getOrDefault("amount", "");
+      meta.author = fields.getOrDefault("author", "");
+      meta.description = fields.getOrDefault("description", "");
+      meta.tags = fields.getOrDefault("tags", "");
+      meta.jobType = fields.getOrDefault("job_type", "");
+    } else if (selection.entry().metaJsonEntry() != null) {
+      meta = PackInstaller.readJsonMeta(PackReader.readEntryBytes(
+          selection.pack().zipPath(), selection.entry().metaJsonEntry()));
+    } else {
+      meta = new BuildingMetadata();
+    }
+    meta.prefill(parsed.info(), selection.entry().name());
+    meta.category = selection.entry().category();
+    return meta;
+  }
+
+  /** 作者为空时默认填当前玩家名。 */
+  private static void prefillAuthor(BuildingMetadata model) {
+    Minecraft minecraft = Minecraft.getInstance();
+    if (model.author.isBlank() && minecraft.player != null) {
+      model.author = minecraft.player.getGameProfile().getName();
+    }
+  }
+
   /** 「安装」按钮回调。 */
   public void runInstall() {
     BuildingInstaller.InstallResult result;
     if (selected instanceof ImportFile file) {
-      result = BuildingInstaller.install(file, form.model());
+      result = BuildingInstaller.install(file, form.model(), form.overwrite());
     } else if (selected instanceof PackArchive pack) {
       result = PackInstaller.installPack(pack, registry);
+    } else if (selected instanceof PackBuildingSelection selection) {
+      result = PackInstaller.installSingle(selection.pack(), selection.entry());
     } else {
       return;
     }
     showResult(result.messages(), !result.ok());
+    refresh();
+  }
+
+  /** 「全部安装」按钮回调：把导入页签当前过滤后的全部文件按表单分类批量安装。 */
+  public void runBatchInstall() {
+    List<ImportFile> files = filteredImportFiles();
+    if (files.isEmpty()) {
+      return;
+    }
+    BuildingCategory category = form.model().category;
+    int ok = 0;
+    int failed = 0;
+    for (ImportFile file : files) {
+      try {
+        BuildingMetadata meta = new BuildingMetadata();
+        meta.prefill(ParsedStructure.parse(file.path(), file.format()).info(), file.baseName());
+        prefillAuthor(meta);
+        meta.category = category;
+        if (BuildingInstaller.install(file, meta, false).ok()) {
+          ok++;
+        } else {
+          failed++;
+        }
+      } catch (IOException | RuntimeException e) {
+        LOGGER.warn("BuildPack: 批量安装失败 {}", file.path(), e);
+        failed++;
+      }
+    }
+    bottomBar.setMessage(
+        Component.translatable("buildpack.msg.batch_done", ok, failed), failed > 0);
+    refresh();
+  }
+
+  /** 「删除文件」按钮回调（两次点击确认）。 */
+  public void runDelete() {
+    if (!(selected instanceof ImportFile file)) {
+      return;
+    }
+    if (!file.path().equals(pendingDelete)) {
+      pendingDelete = file.path();
+      bottomBar.setMessage(Component.translatable(
+          "buildpack.msg.delete_confirm", file.fileName()), false);
+      return;
+    }
+    try {
+      Files.deleteIfExists(file.path());
+      bottomBar.setMessage(
+          Component.translatable("buildpack.msg.deleted", file.fileName()), false);
+    } catch (IOException e) {
+      LOGGER.warn("BuildPack: 删除导入文件失败 {}", file.path(), e);
+      bottomBar.setMessage(Component.translatable(
+          "buildpack.msg.parse_failed", LocalizedIOException.messageOf(e)), true);
+    }
+    pendingDelete = null;
     refresh();
   }
 
@@ -219,16 +382,24 @@ public final class BuildPackView {
 
   private void clearSelection() {
     selected = null;
+    pendingDelete = null;
     infoPanel.showEmpty();
     bottomBar.setActions(false, false);
+    bottomBar.setDeleteEnabled(false);
+  }
+
+  /** 导入页签当前过滤 + 排序后的文件列表。 */
+  private List<ImportFile> filteredImportFiles() {
+    return importFiles.stream()
+        .filter(file -> matches(file.fileName()))
+        .sorted(sortMode.comparator())
+        .toList();
   }
 
   private void rebuildTree() {
     switch (currentTab) {
       case IMPORT -> {
-        List<ImportFile> filtered = importFiles.stream()
-            .filter(file -> matches(file.fileName()))
-            .toList();
+        List<ImportFile> filtered = filteredImportFiles();
         listPanel.setRoot(DirectoryTree.buildImport(BuildPack.importDir(), filtered));
         updateCount(filtered.size());
       }
@@ -247,6 +418,10 @@ public final class BuildPackView {
         updateCount(filtered.size());
       }
     }
+    bottomBar.setExportEnabled(currentTab == SourceTab.INSTALLED
+        && installed.stream().anyMatch(building -> matches(building.name())));
+    bottomBar.setBatchEnabled(currentTab == SourceTab.IMPORT
+        && importFiles.stream().anyMatch(file -> matches(file.fileName())));
   }
 
   private boolean matches(String text) {

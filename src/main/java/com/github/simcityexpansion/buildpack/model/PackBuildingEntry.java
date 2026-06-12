@@ -10,7 +10,8 @@ import org.jetbrains.annotations.Nullable;
  * @param structureEntry 结构文件在 zip 内的条目路径
  * @param format 结构格式
  * @param skEntry 同基础名 .sk 条目路径（可选；存在时原样安装，优先于 metaJsonEntry）
- * @param metaJsonEntry 同基础名 .json 元数据条目路径（可选）
+ * @param metaJsonEntry 本模组元数据 JSON 条目路径（v2 为 {@code <名>.meta.json}；可选）
+ * @param simukraftJsonEntry SimuKraft 原生职业/交易定义 {@code <名>.json}（原样安装；可选）
  */
 public record PackBuildingEntry(
     BuildingCategory category,
@@ -18,4 +19,5 @@ public record PackBuildingEntry(
     String structureEntry,
     StructureFormat format,
     @Nullable String skEntry,
-    @Nullable String metaJsonEntry) {}
+    @Nullable String metaJsonEntry,
+    @Nullable String simukraftJsonEntry) {}

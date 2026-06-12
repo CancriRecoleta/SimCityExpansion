@@ -1,6 +1,7 @@
 package com.github.simcityexpansion.buildpack.install;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -62,7 +63,9 @@ public final class PackReader {
         }
         String fileName = parts[2];
         String lower = fileName.toLowerCase(Locale.ROOT);
-        String baseName = stripExtension(fileName);
+        String baseName = lower.endsWith(".meta.json")
+            ? fileName.substring(0, fileName.length() - ".meta.json".length())
+            : stripExtension(fileName);
         BuildingFiles files = grouped.computeIfAbsent(
             parts[1] + "/" + baseName, key -> new BuildingFiles(category, baseName));
         StructureFormat format = StructureFormat.byFileName(lower).orElse(null);
@@ -71,17 +74,22 @@ public final class PackReader {
           files.format = format;
         } else if (lower.endsWith(".sk")) {
           files.skEntry = path;
-        } else if (lower.endsWith(".json")) {
+        } else if (lower.endsWith(".meta.json")) {
           files.metaJsonEntry = path;
+        } else if (lower.endsWith(".json")) {
+          files.plainJsonEntry = path;
         }
       }
 
       List<PackBuildingEntry> buildings = new ArrayList<>();
       for (BuildingFiles files : grouped.values()) {
-        if (files.structureEntry != null) {
-          buildings.add(new PackBuildingEntry(files.category, files.baseName,
-              files.structureEntry, files.format, files.skEntry, files.metaJsonEntry));
+        if (files.structureEntry == null) {
+          continue;
         }
+        files.classifyPlainJson(zip);
+        buildings.add(new PackBuildingEntry(files.category, files.baseName,
+            files.structureEntry, files.format, files.skEntry,
+            files.metaJsonEntry, files.simukraftJsonEntry));
       }
       if (buildings.isEmpty()) {
         throw new LocalizedIOException(Component.translatable("buildpack.error.pack_empty"));
@@ -108,7 +116,7 @@ public final class PackReader {
           "buildpack.error.pack_bad_manifest", String.valueOf(e.getMessage())));
     }
     int format = json.has("format") ? json.get("format").getAsInt() : 0;
-    if (format != PackManifest.CURRENT_FORMAT) {
+    if (format < PackManifest.MIN_FORMAT || format > PackManifest.CURRENT_FORMAT) {
       throw new LocalizedIOException(
           Component.translatable("buildpack.error.pack_format", format));
     }
@@ -121,6 +129,20 @@ public final class PackReader {
         getString(json, "version", ""),
         getString(json, "author", ""),
         getString(json, "description", ""));
+  }
+
+  /** 读取 zip 内单个条目的全部字节（供界面直接读取包内建筑，无需解压）。 */
+  public static byte[] readEntryBytes(Path zipPath, String entryName) throws IOException {
+    try (ZipFile zip = new ZipFile(zipPath.toFile())) {
+      ZipEntry entry = zip.getEntry(entryName);
+      if (entry == null) {
+        throw new LocalizedIOException(
+            Component.translatable("buildpack.error.zip_entry_missing", entryName));
+      }
+      try (InputStream stream = zip.getInputStream(entry)) {
+        return stream.readAllBytes();
+      }
+    }
   }
 
   private static String getString(JsonObject json, String key, String fallback) {
@@ -139,10 +161,39 @@ public final class PackReader {
     StructureFormat format;
     String skEntry;
     String metaJsonEntry;
+    String plainJsonEntry;
+    String simukraftJsonEntry;
 
     BuildingFiles(BuildingCategory category, String baseName) {
       this.category = category;
       this.baseName = baseName;
+    }
+
+    /**
+     * 归类 {@code <名>.json}：v2 包里它就是 SimuKraft 原生定义；
+     * v1 旧包把它当本模组元数据用——按内容启发式区分（含 offers/containers/job
+     * 等玩法键则视为原生定义），保证旧包不破坏。
+     */
+    void classifyPlainJson(ZipFile zip) {
+      if (plainJsonEntry == null) {
+        return;
+      }
+      if (metaJsonEntry != null) {
+        simukraftJsonEntry = plainJsonEntry;
+        return;
+      }
+      try (InputStreamReader reader = new InputStreamReader(
+          zip.getInputStream(zip.getEntry(plainJsonEntry)), StandardCharsets.UTF_8)) {
+        JsonObject json = JsonParser.parseReader(reader).getAsJsonObject();
+        if (json.has("offers") || json.has("containers") || json.has("job")) {
+          simukraftJsonEntry = plainJsonEntry;
+        } else {
+          metaJsonEntry = plainJsonEntry;
+        }
+      } catch (IOException | RuntimeException e) {
+        // 内容读不出来就按旧格式元数据处理，由安装链路兜底报错。
+        metaJsonEntry = plainJsonEntry;
+      }
     }
   }
 }

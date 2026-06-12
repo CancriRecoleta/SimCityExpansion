@@ -61,6 +61,14 @@ text, label {
   text-color: #808080;
 }
 
+.buildpack-material-row {
+  text-color: #c0c0c0;
+}
+
+.buildpack-material-missing {
+  text-color: #ff6060;
+}
+
 .buildpack-status-count {
   text-color: #a0a0a0;
 }

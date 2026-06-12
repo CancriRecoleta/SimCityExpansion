@@ -59,6 +59,9 @@ public final class UiIcons {
     if (content instanceof PackArchive) {
       return pack();
     }
+    if (content instanceof PackBuildingSelection selection) {
+      return format(selection.entry().format());
+    }
     if (content instanceof InstalledBuilding building) {
       return category(building.category());
     }

@@ -10,6 +10,7 @@ import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Selector;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.TextField;
+import com.lowdragmc.lowdraglib2.gui.ui.elements.Toggle;
 import dev.vfyjxf.taffy.style.AlignItems;
 import dev.vfyjxf.taffy.style.FlexDirection;
 import net.minecraft.network.chat.Component;
@@ -28,6 +29,7 @@ public final class MetadataForm {
   private final TextField descriptionField;
   private final TextField tagsField;
   private final TextField jobTypeField;
+  private final Toggle overwriteToggle;
 
   private BuildingMetadata model = new BuildingMetadata();
 
@@ -66,15 +68,30 @@ public final class MetadataForm {
     tagsField = field((meta, value) -> meta.tags = value);
     jobTypeField = field((meta, value) -> meta.jobType = value);
 
+    // 覆盖开关是安装行为选项而非 .sk 字段，跨选择保留用户偏好。
+    overwriteToggle = new Toggle();
+    overwriteToggle.addClass(BuildPack.cls("form-overwrite"));
+    overwriteToggle.setText(Component.translatable("buildpack.form.overwrite"));
+    overwriteToggle.setOn(false, false);
+    overwriteToggle.style(style ->
+        style.tooltips(Component.translatable("buildpack.tooltip.overwrite")));
+    overwriteToggle.layout(layout -> layout.height(14.0f));
+
     root.addChildren(
         sectionTitle,
-        row("buildpack.form.category", categorySelector),
-        row("buildpack.form.name", nameField),
-        row("buildpack.form.amount", amountField),
-        row("buildpack.form.author", authorField),
-        row("buildpack.form.description", descriptionField),
-        row("buildpack.form.tags", tagsField),
-        row("buildpack.form.job_type", jobTypeField));
+        row("category", categorySelector),
+        row("name", nameField),
+        row("amount", amountField),
+        row("author", authorField),
+        row("description", descriptionField),
+        row("tags", tagsField),
+        row("job_type", jobTypeField),
+        overwriteToggle);
+  }
+
+  /** 安装时是否覆盖同名建筑。 */
+  public boolean overwrite() {
+    return Boolean.TRUE.equals(overwriteToggle.getValue());
   }
 
   /** 返回表单根元素。 */
@@ -100,6 +117,7 @@ public final class MetadataForm {
     descriptionField.setActive(editable);
     tagsField.setActive(editable);
     jobTypeField.setActive(editable);
+    overwriteToggle.setActive(editable);
   }
 
   /** 当前绑定的模型。 */
@@ -116,15 +134,18 @@ public final class MetadataForm {
     return field;
   }
 
-  private UIElement row(String labelKey, UIElement control) {
+  /** 表单行：标签 + 控件，整行带该 .sk 字段的格式说明 tooltip。 */
+  private UIElement row(String fieldKey, UIElement control) {
     UIElement row = new UIElement();
     row.addClass(BuildPack.cls("form-row"));
     row.layout(layout -> layout.flexDirection(FlexDirection.ROW)
         .alignItems(AlignItems.CENTER).gapColumn(3.0f).widthStretch());
+    row.style(style ->
+        style.tooltips(Component.translatable("buildpack.tooltip.form." + fieldKey)));
 
     Label label = new Label();
     label.addClass(BuildPack.cls("form-label"));
-    label.setValue(Component.translatable(labelKey));
+    label.setValue(Component.translatable("buildpack.form." + fieldKey));
     label.layout(layout -> layout.width(44.0f));
 
     row.addChildren(label, control);

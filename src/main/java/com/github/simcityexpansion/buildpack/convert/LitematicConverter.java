@@ -5,7 +5,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
-import net.minecraft.SharedConstants;
 import net.minecraft.network.chat.Component;
 
 /** litematic → 原版 NBT 结构 的转换门面。 */
@@ -20,14 +19,12 @@ public final class LitematicConverter {
     return LitematicReader.readAndMerge(litematic);
   }
 
-  /** 安装前校验，返回需要展示给用户的警告（可为空）。 */
+  /**
+   * 安装前校验，返回需要展示给用户的警告（可为空）。
+   * 旧版本 DataVersion 不再在这里告警——安装链路会用 {@link StructureUpgrader} 实际升级。
+   */
   public static List<Component> validate(NbtStructure structure) {
     List<Component> warnings = new ArrayList<>();
-    int current = SharedConstants.getCurrentVersion().getDataVersion().getVersion();
-    if (structure.dataVersion != 0 && structure.dataVersion != current) {
-      warnings.add(Component.translatable(
-          "buildpack.msg.dataversion_mismatch", structure.dataVersion, current));
-    }
     if (structure.volume() > LARGE_VOLUME_WARNING) {
       warnings.add(Component.translatable("buildpack.msg.large_structure",
           structure.sizeX + " x " + structure.sizeY + " x " + structure.sizeZ));

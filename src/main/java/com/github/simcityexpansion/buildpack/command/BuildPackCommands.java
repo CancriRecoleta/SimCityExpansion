@@ -1,0 +1,306 @@
+package com.github.simcityexpansion.buildpack.command;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+
+import com.github.simcityexpansion.buildpack.LocalizedIOException;
+import com.github.simcityexpansion.buildpack.convert.ParsedStructure;
+import com.github.simcityexpansion.buildpack.install.BuildingInstaller;
+import com.github.simcityexpansion.buildpack.install.InstallRegistry;
+import com.github.simcityexpansion.buildpack.install.PackInstaller;
+import com.github.simcityexpansion.buildpack.install.PackReader;
+import com.github.simcityexpansion.buildpack.model.BuildingCategory;
+import com.github.simcityexpansion.buildpack.model.BuildingMetadata;
+import com.github.simcityexpansion.buildpack.model.ImportFile;
+import com.github.simcityexpansion.buildpack.model.ImportScanner;
+import com.github.simcityexpansion.buildpack.model.PackArchive;
+import com.github.simcityexpansion.buildpack.model.StructureFormat;
+import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.suggestion.Suggestions;
+import com.mojang.brigadier.suggestion.SuggestionsBuilder;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.Commands;
+import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * {@code /buildpack} 服务端管理命令（OP 等级 2），为专用服务器提供原生安装能力：
+ * 扫描<b>服务端</b>游戏目录的 {@code simcity_expansion/import/}，
+ * 复用与客户端界面完全相同的转换/安装链路写入 {@code simukraftbuilding/}。
+ *
+ * <pre>
+ * /buildpack list                              列出导入目录中的结构与 zip 包
+ * /buildpack install &lt;文件&gt; [分类] [名称]      安装散文件（默认分类 other）
+ * /buildpack installpack &lt;zip&gt;                 安装 zip 拓展包
+ * /buildpack packs                             列出已安装拓展包
+ * /buildpack uninstallpack &lt;包id&gt;              按注册表卸载拓展包
+ * </pre>
+ *
+ * <p>消息使用翻译组件：发给装有本模组的玩家时按其语言显示；
+ * 服务端控制台按内置英文（en_us）解析。
+ */
+public final class BuildPackCommands {
+  private BuildPackCommands() {}
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(BuildPackCommands.class);
+
+  /** 列表类输出的最大行数。 */
+  private static final int MAX_LINES = 30;
+
+  /** 挂到 NeoForge 总线（逻辑服务端创建命令树时触发，单人与专服皆有效）。 */
+  public static void onRegisterCommands(RegisterCommandsEvent event) {
+    register(event.getDispatcher());
+  }
+
+  static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
+    dispatcher.register(Commands.literal("buildpack")
+        .requires(source -> source.hasPermission(Commands.LEVEL_GAMEMASTERS))
+        .then(Commands.literal("list")
+            .executes(context -> list(context.getSource())))
+        .then(Commands.literal("packs")
+            .executes(context -> packs(context.getSource())))
+        .then(Commands.literal("install")
+            .then(Commands.argument("file", StringArgumentType.string())
+                .suggests(BuildPackCommands::suggestStructures)
+                .executes(context -> install(context.getSource(),
+                    StringArgumentType.getString(context, "file"), null, null))
+                .then(Commands.argument("category", StringArgumentType.word())
+                    .suggests(BuildPackCommands::suggestCategories)
+                    .executes(context -> install(context.getSource(),
+                        StringArgumentType.getString(context, "file"),
+                        StringArgumentType.getString(context, "category"), null))
+                    .then(Commands.argument("name", StringArgumentType.greedyString())
+                        .executes(context -> install(context.getSource(),
+                            StringArgumentType.getString(context, "file"),
+                            StringArgumentType.getString(context, "category"),
+                            StringArgumentType.getString(context, "name")))))))
+        .then(Commands.literal("installpack")
+            .then(Commands.argument("zip", StringArgumentType.string())
+                .suggests(BuildPackCommands::suggestZips)
+                .executes(context -> installPack(context.getSource(),
+                    StringArgumentType.getString(context, "zip")))))
+        .then(Commands.literal("uninstallpack")
+            .then(Commands.argument("id", StringArgumentType.string())
+                .suggests(BuildPackCommands::suggestPackIds)
+                .executes(context -> uninstallPack(context.getSource(),
+                    StringArgumentType.getString(context, "id"))))));
+  }
+
+  // ---- 子命令实现 ----
+
+  private static int list(CommandSourceStack source) {
+    List<String> entries = new ArrayList<>();
+    Path importDir = ImportScanner.ensureImportDir();
+    for (ImportFile file : ImportScanner.scan()) {
+      entries.add(relativize(importDir, file.path()));
+    }
+    for (Path zip : ImportScanner.scanZips()) {
+      entries.add(relativize(importDir, zip));
+    }
+    if (entries.isEmpty()) {
+      source.sendSuccess(() -> Component.translatable(
+          "buildpack.cmd.list.empty", importDir.toString()), false);
+      return 0;
+    }
+    source.sendSuccess(() -> Component.translatable(
+        "buildpack.cmd.list.header", entries.size()), false);
+    sendLines(source, entries);
+    return entries.size();
+  }
+
+  private static int packs(CommandSourceStack source) {
+    List<InstallRegistry.Entry> entries = InstallRegistry.load().entries();
+    if (entries.isEmpty()) {
+      source.sendSuccess(() -> Component.translatable("buildpack.cmd.packs.empty"), false);
+      return 0;
+    }
+    source.sendSuccess(() -> Component.translatable(
+        "buildpack.cmd.packs.header", entries.size()), false);
+    for (InstallRegistry.Entry entry : entries) {
+      source.sendSuccess(() -> Component.translatable("buildpack.cmd.packs.entry",
+          entry.id(), entry.name(), entry.files().size()), false);
+    }
+    return entries.size();
+  }
+
+  private static int install(CommandSourceStack source, String relative,
+      @Nullable String categoryName, @Nullable String name) {
+    BuildingCategory category = BuildingCategory.OTHER;
+    if (categoryName != null) {
+      var resolved = BuildingCategory.byDirName(categoryName);
+      if (resolved.isEmpty()) {
+        source.sendFailure(Component.translatable("buildpack.cmd.bad_category", categoryName));
+        return 0;
+      }
+      category = resolved.get();
+    }
+
+    Path file = resolveImportFile(relative);
+    if (file == null) {
+      source.sendFailure(Component.translatable("buildpack.cmd.file_not_found", relative));
+      return 0;
+    }
+    StructureFormat format = StructureFormat.byFileName(file.getFileName().toString())
+        .orElse(null);
+    if (format == null) {
+      source.sendFailure(Component.translatable("buildpack.error.unknown_format"));
+      return 0;
+    }
+
+    try {
+      ImportFile importFile = new ImportFile(file, format,
+          Files.size(file), Files.getLastModifiedTime(file).toInstant());
+      BuildingMetadata meta = new BuildingMetadata();
+      meta.prefill(ParsedStructure.parse(file, format).info(), importFile.baseName());
+      if (name != null && !name.isBlank()) {
+        meta.name = name.trim();
+      }
+      if (meta.author.isBlank()) {
+        meta.author = source.getTextName();
+      }
+      meta.category = category;
+
+      BuildingInstaller.InstallResult result = BuildingInstaller.install(importFile, meta, false);
+      sendResult(source, result.ok(), result.messages());
+      return result.ok() ? 1 : 0;
+    } catch (IOException | RuntimeException e) {
+      LOGGER.warn("BuildPack: 命令安装失败 {}", file, e);
+      source.sendFailure(Component.translatable(
+          "buildpack.msg.parse_failed", LocalizedIOException.messageOf(e)));
+      return 0;
+    }
+  }
+
+  private static int installPack(CommandSourceStack source, String relative) {
+    Path zip = resolveImportFile(relative);
+    if (zip == null) {
+      source.sendFailure(Component.translatable("buildpack.cmd.file_not_found", relative));
+      return 0;
+    }
+    try {
+      PackArchive pack = PackReader.read(zip);
+      InstallRegistry registry = InstallRegistry.load();
+      BuildingInstaller.InstallResult result = PackInstaller.installPack(pack, registry);
+      sendResult(source, result.ok(), result.messages());
+      return result.ok() ? 1 : 0;
+    } catch (IOException | RuntimeException e) {
+      LOGGER.warn("BuildPack: 命令安装拓展包失败 {}", zip, e);
+      source.sendFailure(Component.translatable(
+          "buildpack.msg.invalid_pack", LocalizedIOException.messageOf(e)));
+      return 0;
+    }
+  }
+
+  private static int uninstallPack(CommandSourceStack source, String packId) {
+    InstallRegistry registry = InstallRegistry.load();
+    if (registry.find(packId).isEmpty()) {
+      source.sendFailure(Component.translatable("buildpack.cmd.pack_not_found", packId));
+      return 0;
+    }
+    PackInstaller.uninstallPack(packId, registry);
+    source.sendSuccess(
+        () -> Component.translatable("buildpack.msg.uninstalled", packId), true);
+    return 1;
+  }
+
+  // ---- 工具 ----
+
+  /** 解析导入目录下的相对路径，并防止 {@code ../} 越界。 */
+  @Nullable
+  private static Path resolveImportFile(String relative) {
+    Path importDir = ImportScanner.ensureImportDir().toAbsolutePath().normalize();
+    Path resolved = importDir.resolve(relative.replace('\\', '/')).normalize();
+    if (!resolved.startsWith(importDir) || !Files.isRegularFile(resolved)) {
+      return null;
+    }
+    return resolved;
+  }
+
+  private static String relativize(Path importDir, Path file) {
+    return importDir.relativize(file).toString().replace('\\', '/');
+  }
+
+  private static void sendLines(CommandSourceStack source, List<String> lines) {
+    int shown = Math.min(lines.size(), MAX_LINES);
+    for (int i = 0; i < shown; i++) {
+      String line = lines.get(i);
+      source.sendSuccess(() -> Component.literal("  " + line), false);
+    }
+    if (lines.size() > shown) {
+      source.sendSuccess(() -> Component.translatable(
+          "buildpack.cmd.list.more", lines.size() - shown), false);
+    }
+  }
+
+  private static void sendResult(CommandSourceStack source, boolean ok, List<Component> messages) {
+    MutableComponent joined = Component.empty();
+    for (int i = 0; i < messages.size(); i++) {
+      if (i > 0) {
+        joined.append(Component.literal(" · "));
+      }
+      joined.append(messages.get(i));
+    }
+    if (ok) {
+      source.sendSuccess(() -> joined, true);
+    } else {
+      source.sendFailure(joined);
+    }
+  }
+
+  // ---- 补全 ----
+
+  private static CompletableFuture<Suggestions> suggestStructures(
+      CommandContext<CommandSourceStack> context,
+      SuggestionsBuilder builder) {
+    Path importDir = ImportScanner.ensureImportDir();
+    List<String> names = ImportScanner.scan().stream()
+        .map(file -> quoteIfNeeded(relativize(importDir, file.path())))
+        .toList();
+    return SharedSuggestionProvider.suggest(names, builder);
+  }
+
+  private static CompletableFuture<Suggestions> suggestZips(
+      CommandContext<CommandSourceStack> context,
+      SuggestionsBuilder builder) {
+    Path importDir = ImportScanner.ensureImportDir();
+    List<String> names = ImportScanner.scanZips().stream()
+        .map(zip -> quoteIfNeeded(relativize(importDir, zip)))
+        .toList();
+    return SharedSuggestionProvider.suggest(names, builder);
+  }
+
+  private static CompletableFuture<Suggestions> suggestCategories(
+      CommandContext<CommandSourceStack> context,
+      SuggestionsBuilder builder) {
+    List<String> names = Arrays.stream(BuildingCategory.values())
+        .map(BuildingCategory::dirName)
+        .toList();
+    return SharedSuggestionProvider.suggest(names, builder);
+  }
+
+  private static CompletableFuture<Suggestions> suggestPackIds(
+      CommandContext<CommandSourceStack> context,
+      SuggestionsBuilder builder) {
+    List<String> ids = InstallRegistry.load().entries().stream()
+        .map(entry -> quoteIfNeeded(entry.id()))
+        .toList();
+    return SharedSuggestionProvider.suggest(ids, builder);
+  }
+
+  /** 含空格的建议项加引号，匹配 {@link StringArgumentType#string()} 的解析规则。 */
+  private static String quoteIfNeeded(String text) {
+    return text.contains(" ") ? "\"" + text + "\"" : text;
+  }
+}

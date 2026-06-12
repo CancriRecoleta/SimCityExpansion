@@ -15,10 +15,15 @@ public final class StructureNbtWriter {
 
   /** 写出到目标路径（覆盖已存在文件）。 */
   public static void write(NbtStructure structure, Path target) throws IOException {
+    writeTag(toTag(structure), target);
+  }
+
+  /** 直接写出一个已构建（可能经过 DataFixer 升级）的根标签。 */
+  public static void writeTag(CompoundTag root, Path target) throws IOException {
     if (target.getParent() != null) {
       Files.createDirectories(target.getParent());
     }
-    NbtIo.writeCompressed(toTag(structure), target);
+    NbtIo.writeCompressed(root, target);
   }
 
   /** 构建原版结构模板的根标签。 */

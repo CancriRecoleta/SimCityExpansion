@@ -13,7 +13,9 @@ public enum StructureFormat {
   /** 原版结构方块导出的 .nbt 模板。 */
   VANILLA_NBT(".nbt"),
   /** Litematica 投影 .litematic。 */
-  LITEMATIC(".litematic");
+  LITEMATIC(".litematic"),
+  /** Sponge / WorldEdit 原理图 .schem（v1/v2/v3）。 */
+  SCHEM(".schem");
 
   private final String extension;
 

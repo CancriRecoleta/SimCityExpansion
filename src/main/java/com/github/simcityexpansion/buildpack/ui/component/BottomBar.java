@@ -10,28 +10,42 @@ import dev.vfyjxf.taffy.style.FlexDirection;
 import net.minecraft.network.chat.Component;
 
 /**
- * 底部按钮行（Litematica 式：主操作按钮排在左下，按钮高 20）：
- * [安装][卸载][刷新][打开目录] + 计数/消息 + 右端 [关闭]。
+ * 底部双行（Litematica 式按钮区在左下，按钮高 20）：
+ * 第一行为上下文操作 [安装][全部安装][卸载][删除文件][导出]；
+ * 第二行为工具与状态 [刷新][打开目录] 计数 消息 提示 [关闭]。
  */
 public final class BottomBar {
 
   private final UIElement root;
   private final Button installButton;
+  private final Button batchButton;
   private final Button uninstallButton;
+  private final Button deleteButton;
+  private final Button exportButton;
   private final Label countLabel;
   private final Label messageLabel;
 
   public BottomBar(BuildPackView view) {
     root = new UIElement();
     root.addClass(BuildPack.cls("status"));
-    root.layout(layout -> layout.flexDirection(FlexDirection.ROW).alignItems(AlignItems.CENTER)
-        .gapColumn(4.0f).widthStretch().height(22.0f));
+    root.layout(layout -> layout.flexDirection(FlexDirection.COLUMN)
+        .gapRow(2.0f).widthStretch());
 
-    installButton = action("buildpack.action.install", view::runInstall);
-    uninstallButton = action("buildpack.action.uninstall", view::runUninstall);
-    Button refresh = action("buildpack.action.refresh", view::refresh);
-    Button openFolder = action("buildpack.action.open_folder", view::openImportFolder);
-    Button close = action("buildpack.action.close", view::close);
+    installButton = action("install", view::runInstall);
+    batchButton = action("batch", view::runBatchInstall);
+    uninstallButton = action("uninstall", view::runUninstall);
+    deleteButton = action("delete", view::runDelete);
+    exportButton = action("export", view::runExport);
+
+    UIElement actionsRow = new UIElement();
+    actionsRow.layout(layout -> layout.flexDirection(FlexDirection.ROW)
+        .alignItems(AlignItems.CENTER).gapColumn(4.0f).widthStretch().height(22.0f));
+    actionsRow.addChildren(
+        installButton, batchButton, uninstallButton, deleteButton, exportButton);
+
+    Button refresh = action("refresh", view::refresh);
+    Button openFolder = action("open_folder", view::openFolder);
+    Button close = action("close", view::close);
 
     // LDLib2 的 Label 默认文本是字符串 "Label"，不清空会在界面上露出来。
     countLabel = new Label();
@@ -43,9 +57,20 @@ public final class BottomBar {
     messageLabel.setValue(Component.empty());
     messageLabel.layout(layout -> layout.flexGrow(1.0f));
 
-    root.addChildren(installButton, uninstallButton, refresh, openFolder,
-        countLabel, messageLabel, close);
+    Label hint = new Label();
+    hint.addClass(BuildPack.cls("status-hint"));
+    hint.setValue(Component.translatable("buildpack.status.hint"));
+
+    UIElement utilityRow = new UIElement();
+    utilityRow.layout(layout -> layout.flexDirection(FlexDirection.ROW)
+        .alignItems(AlignItems.CENTER).gapColumn(4.0f).widthStretch().height(22.0f));
+    utilityRow.addChildren(refresh, openFolder, countLabel, messageLabel, hint, close);
+
+    root.addChildren(actionsRow, utilityRow);
     setActions(false, false);
+    setBatchEnabled(false);
+    setDeleteEnabled(false);
+    setExportEnabled(false);
   }
 
   /** 返回栏根元素。 */
@@ -57,6 +82,21 @@ public final class BottomBar {
   public void setActions(boolean installEnabled, boolean uninstallEnabled) {
     installButton.setActive(installEnabled);
     uninstallButton.setActive(uninstallEnabled);
+  }
+
+  /** 设置「全部安装」可用状态（仅导入页签且列表非空）。 */
+  public void setBatchEnabled(boolean enabled) {
+    batchButton.setActive(enabled);
+  }
+
+  /** 设置「删除文件」可用状态（仅导入页签且选中了文件）。 */
+  public void setDeleteEnabled(boolean enabled) {
+    deleteButton.setActive(enabled);
+  }
+
+  /** 设置导出按钮可用状态（仅「已安装」页签且有建筑时可用）。 */
+  public void setExportEnabled(boolean enabled) {
+    exportButton.setActive(enabled);
   }
 
   /** 更新计数文本。 */
@@ -73,9 +113,11 @@ public final class BottomBar {
     }
   }
 
-  private Button action(String translationKey, Runnable onClick) {
-    Button button = new Button().setText(Component.translatable(translationKey));
+  /** 构建一个带本地化文本与悬停提示的操作按钮。 */
+  private Button action(String key, Runnable onClick) {
+    Button button = new Button().setText(Component.translatable("buildpack.action." + key));
     button.addClass(BuildPack.cls("action"));
+    button.style(style -> style.tooltips(Component.translatable("buildpack.tooltip." + key)));
     button.setOnClick(event -> onClick.run());
     return button;
   }

@@ -8,6 +8,7 @@ import com.github.simcityexpansion.buildpack.model.BuildingCategory;
 import com.github.simcityexpansion.buildpack.model.ImportFile;
 import com.github.simcityexpansion.buildpack.model.InstalledBuilding;
 import com.github.simcityexpansion.buildpack.model.PackArchive;
+import com.github.simcityexpansion.buildpack.model.PackBuildingEntry;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
 import com.lowdragmc.lowdraglib2.gui.util.TreeNode;
 
@@ -39,11 +40,29 @@ public final class DirectoryTree {
     return builder.build();
   }
 
-  /** zip 拓展包：平铺为根下叶子。 */
+  /**
+   * zip 拓展包：包为分支节点（content 为 {@link PackArchive}，选中可整包安装），
+   * 展开后直接浏览包内建筑（分类 → 建筑，叶子为 {@link PackBuildingSelection}）。
+   */
   public static TreeNode<String, Object> buildPacks(List<PackArchive> packs) {
     TreeBuilder<String, Object> builder = TreeBuilder.start(ROOT_KEY);
     for (PackArchive pack : packs) {
-      builder.leaf(pack.manifest().name() + " (" + pack.fileName() + ")", pack);
+      builder.startBranch(pack.manifest().name() + " (" + pack.fileName() + ")");
+      builder.content(pack);
+      for (BuildingCategory category : BuildingCategory.values()) {
+        List<PackBuildingEntry> inCategory = pack.buildings().stream()
+            .filter(entry -> entry.category() == category)
+            .toList();
+        if (inCategory.isEmpty()) {
+          continue;
+        }
+        builder.startBranch(category.displayName().getString());
+        for (PackBuildingEntry entry : inCategory) {
+          builder.leaf(entry.name(), new PackBuildingSelection(pack, entry));
+        }
+        builder.endBranch();
+      }
+      builder.endBranch();
     }
     return builder.build();
   }

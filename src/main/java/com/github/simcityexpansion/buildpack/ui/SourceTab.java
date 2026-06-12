@@ -21,4 +21,9 @@ public enum SourceTab {
   public Component displayName() {
     return Component.translatable("buildpack.tab." + key);
   }
+
+  /** 页签悬停提示。 */
+  public Component tooltip() {
+    return Component.translatable("buildpack.tooltip.tab." + key);
+  }
 }
