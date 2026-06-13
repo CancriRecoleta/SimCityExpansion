@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.github.simcityexpansion.buildpack.I18nLog;
 import com.github.simcityexpansion.buildpack.LocalizedIOException;
 import com.github.simcityexpansion.buildpack.model.StructureInfo;
 import net.minecraft.nbt.CompoundTag;
@@ -190,7 +191,7 @@ public final class LitematicReader {
       }
     }
     if (badIndices > 0) {
-      LOGGER.warn("BuildPack: litematic 区域含 {} 个越界调色板索引，已按空气处理", badIndices);
+      I18nLog.warn(LOGGER, "buildpack.log.litematic_bad_indices", badIndices);
     }
 
     // 方块实体：区域局部坐标 → 全局坐标，并移除坐标键（原版格式的 blocks[].nbt 不含坐标）。

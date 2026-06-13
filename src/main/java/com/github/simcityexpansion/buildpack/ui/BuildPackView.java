@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Locale;
 
 import com.github.simcityexpansion.buildpack.BuildPack;
+import com.github.simcityexpansion.buildpack.I18nLog;
 import com.github.simcityexpansion.buildpack.LocalizedIOException;
 import com.github.simcityexpansion.buildpack.convert.ParsedStructure;
 import com.github.simcityexpansion.buildpack.install.BuildingInstaller;
@@ -31,7 +32,6 @@ import com.github.simcityexpansion.buildpack.ui.component.SearchBar;
 import com.github.simcityexpansion.buildpack.ui.component.SourceTabs;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.ScrollerView;
 import dev.vfyjxf.taffy.style.FlexDirection;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
@@ -135,7 +135,7 @@ public final class BuildPackView {
       try {
         parsed.add(PackReader.read(zip));
       } catch (IOException | RuntimeException e) {
-        LOGGER.warn("BuildPack: 拓展包无效 {}", zip, e);
+        I18nLog.warn(LOGGER, e, "buildpack.log.pack_invalid", zip);
         invalid.add(zip.getFileName().toString());
       }
     }
@@ -158,7 +158,7 @@ public final class BuildPackView {
       try {
         Files.createDirectories(BuildPack.simukraftDir());
       } catch (IOException e) {
-        LOGGER.warn("BuildPack: 创建建筑目录失败", e);
+        I18nLog.warn(LOGGER, e, "buildpack.log.building_dir_failed");
       }
       Util.getPlatform().openPath(BuildPack.simukraftDir());
     } else {
@@ -177,7 +177,7 @@ public final class BuildPackView {
           "buildpack.msg.exported", zip.getFileName().toString()), false);
       Util.getPlatform().openPath(PackExporter.exportDir());
     } catch (IOException | RuntimeException e) {
-      LOGGER.warn("BuildPack: 导出失败", e);
+      I18nLog.warn(LOGGER, e, "buildpack.log.export_failed");
       bottomBar.setMessage(Component.translatable(
           "buildpack.msg.parse_failed", LocalizedIOException.messageOf(e)), true);
     }
@@ -218,7 +218,7 @@ public final class BuildPackView {
       bottomBar.setActions(true, false);
       bottomBar.setDeleteEnabled(true);
     } catch (IOException | RuntimeException e) {
-      LOGGER.warn("BuildPack: 解析结构失败 {}", file.path(), e);
+      I18nLog.warn(LOGGER, e, "buildpack.log.structure_parse_failed", file.path());
       infoPanel.showEmpty();
       bottomBar.setActions(false, false);
       bottomBar.setMessage(Component.translatable(
@@ -236,7 +236,7 @@ public final class BuildPackView {
       infoPanel.showPackBuilding(selection, parsed.info(), parsed.structure(), meta);
       bottomBar.setActions(true, false);
     } catch (IOException | RuntimeException e) {
-      LOGGER.warn("BuildPack: 读取包内建筑失败 {}", selection.entry().structureEntry(), e);
+      I18nLog.warn(LOGGER, e, "buildpack.log.pack_entry_read_failed", selection.entry().structureEntry());
       infoPanel.showEmpty();
       bottomBar.setActions(false, false);
       bottomBar.setMessage(Component.translatable(
@@ -314,7 +314,7 @@ public final class BuildPackView {
           failed++;
         }
       } catch (IOException | RuntimeException e) {
-        LOGGER.warn("BuildPack: 批量安装失败 {}", file.path(), e);
+        I18nLog.warn(LOGGER, e, "buildpack.log.batch_failed", file.path());
         failed++;
       }
     }
@@ -339,7 +339,7 @@ public final class BuildPackView {
       bottomBar.setMessage(
           Component.translatable("buildpack.msg.deleted", file.fileName()), false);
     } catch (IOException e) {
-      LOGGER.warn("BuildPack: 删除导入文件失败 {}", file.path(), e);
+      I18nLog.warn(LOGGER, e, "buildpack.log.import_delete_failed", file.path());
       bottomBar.setMessage(Component.translatable(
           "buildpack.msg.parse_failed", LocalizedIOException.messageOf(e)), true);
     }
@@ -471,12 +471,8 @@ public final class BuildPackView {
     browserBox.addClass(BuildPack.cls("browser"));
     browserBox.layout(layout -> layout.flexDirection(FlexDirection.COLUMN)
         .paddingAll(2.0f).widthStretch().flexGrow(1.0f));
-
-    ScrollerView treeScroller = new ScrollerView();
-    treeScroller.addClass(BuildPack.cls("tree-scroller"));
-    treeScroller.layout(layout -> layout.widthStretch().flexGrow(1.0f));
-    treeScroller.addScrollViewChild(listPanel.element());
-    browserBox.addChild(treeScroller);
+    // 文件树为自绘控件（TreeView），自管理滚动，直接挂入浏览框，无需 ldlib2 的 ScrollerView。
+    browserBox.addChild(listPanel.element());
 
     column.addChildren(SearchBar.build(this), browserBox);
     return column;

@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
+import com.github.simcityexpansion.buildpack.I18nLog;
 import com.github.simcityexpansion.buildpack.LocalizedIOException;
 import com.github.simcityexpansion.buildpack.convert.ParsedStructure;
 import com.github.simcityexpansion.buildpack.install.BuildingInstaller;
@@ -176,7 +177,7 @@ public final class BuildPackCommands {
       sendResult(source, result.ok(), result.messages());
       return result.ok() ? 1 : 0;
     } catch (IOException | RuntimeException e) {
-      LOGGER.warn("BuildPack: 命令安装失败 {}", file, e);
+      I18nLog.warn(LOGGER, e, "buildpack.log.cmd_install_failed", file);
       source.sendFailure(Component.translatable(
           "buildpack.msg.parse_failed", LocalizedIOException.messageOf(e)));
       return 0;
@@ -196,7 +197,7 @@ public final class BuildPackCommands {
       sendResult(source, result.ok(), result.messages());
       return result.ok() ? 1 : 0;
     } catch (IOException | RuntimeException e) {
-      LOGGER.warn("BuildPack: 命令安装拓展包失败 {}", zip, e);
+      I18nLog.warn(LOGGER, e, "buildpack.log.cmd_pack_failed", zip);
       source.sendFailure(Component.translatable(
           "buildpack.msg.invalid_pack", LocalizedIOException.messageOf(e)));
       return 0;

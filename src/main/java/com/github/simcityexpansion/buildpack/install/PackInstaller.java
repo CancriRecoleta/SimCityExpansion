@@ -13,6 +13,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 import com.github.simcityexpansion.buildpack.BuildPack;
+import com.github.simcityexpansion.buildpack.I18nLog;
 import com.github.simcityexpansion.buildpack.LocalizedIOException;
 import com.github.simcityexpansion.buildpack.convert.LitematicConverter;
 import com.github.simcityexpansion.buildpack.convert.LitematicReader;
@@ -55,14 +56,14 @@ public final class PackInstaller {
           installBuilding(zip, building, installedFiles, messages);
           installed++;
         } catch (IOException | RuntimeException e) {
-          LOGGER.warn("BuildPack: 拓展包建筑安装失败 {}", building.structureEntry(), e);
+          I18nLog.warn(LOGGER, e, "buildpack.log.pack_building_failed", building.structureEntry());
           messages.add(Component.translatable("buildpack.msg.parse_failed",
               Component.literal(building.name() + ": ")
                   .append(LocalizedIOException.messageOf(e))));
         }
       }
     } catch (IOException e) {
-      LOGGER.warn("BuildPack: 打开拓展包失败 {}", pack.zipPath(), e);
+      I18nLog.warn(LOGGER, e, "buildpack.log.pack_open_failed", pack.zipPath());
       return InstallResult.failure(Component.translatable(
           "buildpack.msg.invalid_pack", LocalizedIOException.messageOf(e)));
     }
@@ -94,7 +95,7 @@ public final class PackInstaller {
           building.category().dirName() + "/" + finalName));
       return new InstallResult(true, messages, null);
     } catch (IOException | RuntimeException e) {
-      LOGGER.warn("BuildPack: 单独安装包内建筑失败 {}", building.structureEntry(), e);
+      I18nLog.warn(LOGGER, e, "buildpack.log.pack_single_failed", building.structureEntry());
       return InstallResult.failure(Component.translatable(
           "buildpack.msg.parse_failed", LocalizedIOException.messageOf(e)));
     }
@@ -113,7 +114,7 @@ public final class PackInstaller {
       try {
         Files.deleteIfExists(file);
       } catch (IOException e) {
-        LOGGER.warn("BuildPack: 删除拓展包文件失败 {}", file, e);
+        I18nLog.warn(LOGGER, e, "buildpack.log.pack_file_delete_failed", file);
         ok = false;
       }
     }
@@ -244,7 +245,7 @@ public final class PackInstaller {
         meta.tags = getString(json, "tags");
       }
     } catch (RuntimeException e) {
-      LOGGER.warn("BuildPack: 拓展包元数据解析失败", e);
+      I18nLog.warn(LOGGER, e, "buildpack.log.pack_meta_failed");
     }
     return meta;
   }

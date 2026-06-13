@@ -6,6 +6,7 @@ import java.util.function.BiConsumer;
 import com.github.simcityexpansion.buildpack.BuildPack;
 import com.github.simcityexpansion.buildpack.model.BuildingCategory;
 import com.github.simcityexpansion.buildpack.model.BuildingMetadata;
+import com.github.simcityexpansion.buildpack.ui.UiCheckbox;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Selector;
@@ -69,13 +70,15 @@ public final class MetadataForm {
     jobTypeField = field((meta, value) -> meta.jobType = value);
 
     // 覆盖开关是安装行为选项而非 .sk 字段，跨选择保留用户偏好。
+    // 与来源页签同款的「带勾的勾选框」（空框 / 带勾框）。
     overwriteToggle = new Toggle();
     overwriteToggle.addClass(BuildPack.cls("form-overwrite"));
     overwriteToggle.setText(Component.translatable("buildpack.form.overwrite"));
+    UiCheckbox.style(overwriteToggle);
     overwriteToggle.setOn(false, false);
     overwriteToggle.style(style ->
         style.tooltips(Component.translatable("buildpack.tooltip.overwrite")));
-    overwriteToggle.layout(layout -> layout.height(14.0f));
+    overwriteToggle.layout(layout -> layout.height(UiCheckbox.HEIGHT));
 
     root.addChildren(
         sectionTitle,

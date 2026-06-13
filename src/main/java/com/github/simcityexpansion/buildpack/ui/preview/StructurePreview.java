@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import com.github.simcityexpansion.buildpack.BuildPack;
+import com.github.simcityexpansion.buildpack.I18nLog;
 import com.github.simcityexpansion.buildpack.model.StructureInfo;
 import com.lowdragmc.lowdraglib2.gui.texture.SpriteTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
@@ -54,7 +55,7 @@ public final class StructurePreview {
       image.style(style -> style.background(SpriteTexture.of(texture)));
       return image;
     } catch (RuntimeException e) {
-      LOGGER.warn("BuildPack: 预览图注册失败", e);
+      I18nLog.warn(LOGGER, e, "buildpack.log.preview_failed");
       return placeholder();
     }
   }

@@ -11,6 +11,7 @@ import java.util.Locale;
 import java.util.stream.Stream;
 
 import com.github.simcityexpansion.buildpack.BuildPack;
+import com.github.simcityexpansion.buildpack.I18nLog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,13 +32,13 @@ public final class ImportScanner {
             files.add(new ImportFile(path, format, Files.size(path),
                 Files.getLastModifiedTime(path).toInstant()));
           } catch (IOException e) {
-            LOGGER.warn("BuildPack: 读取导入文件属性失败 {}", path, e);
+            I18nLog.warn(LOGGER, e, "buildpack.log.import_attrs_failed", path);
             files.add(new ImportFile(path, format, 0L, Instant.EPOCH));
           }
         });
       });
     } catch (IOException e) {
-      LOGGER.warn("BuildPack: 扫描导入目录失败 {}", root, e);
+      I18nLog.warn(LOGGER, e, "buildpack.log.import_scan_failed", root);
     }
     files.sort(Comparator.comparing(file -> root.relativize(file.path()).toString()
         .toLowerCase(Locale.ROOT)));
@@ -53,7 +54,7 @@ public final class ImportScanner {
           .filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".zip"))
           .forEach(zips::add);
     } catch (IOException e) {
-      LOGGER.warn("BuildPack: 扫描拓展包失败 {}", root, e);
+      I18nLog.warn(LOGGER, e, "buildpack.log.zip_scan_failed", root);
     }
     zips.sort(Comparator.comparing(path -> path.getFileName().toString().toLowerCase(Locale.ROOT)));
     return zips;
@@ -65,7 +66,7 @@ public final class ImportScanner {
     try {
       Files.createDirectories(root);
     } catch (IOException e) {
-      LOGGER.warn("BuildPack: 创建导入目录失败 {}", root, e);
+      I18nLog.warn(LOGGER, e, "buildpack.log.import_dir_failed", root);
     }
     return root;
   }

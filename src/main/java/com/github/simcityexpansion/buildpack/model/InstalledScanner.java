@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.stream.Stream;
 
 import com.github.simcityexpansion.buildpack.BuildPack;
+import com.github.simcityexpansion.buildpack.I18nLog;
 import com.github.simcityexpansion.buildpack.install.InstallRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,7 +37,7 @@ public final class InstalledScanner {
             .filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".sk"))
             .forEach(skPath -> result.add(read(category, skPath, registry)));
       } catch (IOException e) {
-        LOGGER.warn("BuildPack: 扫描已安装建筑失败 {}", dir, e);
+        I18nLog.warn(LOGGER, e, "buildpack.log.installed_scan_failed", dir);
       }
     }
     result.sort(Comparator
@@ -67,7 +68,7 @@ public final class InstalledScanner {
         }
       }
     } catch (IOException e) {
-      LOGGER.warn("BuildPack: 读取 .sk 失败 {}", skPath, e);
+      I18nLog.warn(LOGGER, e, "buildpack.log.sk_read_failed", skPath);
     }
 
     String baseName = stripExtension(skPath.getFileName().toString());

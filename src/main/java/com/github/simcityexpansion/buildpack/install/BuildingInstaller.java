@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.github.simcityexpansion.buildpack.I18nLog;
 import com.github.simcityexpansion.buildpack.LocalizedIOException;
 import com.github.simcityexpansion.buildpack.convert.LitematicConverter;
 import com.github.simcityexpansion.buildpack.convert.NbtStructure;
@@ -106,7 +107,7 @@ public final class BuildingInstaller {
           category.dirName() + "/" + finalName));
       return new InstallResult(true, messages, skTarget);
     } catch (IOException | RuntimeException e) {
-      LOGGER.warn("BuildPack: 安装建筑失败 {}", file.path(), e);
+      I18nLog.warn(LOGGER, e, "buildpack.log.install_failed", file.path());
       return InstallResult.failure(Component.translatable(
           "buildpack.msg.parse_failed", LocalizedIOException.messageOf(e)));
     }
@@ -153,7 +154,7 @@ public final class BuildingInstaller {
       Files.deleteIfExists(path);
       return true;
     } catch (IOException e) {
-      LOGGER.warn("BuildPack: 删除文件失败 {}", path, e);
+      I18nLog.warn(LOGGER, e, "buildpack.log.delete_failed", path);
       return false;
     }
   }

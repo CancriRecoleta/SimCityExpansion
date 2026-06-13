@@ -133,13 +133,7 @@ selector:host {
   background: sdf(#f0101010, 0, 1, #999999);
 }
 
-// 页签：原版按钮一排，选中项呈「按下/禁用」底（masa 配置页选中页签的观感）。
-toggle:host {
-  mark-background: vanilla-sprite(minecraft:widget/button_disabled);
-  height: 20;
-}
-
-.__toggle_button__ {
-  base-background: vanilla-sprite(minecraft:widget/button);
-  hover-background: vanilla-sprite(minecraft:widget/button_highlighted);
-}
+// 勾选框（来源页签 .buildpack-tab + 表单「覆盖同名建筑」.buildpack-form-overwrite）：
+// 统一在代码侧（UiCheckbox）设置为「空框 / 带勾框」复选框并去掉按钮底，
+// 这里不再写任何 toggle / .__toggle_button__ 样式，以免覆盖代码设置的复选框贴图。
+// 文字仍走上方通用的 text/label 规则（白字带阴影）。

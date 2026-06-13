@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Optional;
 
 import com.github.simcityexpansion.buildpack.BuildPack;
+import com.github.simcityexpansion.buildpack.I18nLog;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -63,7 +64,7 @@ public final class InstallRegistry {
             files));
       }
     } catch (IOException | RuntimeException e) {
-      LOGGER.warn("BuildPack: 读取安装注册表失败 {}", file, e);
+      I18nLog.warn(LOGGER, e, "buildpack.log.registry_read_failed", file);
     }
     return registry;
   }
@@ -92,7 +93,7 @@ public final class InstallRegistry {
       }
       Files.writeString(file, GSON.toJson(root), StandardCharsets.UTF_8);
     } catch (IOException e) {
-      LOGGER.warn("BuildPack: 写入安装注册表失败 {}", file, e);
+      I18nLog.warn(LOGGER, e, "buildpack.log.registry_write_failed", file);
     }
   }
 

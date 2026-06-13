@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Locale;
 
 import com.github.simcityexpansion.buildpack.BuildPack;
+import com.github.simcityexpansion.buildpack.I18nLog;
 import com.github.simcityexpansion.buildpack.model.ImportScanner;
 import com.github.simcityexpansion.buildpack.model.StructureFormat;
 import com.lowdragmc.lowdraglib2.gui.holder.ModularUIScreen;
@@ -52,7 +53,7 @@ public final class BuildPackScreen extends ModularUIScreen {
         Files.copy(path, uniqueTarget(importDir, path.getFileName().toString()));
         copied++;
       } catch (IOException e) {
-        LOGGER.warn("BuildPack: 拖入文件复制失败 {}", path, e);
+        I18nLog.warn(LOGGER, e, "buildpack.log.drop_copy_failed", path);
       }
     }
     if (copied > 0) {
