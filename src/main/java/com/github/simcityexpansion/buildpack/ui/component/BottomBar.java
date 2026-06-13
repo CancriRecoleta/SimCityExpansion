@@ -36,12 +36,13 @@ public final class BottomBar {
     uninstallButton = action("uninstall", view::runUninstall);
     deleteButton = action("delete", view::runDelete);
     exportButton = action("export", view::runExport);
+    Button captureButton = action("capture", view::runCaptureSelection);
 
     UIElement actionsRow = new UIElement();
     actionsRow.layout(layout -> layout.flexDirection(FlexDirection.ROW)
         .alignItems(AlignItems.CENTER).gapColumn(4.0f).widthStretch().height(22.0f));
     actionsRow.addChildren(
-        installButton, batchButton, uninstallButton, deleteButton, exportButton);
+        installButton, batchButton, uninstallButton, deleteButton, exportButton, captureButton);
 
     Button refresh = action("refresh", view::refresh);
     Button openFolder = action("open_folder", view::openFolder);

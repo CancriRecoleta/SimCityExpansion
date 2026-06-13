@@ -33,12 +33,11 @@ import net.minecraft.world.level.block.state.BlockState;
  * 按真实模型渲染成 3D 场景。
  *
  * <p>两种模式：<b>静态小预览</b>（{@code interactive=false}，固定角度、居中、点击打开精细界面）
- * 与<b>精细界面</b>（{@code interactive=true}：左键拖动旋转、右键拖动平移、滚轮缩放、中键重置）。
+ * 与<b>精细界面</b>（{@code interactive=true}：左键旋转、右键平移、滚轮缩放、中键重置、切顶看内部）。
  *
- * <p>拖拽走 ldlib 的拖拽源机制：{@code mouseDown} 里调 {@link #startDrag} 开始拖拽，
- * 拖拽源元素随后收到 {@code "dragSourceUpdate"}（事件带起点 {@code dragStartX/Y} 与当前 {@code x/y}）。
- *
- * <p>渲染区域与命中范围都取<b>父容器内容盒</b>——本元素在居中布局里可能被算成 0 尺寸。
+ * <p>拖拽走 ldlib 拖拽源机制：{@code mouseDown} 调 {@link #startDrag} 开始，源元素收到
+ * {@code "dragSourceUpdate"}（带起点 {@code dragStartX/Y} 与当前 {@code x/y}）。渲染/命中区域
+ * 取<b>父容器内容盒</b>（本元素在居中布局里可能被算成 0 尺寸）。
  */
 public final class StructureScene extends UIElement {
 
@@ -54,12 +53,15 @@ public final class StructureScene extends UIElement {
   private float centerY;
   private float centerZ;
   private int maxDim = 1;
+  private int structHeight = 1;
 
   private float yaw = 35.0f;
   private float pitch = 25.0f;
   private float zoom = 1.0f;
   private float panX;
   private float panY;
+  /** 只渲染 y < clipMaxY 的方块（切顶看内部）。 */
+  private int clipMaxY = Integer.MAX_VALUE;
   // 拖拽起点快照。
   private int dragButton;
   private float startYaw;
@@ -75,7 +77,6 @@ public final class StructureScene extends UIElement {
       addEventListener("dragSourceUpdate", this::onDragSource);
       addEventListener("mouseWheel", this::onWheel);
     } else {
-      // 静态小预览：点击打开精细界面。
       addEventListener("mouseDown", e -> {
         if (e.button == 0 && structure != null) {
           StructurePreviewScreen.open(structure);
@@ -85,11 +86,15 @@ public final class StructureScene extends UIElement {
     }
   }
 
-  /** 解析结构为方块模型列表并重置相机；返回是否可渲染（空/超限返回 false）。 */
+  /** 解析结构并重置相机；返回是否可渲染（空/超限返回 false）。 */
   public boolean setStructure(NbtStructure s) {
+    return setStructure(s, true);
+  }
+
+  /** 解析结构；{@code resetCamera=false} 时保留当前视角（编辑器变换后不跳视角）。 */
+  public boolean setStructure(NbtStructure s, boolean resetCamera) {
     blocks.clear();
     structure = s;
-    resetView();
     if (s == null) {
       return false;
     }
@@ -130,16 +135,33 @@ public final class StructureScene extends UIElement {
     centerY = s.sizeY / 2.0f;
     centerZ = s.sizeZ / 2.0f;
     maxDim = Math.max(1, Math.max(s.sizeX, Math.max(s.sizeY, s.sizeZ)));
+    structHeight = Math.max(1, s.sizeY);
+    if (resetCamera) {
+      resetView();
+    } else {
+      clipMaxY = Math.min(clipMaxY, structHeight);
+    }
     return true;
   }
 
-  /** 重置视角（朝向/缩放/平移）。 */
+  /** 重置视角（朝向/缩放/平移/切顶）。 */
   public void resetView() {
     yaw = 35.0f;
     pitch = 25.0f;
     zoom = 1.0f;
     panX = 0.0f;
     panY = 0.0f;
+    clipMaxY = structHeight;
+  }
+
+  /** 切掉一层顶（露出内部）。 */
+  public void peelTop() {
+    clipMaxY = Math.max(1, Math.min(structHeight, clipMaxY) - 1);
+  }
+
+  /** 还原一层顶。 */
+  public void unpeelTop() {
+    clipMaxY = Math.min(structHeight, clipMaxY + 1);
   }
 
   /** 渲染/命中区域：父容器内容盒（本元素自身尺寸不可靠）。 */
@@ -188,10 +210,13 @@ public final class StructureScene extends UIElement {
       pose.translate(-centerX, -centerY, -centerZ);
 
       RenderSystem.enableDepthTest();
-      Lighting.setupFor3DItems();
+      Lighting.setupForEntityInInventory();
       MultiBufferSource.BufferSource buffers = mc.renderBuffers().bufferSource();
       BlockRenderDispatcher dispatcher = mc.getBlockRenderer();
       for (PosState ps : blocks) {
+        if (ps.pos().getY() >= clipMaxY) {
+          continue;
+        }
         pose.pushPose();
         pose.translate(ps.pos().getX(), ps.pos().getY(), ps.pos().getZ());
         dispatcher.renderSingleBlock(ps.state(), pose, buffers,
@@ -209,11 +234,21 @@ public final class StructureScene extends UIElement {
       ctx.disableScissor();
     }
 
+    Font font = mc.font;
     if (!interactive) {
-      Font font = mc.font;
       String hint = Component.translatable("buildpack.preview.zoom_hint").getString();
       g.drawString(font, hint, Math.round(x + (w - font.width(hint)) / 2.0f),
           Math.round(y + h - font.lineHeight - 1), 0xC0FFFFFF, true);
+    } else {
+      if (structure != null) {
+        String dims = structure.sizeX + "×" + structure.sizeY + "×" + structure.sizeZ
+            + " · " + structure.countNonAir();
+        g.drawString(font, dims, Math.round(x + 3), Math.round(y + 3), 0xC0FFFFFF, true);
+      }
+      if (clipMaxY < structHeight) {
+        String layer = Component.translatable("buildpack.preview.layer", clipMaxY, structHeight).getString();
+        g.drawString(font, layer, Math.round(x + 3), Math.round(y + 3 + font.lineHeight + 1), 0xFFFFFF55, true);
+      }
     }
   }
 

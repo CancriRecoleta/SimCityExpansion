@@ -10,7 +10,11 @@ import java.util.concurrent.CompletableFuture;
 
 import com.github.simcityexpansion.buildpack.I18nLog;
 import com.github.simcityexpansion.buildpack.LocalizedIOException;
+import com.github.simcityexpansion.buildpack.convert.LitematicWriter;
+import com.github.simcityexpansion.buildpack.convert.NbtStructure;
 import com.github.simcityexpansion.buildpack.convert.ParsedStructure;
+import com.github.simcityexpansion.buildpack.convert.StructureNbtWriter;
+import com.github.simcityexpansion.buildpack.convert.WorldCapture;
 import com.github.simcityexpansion.buildpack.install.BuildingInstaller;
 import com.github.simcityexpansion.buildpack.install.InstallRegistry;
 import com.github.simcityexpansion.buildpack.install.PackInstaller;
@@ -23,12 +27,15 @@ import com.github.simcityexpansion.buildpack.model.PackArchive;
 import com.github.simcityexpansion.buildpack.model.StructureFormat;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
@@ -59,6 +66,9 @@ public final class BuildPackCommands {
 
   /** 列表类输出的最大行数。 */
   private static final int MAX_LINES = 30;
+
+  /** 从世界捕获结构的体积上限（格）。 */
+  private static final long MAX_CAPTURE_VOLUME = 2_000_000L;
 
   /** 挂到 NeoForge 总线（逻辑服务端创建命令树时触发，单人与专服皆有效）。 */
   public static void onRegisterCommands(RegisterCommandsEvent event) {
@@ -96,7 +106,30 @@ public final class BuildPackCommands {
             .then(Commands.argument("id", StringArgumentType.string())
                 .suggests(BuildPackCommands::suggestPackIds)
                 .executes(context -> uninstallPack(context.getSource(),
-                    StringArgumentType.getString(context, "id"))))));
+                    StringArgumentType.getString(context, "id")))))
+        .then(captureNode()));
+  }
+
+  /** {@code /buildpack capture <from> <to> [name] [format]} 子命令节点。 */
+  private static LiteralArgumentBuilder<CommandSourceStack> captureNode() {
+    return Commands.literal("capture")
+        .then(Commands.argument("from", BlockPosArgument.blockPos())
+            .then(Commands.argument("to", BlockPosArgument.blockPos())
+                .executes(context -> capture(context.getSource(),
+                    BlockPosArgument.getLoadedBlockPos(context, "from"),
+                    BlockPosArgument.getLoadedBlockPos(context, "to"), null, "both"))
+                .then(Commands.argument("name", StringArgumentType.word())
+                    .executes(context -> capture(context.getSource(),
+                        BlockPosArgument.getLoadedBlockPos(context, "from"),
+                        BlockPosArgument.getLoadedBlockPos(context, "to"),
+                        StringArgumentType.getString(context, "name"), "both"))
+                    .then(Commands.argument("format", StringArgumentType.word())
+                        .suggests(BuildPackCommands::suggestFormats)
+                        .executes(context -> capture(context.getSource(),
+                            BlockPosArgument.getLoadedBlockPos(context, "from"),
+                            BlockPosArgument.getLoadedBlockPos(context, "to"),
+                            StringArgumentType.getString(context, "name"),
+                            StringArgumentType.getString(context, "format")))))));
   }
 
   // ---- 子命令实现 ----
@@ -216,6 +249,50 @@ public final class BuildPackCommands {
     return 1;
   }
 
+  /** 捕获 [from,to] 区域为结构并按 format（nbt/litematic/both）导出到导入目录。 */
+  private static int capture(CommandSourceStack source, BlockPos a, BlockPos b,
+      @Nullable String name, String format) {
+    BlockPos min = new BlockPos(Math.min(a.getX(), b.getX()),
+        Math.min(a.getY(), b.getY()), Math.min(a.getZ(), b.getZ()));
+    BlockPos max = new BlockPos(Math.max(a.getX(), b.getX()),
+        Math.max(a.getY(), b.getY()), Math.max(a.getZ(), b.getZ()));
+    int sizeX = max.getX() - min.getX() + 1;
+    int sizeY = max.getY() - min.getY() + 1;
+    int sizeZ = max.getZ() - min.getZ() + 1;
+    long volume = (long) sizeX * sizeY * sizeZ;
+    if (volume > MAX_CAPTURE_VOLUME) {
+      source.sendFailure(Component.translatable(
+          "buildpack.cmd.capture.too_big", volume, MAX_CAPTURE_VOLUME));
+      return 0;
+    }
+    try {
+      NbtStructure structure = WorldCapture.capture(source.getLevel(), min, max);
+      String base = sanitizeName(name != null && !name.isBlank() ? name
+          : "capture_" + min.getX() + "_" + min.getY() + "_" + min.getZ());
+      Path dir = ImportScanner.ensureImportDir();
+      List<String> written = new ArrayList<>();
+      if (!"litematic".equals(format)) {
+        Path target = uniqueTarget(dir, base + ".nbt");
+        StructureNbtWriter.write(structure, target);
+        written.add(target.getFileName().toString());
+      }
+      if (!"nbt".equals(format)) {
+        Path target = uniqueTarget(dir, base + ".litematic");
+        LitematicWriter.write(structure, base, source.getTextName(), target);
+        written.add(target.getFileName().toString());
+      }
+      String size = sizeX + " x " + sizeY + " x " + sizeZ;
+      String files = String.join(", ", written);
+      source.sendSuccess(() -> Component.translatable("buildpack.cmd.capture.done", size, files), true);
+      return 1;
+    } catch (IOException | RuntimeException e) {
+      I18nLog.warn(LOGGER, e, "buildpack.log.export_failed");
+      source.sendFailure(Component.translatable(
+          "buildpack.msg.parse_failed", LocalizedIOException.messageOf(e)));
+      return 0;
+    }
+  }
+
   // ---- 工具 ----
 
   /** 解析导入目录下的相对路径，并防止 {@code ../} 越界。 */
@@ -231,6 +308,23 @@ public final class BuildPackCommands {
 
   private static String relativize(Path importDir, Path file) {
     return importDir.relativize(file).toString().replace('\\', '/');
+  }
+
+  private static String sanitizeName(String name) {
+    String cleaned = name.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
+    return cleaned.isBlank() ? "capture" : cleaned;
+  }
+
+  private static Path uniqueTarget(Path dir, String fileName) {
+    Path target = dir.resolve(fileName);
+    int dot = fileName.lastIndexOf('.');
+    String base = dot > 0 ? fileName.substring(0, dot) : fileName;
+    String extension = dot > 0 ? fileName.substring(dot) : "";
+    int suffix = 2;
+    while (Files.exists(target)) {
+      target = dir.resolve(base + "_" + suffix++ + extension);
+    }
+    return target;
   }
 
   private static void sendLines(CommandSourceStack source, List<String> lines) {
@@ -298,6 +392,12 @@ public final class BuildPackCommands {
         .map(entry -> quoteIfNeeded(entry.id()))
         .toList();
     return SharedSuggestionProvider.suggest(ids, builder);
+  }
+
+  private static CompletableFuture<Suggestions> suggestFormats(
+      CommandContext<CommandSourceStack> context,
+      SuggestionsBuilder builder) {
+    return SharedSuggestionProvider.suggest(List.of("nbt", "litematic", "both"), builder);
   }
 
   /** 含空格的建议项加引号，匹配 {@link StringArgumentType#string()} 的解析规则。 */

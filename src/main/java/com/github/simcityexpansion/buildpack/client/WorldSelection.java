@@ -1,0 +1,158 @@
+package com.github.simcityexpansion.buildpack.client;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+import com.github.simcityexpansion.buildpack.I18nLog;
+import com.github.simcityexpansion.buildpack.LocalizedIOException;
+import com.github.simcityexpansion.buildpack.convert.LitematicWriter;
+import com.github.simcityexpansion.buildpack.convert.NbtStructure;
+import com.github.simcityexpansion.buildpack.convert.StructureNbtWriter;
+import com.github.simcityexpansion.buildpack.convert.WorldCapture;
+import com.github.simcityexpansion.buildpack.model.ImportScanner;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * 非命令方式从世界导出结构：用键位以准星指向的方块（或脚下）设两个角点，再按键把选区导出为
+ * .nbt + .litematic 到导入目录；世界里实时画出选框。客户端读已加载区块的方块状态。
+ */
+public final class WorldSelection {
+  private WorldSelection() {}
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(WorldSelection.class);
+  private static final long MAX_VOLUME = 2_000_000L;
+
+  private static BlockPos cornerA;
+  private static BlockPos cornerB;
+
+  /** 设角点 A 为准星指向的方块（无指向则取脚下）。 */
+  public static void setCornerA() {
+    BlockPos pos = targetPos();
+    if (pos != null) {
+      cornerA = pos;
+      actionBar(Component.translatable("buildpack.select.corner_a", pos.getX(), pos.getY(), pos.getZ()));
+    }
+  }
+
+  /** 设角点 B。 */
+  public static void setCornerB() {
+    BlockPos pos = targetPos();
+    if (pos != null) {
+      cornerB = pos;
+      actionBar(Component.translatable("buildpack.select.corner_b", pos.getX(), pos.getY(), pos.getZ()));
+    }
+  }
+
+  /** 捕获结果：展示消息 + 是否成功。 */
+  public record CaptureResult(Component message, boolean ok) {}
+
+  /** 是否已设置两个角点（GUI 按钮据此决定可用状态）。 */
+  public static boolean hasSelection() {
+    return cornerA != null && cornerB != null;
+  }
+
+  /** 捕获当前选区并导出为蓝图，返回结果消息（供命令/键位/GUI 共用）。 */
+  public static CaptureResult capture() {
+    Minecraft mc = Minecraft.getInstance();
+    if (mc.level == null || mc.player == null || cornerA == null || cornerB == null) {
+      return new CaptureResult(Component.translatable("buildpack.select.need_corners"), false);
+    }
+    BlockPos min = new BlockPos(Math.min(cornerA.getX(), cornerB.getX()),
+        Math.min(cornerA.getY(), cornerB.getY()), Math.min(cornerA.getZ(), cornerB.getZ()));
+    BlockPos max = new BlockPos(Math.max(cornerA.getX(), cornerB.getX()),
+        Math.max(cornerA.getY(), cornerB.getY()), Math.max(cornerA.getZ(), cornerB.getZ()));
+    int sizeX = max.getX() - min.getX() + 1;
+    int sizeY = max.getY() - min.getY() + 1;
+    int sizeZ = max.getZ() - min.getZ() + 1;
+    long volume = (long) sizeX * sizeY * sizeZ;
+    if (volume > MAX_VOLUME) {
+      return new CaptureResult(
+          Component.translatable("buildpack.select.too_big", volume, MAX_VOLUME), false);
+    }
+    try {
+      NbtStructure structure = WorldCapture.capture(mc.level, min, max);
+      String base = "capture_" + min.getX() + "_" + min.getY() + "_" + min.getZ();
+      Path dir = ImportScanner.ensureImportDir();
+      Path nbt = uniqueTarget(dir, base + ".nbt");
+      StructureNbtWriter.write(structure, nbt);
+      Path lite = uniqueTarget(dir, base + ".litematic");
+      LitematicWriter.write(structure, base, mc.player.getGameProfile().getName(), lite);
+      return new CaptureResult(Component.translatable("buildpack.select.captured",
+          sizeX + " x " + sizeY + " x " + sizeZ,
+          nbt.getFileName() + ", " + lite.getFileName()), true);
+    } catch (Exception e) {
+      I18nLog.warn(LOGGER, e, "buildpack.log.export_failed");
+      return new CaptureResult(
+          Component.translatable("buildpack.select.failed", LocalizedIOException.messageOf(e)), false);
+    }
+  }
+
+  /** 世界渲染阶段画出选框（单角点画该方块，双角点画包围盒）。 */
+  public static void onRenderLevelStage(RenderLevelStageEvent event) {
+    if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS
+        || (cornerA == null && cornerB == null)) {
+      return;
+    }
+    PoseStack pose = event.getPoseStack();
+    Vec3 cam = event.getCamera().getPosition();
+    MultiBufferSource.BufferSource buffers = Minecraft.getInstance().renderBuffers().bufferSource();
+    VertexConsumer lines = buffers.getBuffer(RenderType.lines());
+    pose.pushPose();
+    pose.translate(-cam.x, -cam.y, -cam.z);
+    if (cornerA != null && cornerB != null) {
+      LevelRenderer.renderLineBox(pose, lines, box(cornerA, cornerB), 0.25f, 0.9f, 1.0f, 0.9f);
+    } else {
+      BlockPos single = cornerA != null ? cornerA : cornerB;
+      LevelRenderer.renderLineBox(pose, lines, new AABB(single), 1.0f, 0.85f, 0.2f, 0.9f);
+    }
+    pose.popPose();
+    buffers.endBatch(RenderType.lines());
+  }
+
+  private static AABB box(BlockPos a, BlockPos b) {
+    return new AABB(
+        Math.min(a.getX(), b.getX()), Math.min(a.getY(), b.getY()), Math.min(a.getZ(), b.getZ()),
+        Math.max(a.getX(), b.getX()) + 1.0, Math.max(a.getY(), b.getY()) + 1.0,
+        Math.max(a.getZ(), b.getZ()) + 1.0);
+  }
+
+  private static BlockPos targetPos() {
+    Minecraft mc = Minecraft.getInstance();
+    if (mc.hitResult instanceof BlockHitResult hit && hit.getType() == HitResult.Type.BLOCK) {
+      return hit.getBlockPos();
+    }
+    return mc.player != null ? mc.player.blockPosition() : null;
+  }
+
+  private static void actionBar(Component message) {
+    if (Minecraft.getInstance().player != null) {
+      Minecraft.getInstance().player.displayClientMessage(message, true);
+    }
+  }
+
+  private static Path uniqueTarget(Path dir, String fileName) {
+    Path target = dir.resolve(fileName);
+    int dot = fileName.lastIndexOf('.');
+    String base = dot > 0 ? fileName.substring(0, dot) : fileName;
+    String extension = dot > 0 ? fileName.substring(dot) : "";
+    int suffix = 2;
+    while (Files.exists(target)) {
+      target = dir.resolve(base + "_" + suffix++ + extension);
+    }
+    return target;
+  }
+}

@@ -13,6 +13,7 @@ import com.github.simcityexpansion.buildpack.model.PackArchive;
 import com.github.simcityexpansion.buildpack.model.StructureInfo;
 import com.github.simcityexpansion.buildpack.ui.MaterialListScreen;
 import com.github.simcityexpansion.buildpack.ui.PackBuildingSelection;
+import com.github.simcityexpansion.buildpack.ui.StructureEditorScreen;
 import com.github.simcityexpansion.buildpack.ui.UiFormats;
 import com.github.simcityexpansion.buildpack.ui.preview.IsoPreview;
 import com.github.simcityexpansion.buildpack.ui.preview.StructurePreview;
@@ -173,6 +174,14 @@ public final class InfoPanel {
       matButton.layout(layout -> layout.height(16.0f).widthStretch());
       extrasArea.addChild(matButton);
     }
+
+    Button editButton = new Button().setText(Component.translatable("buildpack.editor.open"));
+    editButton.addClass(BuildPack.cls("action"));
+    editButton.style(style ->
+        style.tooltips(Component.translatable("buildpack.editor.open.tooltip")));
+    editButton.setOnClick(event -> StructureEditorScreen.open(structure, name));
+    editButton.layout(layout -> layout.height(16.0f).widthStretch());
+    extrasArea.addChild(editButton);
   }
 
   /** zip 拓展包：清单摘要（表单只读展示包信息）。 */

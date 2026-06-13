@@ -10,6 +10,7 @@ import java.util.Locale;
 import com.github.simcityexpansion.buildpack.BuildPack;
 import com.github.simcityexpansion.buildpack.I18nLog;
 import com.github.simcityexpansion.buildpack.LocalizedIOException;
+import com.github.simcityexpansion.buildpack.client.WorldSelection;
 import com.github.simcityexpansion.buildpack.convert.NbtStructure;
 import com.github.simcityexpansion.buildpack.convert.ParsedStructure;
 import com.github.simcityexpansion.buildpack.install.BuildingInstaller;
@@ -63,6 +64,11 @@ public final class BuildPackView {
 
   /** 会话内记住上次停留的页签。 */
   private static SourceTab lastTab = SourceTab.IMPORT;
+
+  /** 指定下次打开管理器时停留的页签（编辑器保存后用，便于看到新导入文件）。 */
+  public static void setLastTab(SourceTab tab) {
+    lastTab = tab;
+  }
 
   private SourceTab currentTab = lastTab;
   private SortMode sortMode = SortMode.NAME;
@@ -183,6 +189,15 @@ public final class BuildPackView {
       I18nLog.warn(LOGGER, e, "buildpack.log.export_failed");
       bottomBar.setMessage(Component.translatable(
           "buildpack.msg.parse_failed", LocalizedIOException.messageOf(e)), true);
+    }
+  }
+
+  /** 「捕获选区」按钮回调：把世界里用键位框选的区域导出为蓝图并刷新列表。 */
+  public void runCaptureSelection() {
+    WorldSelection.CaptureResult result = WorldSelection.capture();
+    bottomBar.setMessage(result.message(), !result.ok());
+    if (result.ok()) {
+      refresh();
     }
   }
 

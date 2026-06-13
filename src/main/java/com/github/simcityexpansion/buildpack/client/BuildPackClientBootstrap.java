@@ -21,10 +21,14 @@ public final class BuildPackClientBootstrap {
   public static void register(IEventBus modEventBus) {
     modEventBus.addListener(BuildPackClientBootstrap::onRegisterKeyMappings);
     NeoForge.EVENT_BUS.addListener(BuildPackClientBootstrap::onClientTick);
+    NeoForge.EVENT_BUS.addListener(WorldSelection::onRenderLevelStage);
   }
 
   private static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
     event.register(BuildPackKeyMappings.OPEN_BUILDPACK);
+    event.register(BuildPackKeyMappings.SET_CORNER_A);
+    event.register(BuildPackKeyMappings.SET_CORNER_B);
+    event.register(BuildPackKeyMappings.CAPTURE_SELECTION);
   }
 
   private static void onClientTick(ClientTickEvent.Post event) {
@@ -34,6 +38,15 @@ public final class BuildPackClientBootstrap {
     }
     while (BuildPackKeyMappings.OPEN_BUILDPACK.consumeClick()) {
       BuildPackScreen.open();
+    }
+    while (BuildPackKeyMappings.SET_CORNER_A.consumeClick()) {
+      WorldSelection.setCornerA();
+    }
+    while (BuildPackKeyMappings.SET_CORNER_B.consumeClick()) {
+      WorldSelection.setCornerB();
+    }
+    while (BuildPackKeyMappings.CAPTURE_SELECTION.consumeClick()) {
+      minecraft.player.displayClientMessage(WorldSelection.capture().message(), false);
     }
   }
 }

@@ -1,12 +1,14 @@
 package com.github.simcityexpansion.buildpack.ui.component;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 import com.github.simcityexpansion.buildpack.convert.StructureAnalysis.MaterialEntry;
 import com.github.simcityexpansion.buildpack.ui.UiFormats;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -30,8 +32,11 @@ public final class MaterialListView extends UIElement {
   private static final int PAGE_BTN_COLOR = 0xFFFFFFFF;
   private static final int PAGE_BTN_DISABLED = 0xFF808080;
 
+  private static final int HOVER_COLOR = 0x40FFFFFF;
+
   private List<MaterialEntry> materials = List.of();
   private int page;
+  private Consumer<MaterialEntry> onSelect;
 
   public MaterialListView() {
     layout(l -> l.widthStretch().flexGrow(1.0f));
@@ -43,6 +48,11 @@ public final class MaterialListView extends UIElement {
   public void setMaterials(List<MaterialEntry> materials) {
     this.materials = materials;
     this.page = 0;
+  }
+
+  /** 设为可点选（点行回调该条目，并高亮悬停行）；不设则为只读展示。 */
+  public void setOnSelect(Consumer<MaterialEntry> onSelect) {
+    this.onSelect = onSelect;
   }
 
   // ---- 尺寸兜底 + 命中（同 TreeView：裸叶子 flexGrow 在该 Taffy 下可能算塌） ----
@@ -114,7 +124,11 @@ public final class MaterialListView extends UIElement {
     for (int i = start; i < end; i++) {
       MaterialEntry m = materials.get(i);
       int rowY = y + (i - start) * ROW_HEIGHT;
-      if ((i & 1) == 1) {
+      boolean hovered = onSelect != null && ctx.mouseX >= x && ctx.mouseX < x + w
+          && ctx.mouseY >= rowY && ctx.mouseY < rowY + ROW_HEIGHT;
+      if (hovered) {
+        g.fill(x, rowY, x + w, rowY + ROW_HEIGHT, HOVER_COLOR);
+      } else if ((i & 1) == 1) {
         g.fill(x, rowY, x + w, rowY + ROW_HEIGHT, ALT_ROW_BG);
       }
       int textY = rowY + (ROW_HEIGHT - font.lineHeight) / 2 + 1;
@@ -157,18 +171,28 @@ public final class MaterialListView extends UIElement {
     int perPage = rowsPerPage(h);
     int pages = pageCount(perPage);
     page = Math.max(0, Math.min(pages - 1, page));
-    if (pages <= 1 || e.y < y + h - PAGE_BAR_H) {
+
+    if (pages > 1 && e.y >= y + h - PAGE_BAR_H) {
+      Font font = Minecraft.getInstance().font;
+      String next = Component.translatable("buildpack.tree.next_page").getString();
+      if (e.x <= x + font.width(Component.translatable("buildpack.tree.prev_page").getString()) + 4
+          && page > 0) {
+        page--;
+      } else if (e.x >= x + w - font.width(next) - 4 && page < pages - 1) {
+        page++;
+      }
+      e.stopPropagation();
       return;
     }
-    Font font = net.minecraft.client.Minecraft.getInstance().font;
-    String next = Component.translatable("buildpack.tree.next_page").getString();
-    if (e.x <= x + font.width(Component.translatable("buildpack.tree.prev_page").getString()) + 4
-        && page > 0) {
-      page--;
-    } else if (e.x >= x + w - font.width(next) - 4 && page < pages - 1) {
-      page++;
+
+    if (onSelect != null && e.x >= x && e.x < x + w) {
+      int rel = (int) Math.floor((double) (e.y - y) / ROW_HEIGHT);
+      int idx = page * perPage + rel;
+      if (rel >= 0 && rel < perPage && idx >= 0 && idx < materials.size()) {
+        onSelect.accept(materials.get(idx));
+        e.stopPropagation();
+      }
     }
-    e.stopPropagation();
   }
 
   private void onWheel(UIEvent e) {
