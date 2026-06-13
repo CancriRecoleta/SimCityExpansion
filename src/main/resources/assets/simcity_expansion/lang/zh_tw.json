@@ -12,6 +12,7 @@
   "buildpack.action.export": "匯出為擴充包",
   "buildpack.action.batch": "全部安裝",
   "buildpack.action.delete": "刪除檔案",
+  "buildpack.action.back": "返回",
 
   "buildpack.tooltip.install": "轉換選中的結構並安裝到 simukraftbuilding 目錄",
   "buildpack.tooltip.batch": "把清單中全部檔案按目前表單選擇的分類批次安裝",
@@ -38,6 +39,10 @@
   "buildpack.tab.import": "匯入檔案",
   "buildpack.tab.packs": "擴充包",
   "buildpack.tab.installed": "已安裝",
+
+  "buildpack.tree.prev_page": "上一頁",
+  "buildpack.tree.next_page": "下一頁",
+  "buildpack.tree.page_info": "第 %s / %s 頁",
 
   "buildpack.category.residential": "住宅",
   "buildpack.category.commercial": "商業",
@@ -80,8 +85,17 @@
   "buildpack.materials.title": "材料清單（%s 種）",
   "buildpack.materials.entry": "%1$s × %2$s",
   "buildpack.materials.more": "…還有 %s 種",
+  "buildpack.materials.open": "材料清單（%s 種）",
+  "buildpack.materials.open.tooltip": "在單獨頁面檢視完整材料清單",
+  "buildpack.materials.screen_title": "材料清單",
+  "buildpack.materials.screen_heading": "%1$s — 材料清單（%2$s 種）",
 
   "buildpack.preview.none": "暫無預覽",
+  "buildpack.preview.zoom_hint": "點擊放大",
+  "buildpack.preview.screen_title": "3D 預覽",
+  "buildpack.preview.controls": "左鍵拖曳旋轉 · 右鍵平移 · 滾輪縮放 · 中鍵重置",
+  "buildpack.preview.reset": "重置視角",
+  "buildpack.preview.dims": "%1$s × %2$s × %3$s · %4$s 方塊",
   "buildpack.detail.empty": "選擇一個檔案以檢視詳情",
   "buildpack.search.placeholder": "搜尋……",
 

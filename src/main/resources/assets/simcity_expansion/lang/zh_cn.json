@@ -12,6 +12,7 @@
   "buildpack.action.export": "导出为拓展包",
   "buildpack.action.batch": "全部安装",
   "buildpack.action.delete": "删除文件",
+  "buildpack.action.back": "返回",
 
   "buildpack.tooltip.install": "转换选中的结构并安装到 simukraftbuilding 目录",
   "buildpack.tooltip.batch": "把列表中全部文件按当前表单选择的分类批量安装",
@@ -38,6 +39,10 @@
   "buildpack.tab.import": "导入文件",
   "buildpack.tab.packs": "拓展包",
   "buildpack.tab.installed": "已安装",
+
+  "buildpack.tree.prev_page": "上一页",
+  "buildpack.tree.next_page": "下一页",
+  "buildpack.tree.page_info": "第 %s / %s 页",
 
   "buildpack.category.residential": "住宅",
   "buildpack.category.commercial": "商业",
@@ -80,8 +85,17 @@
   "buildpack.materials.title": "材料清单（%s 种）",
   "buildpack.materials.entry": "%1$s × %2$s",
   "buildpack.materials.more": "…还有 %s 种",
+  "buildpack.materials.open": "材料清单（%s 种）",
+  "buildpack.materials.open.tooltip": "在单独页面查看完整材料清单",
+  "buildpack.materials.screen_title": "材料清单",
+  "buildpack.materials.screen_heading": "%1$s — 材料清单（%2$s 种）",
 
   "buildpack.preview.none": "暂无预览",
+  "buildpack.preview.zoom_hint": "点击放大",
+  "buildpack.preview.screen_title": "3D 预览",
+  "buildpack.preview.controls": "左键拖动旋转 · 右键平移 · 滚轮缩放 · 中键重置",
+  "buildpack.preview.reset": "重置视角",
+  "buildpack.preview.dims": "%1$s × %2$s × %3$s · %4$s 方块",
   "buildpack.detail.empty": "选择一个文件以查看详情",
   "buildpack.search.placeholder": "搜索……",
 

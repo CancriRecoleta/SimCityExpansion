@@ -26,7 +26,7 @@ public final class StructurePreview {
   private StructurePreview() {}
 
   private static final Logger LOGGER = LoggerFactory.getLogger(StructurePreview.class);
-  private static final float MAX_SIZE = 90.0f;
+  private static final float MAX_SIZE = 120.0f;
 
   /** 已注册动态纹理缓存：像素数据+尺寸哈希 → 纹理路径，避免重复注册。 */
   private static final Map<Long, ResourceLocation> TEXTURE_CACHE = new HashMap<>();

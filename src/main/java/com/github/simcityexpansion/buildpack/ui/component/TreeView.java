@@ -6,40 +6,41 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
 
-import com.github.simcityexpansion.buildpack.ui.UiIcons;
-import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
+import com.github.simcityexpansion.buildpack.ui.NodeIcons;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import com.lowdragmc.lowdraglib2.gui.util.TreeNode;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
 
 /**
  * 自绘的文件列表/树控件——<b>不依赖 ldlib2 的 TreeList / ScrollerView</b>，
  * 直接用 Minecraft 原生渲染绘制「缩进 + 展开箭头 + 图标 + 文本」的行，
- * 自管理展开/折叠、选中、悬停、滚动与裁剪，并铺满父容器宽度。
+ * 自管理展开/折叠、选中、悬停、<b>分页</b>，并铺满父容器宽度。
  *
- * <p>之所以自实现：ldlib2 的 TreeList 把节点宽度写死成 widthPercent(100%)，
- * 放进 ScrollerView 后宽度塌缩、文字被裁成 0 宽（只剩图标）。作为父容器里的一个叶子元素
- * 自绘后，尺寸由父布局确定（铺满），不再有百分比/滚动容器的尺寸解析问题。
+ * <p>列表项超过一页时，底部出现「上一页 / 第 X/Y 页 / 下一页」翻页条；
+ * 翻页可点按钮或用滚轮。之所以用分页而非像素滚动：在该 GUI 框架下分页全靠点击事件，更可靠。
  *
- * <p>数据仍用 {@link TreeNode}（纯数据结构，非 UI 组件）：合成根被隐藏，只渲染其后代。
+ * <p>数据用 {@link TreeNode}（纯数据结构，非 UI 组件）：合成根被隐藏，只渲染其后代。
  */
 public final class TreeView extends UIElement {
 
-  private static final int ROW_HEIGHT = 12;
+  private static final int ROW_HEIGHT = 13;
   private static final int INDENT = 10;
-  private static final int ICON = 9;
+  private static final int ICON = 10;
   private static final int ARROW_BOX = 9;
   private static final int PAD_LEFT = 2;
-  private static final int SCROLLBAR_W = 4;
+  private static final int PAGE_BAR_H = 13;
   private static final int TEXT_COLOR = 0xFFFFFFFF;
   private static final int ARROW_COLOR = 0xFFC0C0C0;
   private static final int HOVER_COLOR = 0x40FFFFFF;
   private static final int SELECT_COLOR = 0x70FFFFFF;
-  private static final int SCROLL_TRACK_COLOR = 0x50000000;
-  private static final int SCROLL_THUMB_COLOR = 0x90FFFFFF;
+  private static final int PAGE_SEP_COLOR = 0x60FFFFFF;
+  private static final int PAGE_INFO_COLOR = 0xFFC0C0C0;
+  private static final int PAGE_BTN_COLOR = 0xFFFFFFFF;
+  private static final int PAGE_BTN_DISABLED = 0xFF808080;
 
   /** 一条可见行：节点 + 缩进层级 + 是否为可展开分支。 */
   private record Row(TreeNode<String, Object> node, int depth, boolean branch) {}
@@ -49,25 +50,21 @@ public final class TreeView extends UIElement {
   private final List<Row> rows = new ArrayList<>();
   private TreeNode<String, Object> root;
   private TreeNode<String, Object> selected;
-  private float scroll;
-  private boolean draggingThumb;
+  private int page;
 
   public TreeView(Consumer<Object> onSelect) {
     this.onSelect = onSelect;
     layout(l -> l.widthStretch().flexGrow(1.0f));
     addEventListener("mouseDown", this::onMouseDown);
     addEventListener("mouseWheel", this::onWheel);
-    addEventListener("dragUpdate", this::onDrag);
-    addEventListener("mouseUp", e -> draggingThumb = false);
-    addEventListener("mouseLeave", e -> draggingThumb = false);
   }
 
-  /** 替换整棵树（合成根的后代为顶层项）；折叠所有、清空选中、回到顶部。 */
+  /** 替换整棵树（合成根的后代为顶层项）；折叠所有、清空选中、回到第一页。 */
   public void setRoot(TreeNode<String, Object> root) {
     this.root = root;
     expanded.clear();
     selected = null;
-    scroll = 0.0f;
+    page = 0;
     rebuild();
   }
 
@@ -90,10 +87,55 @@ public final class TreeView extends UIElement {
     }
   }
 
-  // ---- 渲染 ----
+  // ---- 尺寸（兜底：裸叶子 flexGrow 在该 Taffy 下不撑开，退回祖先高度） ----
 
-  /** 临时调试：在控件左上角打印尺寸/行数，便于定位渲染问题；确认后置 false 移除。 */
-  private static final boolean DEBUG = true;
+  private float availW() {
+    float w = getContentWidth();
+    UIElement parent = getParent();
+    if (w < 1.0f && parent != null) {
+      return parent.getContentWidth() - (getContentX() - parent.getContentX());
+    }
+    return w;
+  }
+
+  private float availH() {
+    float h = getContentHeight();
+    if (h < ROW_HEIGHT) {
+      for (UIElement a = getParent(); a != null; a = a.getParent()) {
+        if (a.getContentHeight() >= ROW_HEIGHT) {
+          return a.getContentY() + a.getContentHeight() - getContentY();
+        }
+      }
+    }
+    return h;
+  }
+
+  /**
+   * 用自算的可用尺寸做鼠标命中判定（而非被 flexGrow 算塌的真实布局尺寸），
+   * 让整棵树都能收到点击/滚轮事件。<b>关键：不改动布局</b>——之前每 tick 改高度会触发
+   * 重排、导致界面持续往下滚，这里只覆盖命中测试，渲染同样用自算尺寸，二者一致。
+   */
+  @Override
+  public boolean isIntersectWithPoint(double localX, double localY) {
+    return isMouseOverRect(getPositionX(), getPositionY(), availW(), availH(), localX, localY);
+  }
+
+  // ---- 分页参数 ----
+
+  /** 单页可容纳的行数（不含翻页条）。 */
+  private int rowsPerPage(int h) {
+    int full = Math.max(1, h / ROW_HEIGHT);
+    if (rows.size() <= full) {
+      return full;
+    }
+    return Math.max(1, (h - PAGE_BAR_H) / ROW_HEIGHT);
+  }
+
+  private int pageCount(int perPage) {
+    return Math.max(1, (rows.size() + perPage - 1) / perPage);
+  }
+
+  // ---- 渲染 ----
 
   @Override
   public void drawContents(GUIContext ctx) {
@@ -101,50 +143,31 @@ public final class TreeView extends UIElement {
     Font font = ctx.mc.font;
     int x = Math.round(getContentX());
     int y = Math.round(getContentY());
-    float availW = getContentWidth();
-    float availH = getContentHeight();
-    // 自身被 flex 布局算成 0 尺寸时（裸叶子 flexGrow 在该 Taffy 下可能不撑开），
-    // 退回用父容器（浏览框）的内容区尺寸。
-    UIElement parent = getParent();
-    if (parent != null) {
-      if (availW < 1.0f) {
-        availW = parent.getContentWidth() - (getContentX() - parent.getContentX());
-      }
-      if (availH < 1.0f) {
-        availH = parent.getContentHeight() - (getContentY() - parent.getContentY());
-      }
-    }
-    int w = Math.round(availW);
-    int h = Math.round(availH);
-
+    int w = Math.round(availW());
+    int h = Math.round(availH());
     if (w <= 0 || h <= 0) {
-      if (DEBUG) {
-        g.drawString(font, "TV(0) rows=" + rows.size() + " w=" + w + " h=" + h
-            + " x=" + x + " y=" + y, x + 2, y + 1, 0xFFFF5555, true);
-      }
       return;
     }
 
-    int total = rows.size() * ROW_HEIGHT;
-    float maxScroll = Math.max(0.0f, total - h);
-    scroll = Math.max(0.0f, Math.min(maxScroll, scroll));
-    boolean hasBar = total > h;
-    int listW = hasBar ? w - SCROLLBAR_W - 1 : w;
+    int perPage = rowsPerPage(h);
+    int pages = pageCount(perPage);
+    page = Math.max(0, Math.min(pages - 1, page));
+    boolean paged = pages > 1;
+    int listH = paged ? h - PAGE_BAR_H : h;
+    int start = page * perPage;
+    int end = Math.min(rows.size(), start + perPage);
 
     g.flush();
-    ctx.enableScissor(x, y, listW, h);
-    for (int i = 0; i < rows.size(); i++) {
-      int rowY = Math.round(y - scroll + (float) i * ROW_HEIGHT);
-      if (rowY + ROW_HEIGHT < y || rowY > y + h) {
-        continue;
-      }
+    ctx.enableScissor(x, y, w, listH);
+    for (int i = start; i < end; i++) {
+      int rowY = y + (i - start) * ROW_HEIGHT;
       Row row = rows.get(i);
-      boolean hovered = ctx.mouseX >= x && ctx.mouseX < x + listW
+      boolean hovered = ctx.mouseX >= x && ctx.mouseX < x + w
           && ctx.mouseY >= rowY && ctx.mouseY < rowY + ROW_HEIGHT;
       if (row.node == selected) {
-        g.fill(x, rowY, x + listW, rowY + ROW_HEIGHT, SELECT_COLOR);
+        g.fill(x, rowY, x + w, rowY + ROW_HEIGHT, SELECT_COLOR);
       } else if (hovered) {
-        g.fill(x, rowY, x + listW, rowY + ROW_HEIGHT, HOVER_COLOR);
+        g.fill(x, rowY, x + w, rowY + ROW_HEIGHT, HOVER_COLOR);
       }
 
       int rowX = x + PAD_LEFT + row.depth * INDENT;
@@ -153,8 +176,8 @@ public final class TreeView extends UIElement {
       }
       int iconX = rowX + ARROW_BOX;
       int iconY = rowY + (ROW_HEIGHT - ICON) / 2;
-      IGuiTexture icon = UiIcons.node(row.node.getContent());
-      ctx.drawTexture(icon, iconX, iconY, ICON, ICON);
+      NodeIcons.draw(g, iconX, iconY, ICON, row.node.getContent(),
+          row.branch, expanded.contains(row.node));
 
       int textX = iconX + ICON + 2;
       int textY = rowY + (ROW_HEIGHT - font.lineHeight) / 2 + 1;
@@ -163,17 +186,8 @@ public final class TreeView extends UIElement {
     g.flush();
     ctx.disableScissor();
 
-    if (hasBar) {
-      int barX = x + w - SCROLLBAR_W;
-      g.fill(barX, y, barX + SCROLLBAR_W, y + h, SCROLL_TRACK_COLOR);
-      int thumbH = Math.max(8, Math.round((float) h * h / total));
-      int thumbY = y + Math.round(scroll / maxScroll * (h - thumbH));
-      g.fill(barX, thumbY, barX + SCROLLBAR_W, thumbY + thumbH, SCROLL_THUMB_COLOR);
-    }
-
-    if (DEBUG) {
-      g.drawString(font, "TV rows=" + rows.size() + " w=" + w + " h=" + h,
-          x + 2, y + 1, 0xFFFFFF00, true);
+    if (paged) {
+      drawPageBar(g, font, x, y + h - PAGE_BAR_H, w, pages);
     }
   }
 
@@ -190,6 +204,19 @@ public final class TreeView extends UIElement {
     }
   }
 
+  /** 底部翻页条：[上一页]  第 X / Y 页  [下一页]。 */
+  private void drawPageBar(GuiGraphics g, Font font, int x, int barY, int w, int pages) {
+    g.fill(x, barY, x + w, barY + 1, PAGE_SEP_COLOR);
+    int textY = barY + (PAGE_BAR_H - font.lineHeight) / 2 + 1;
+    String prev = Component.translatable("buildpack.tree.prev_page").getString();
+    String next = Component.translatable("buildpack.tree.next_page").getString();
+    String info = Component.translatable("buildpack.tree.page_info", page + 1, pages).getString();
+    g.drawString(font, prev, x + 2, textY, page > 0 ? PAGE_BTN_COLOR : PAGE_BTN_DISABLED, true);
+    g.drawString(font, next, x + w - font.width(next) - 2, textY,
+        page < pages - 1 ? PAGE_BTN_COLOR : PAGE_BTN_DISABLED, true);
+    g.drawString(font, info, x + (w - font.width(info)) / 2, textY, PAGE_INFO_COLOR, true);
+  }
+
   // ---- 交互 ----
 
   private void onMouseDown(UIEvent e) {
@@ -198,21 +225,31 @@ public final class TreeView extends UIElement {
     }
     int x = Math.round(getContentX());
     int y = Math.round(getContentY());
-    int w = Math.round(getContentWidth());
-    int h = Math.round(getContentHeight());
-    int total = rows.size() * ROW_HEIGHT;
-    boolean hasBar = total > h;
+    int w = Math.round(availW());
+    int h = Math.round(availH());
+    int perPage = rowsPerPage(h);
+    int pages = pageCount(perPage);
+    page = Math.max(0, Math.min(pages - 1, page));
+    boolean paged = pages > 1;
 
-    if (hasBar && e.x >= x + w - SCROLLBAR_W) {
-      draggingThumb = true;
-      scrollToMouse(e.y, y, h, total);
+    // 翻页条
+    if (paged && e.y >= y + h - PAGE_BAR_H) {
+      Font font = net.minecraft.client.Minecraft.getInstance().font;
+      String next = Component.translatable("buildpack.tree.next_page").getString();
+      if (e.x <= x + font.width(Component.translatable("buildpack.tree.prev_page").getString()) + 4
+          && page > 0) {
+        page--;
+      } else if (e.x >= x + w - font.width(next) - 4 && page < pages - 1) {
+        page++;
+      }
       e.stopPropagation();
       return;
     }
 
-    int listW = hasBar ? w - SCROLLBAR_W - 1 : w;
-    int idx = (int) Math.floor((e.y - y + scroll) / ROW_HEIGHT);
-    if (idx < 0 || idx >= rows.size() || e.x < x || e.x >= x + listW) {
+    // 行
+    int rel = (int) Math.floor((double) (e.y - y) / ROW_HEIGHT);
+    int idx = page * perPage + rel;
+    if (rel < 0 || rel >= perPage || idx >= rows.size() || e.x < x || e.x >= x + w) {
       return;
     }
     Row row = rows.get(idx);
@@ -228,22 +265,18 @@ public final class TreeView extends UIElement {
     e.stopPropagation();
   }
 
+  /** 滚轮翻页：上滚上一页，下滚下一页。 */
   private void onWheel(UIEvent e) {
-    int h = Math.round(getContentHeight());
-    float maxScroll = Math.max(0.0f, rows.size() * ROW_HEIGHT - h);
-    if (maxScroll <= 0.0f) {
+    int perPage = rowsPerPage(Math.round(availH()));
+    int pages = pageCount(perPage);
+    if (pages <= 1) {
       return;
     }
-    scroll = Math.max(0.0f, Math.min(maxScroll, scroll - e.deltaY * ROW_HEIGHT * 2.0f));
-    e.stopPropagation();
-  }
-
-  private void onDrag(UIEvent e) {
-    if (!draggingThumb) {
-      return;
+    if (e.deltaY < 0.0f && page < pages - 1) {
+      page++;
+    } else if (e.deltaY > 0.0f && page > 0) {
+      page--;
     }
-    scrollToMouse(e.y, Math.round(getContentY()), Math.round(getContentHeight()),
-        rows.size() * ROW_HEIGHT);
     e.stopPropagation();
   }
 
@@ -252,14 +285,5 @@ public final class TreeView extends UIElement {
       expanded.add(node);
     }
     rebuild();
-  }
-
-  /** 让滚动位置使滚动条把手中心对准鼠标 y。 */
-  private void scrollToMouse(float mouseY, int y, int h, int total) {
-    float maxScroll = Math.max(0.0f, total - h);
-    int thumbH = Math.max(8, Math.round((float) h * h / total));
-    float denom = h - thumbH;
-    float t = denom <= 0.0f ? 0.0f : (mouseY - y - thumbH / 2.0f) / denom;
-    scroll = Math.max(0.0f, Math.min(maxScroll, t * maxScroll));
   }
 }

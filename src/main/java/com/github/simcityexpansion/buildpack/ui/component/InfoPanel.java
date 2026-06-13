@@ -11,11 +11,15 @@ import com.github.simcityexpansion.buildpack.model.ImportFile;
 import com.github.simcityexpansion.buildpack.model.InstalledBuilding;
 import com.github.simcityexpansion.buildpack.model.PackArchive;
 import com.github.simcityexpansion.buildpack.model.StructureInfo;
+import com.github.simcityexpansion.buildpack.ui.MaterialListScreen;
 import com.github.simcityexpansion.buildpack.ui.PackBuildingSelection;
 import com.github.simcityexpansion.buildpack.ui.UiFormats;
+import com.github.simcityexpansion.buildpack.ui.preview.IsoPreview;
 import com.github.simcityexpansion.buildpack.ui.preview.StructurePreview;
+import com.github.simcityexpansion.buildpack.ui.preview.StructureScene;
 import com.github.simcityexpansion.buildpack.ui.preview.TopDownPreview;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
+import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.ScrollerView;
 import dev.vfyjxf.taffy.style.AlignContent;
@@ -54,7 +58,7 @@ public final class InfoPanel {
     previewArea.addClass(BuildPack.cls("preview"));
     previewArea.layout(layout -> layout.flexDirection(FlexDirection.COLUMN)
         .alignItems(AlignItems.CENTER).justifyContent(AlignContent.CENTER)
-        .paddingAll(3.0f).widthStretch().height(98.0f));
+        .paddingAll(3.0f).widthStretch().height(126.0f));
 
     // 表单 + 材料清单行数多，放入滚动区，避免小窗口下溢出。
     extrasArea = new UIElement();
@@ -110,7 +114,7 @@ public final class InfoPanel {
     rows.add(row("buildpack.info.file_size", UiFormats.fileSize(file.sizeBytes())));
     setRows(rows.toArray(Component[]::new));
 
-    showStructureExtras(info, structure);
+    showStructureExtras(model.name, info, structure);
     form.setModel(model, true);
   }
 
@@ -135,23 +139,39 @@ public final class InfoPanel {
     }
     setRows(rows.toArray(Component[]::new));
 
-    showStructureExtras(info, structure);
+    showStructureExtras(model.name, info, structure);
     form.setModel(model, false);
   }
 
-  /** 预览（内嵌缩略图 → 俯视图 → 占位）与材料清单。 */
-  private void showStructureExtras(StructureInfo info, NbtStructure structure) {
+  /** 预览（内嵌缩略图 → 等距 3D → 俯视图 → 占位）与「材料清单」入口按钮。 */
+  private void showStructureExtras(String name, StructureInfo info, NbtStructure structure) {
     previewArea.clearAllChildren();
-    UIElement preview = StructurePreview.embedded(info);
-    if (preview == null) {
-      preview = TopDownPreview.create(structure);
+    // 小预览：真实方块模型 3D（静态、居中、点击打开精细界面）；超限大结构回退等距图/俯视图/占位。
+    StructureScene scene = new StructureScene(false);
+    if (scene.setStructure(structure)) {
+      previewArea.addChild(scene);
+    } else {
+      UIElement preview = StructurePreview.embedded(info);
+      if (preview == null) {
+        preview = IsoPreview.create(structure);
+      }
+      if (preview == null) {
+        preview = TopDownPreview.create(structure);
+      }
+      previewArea.addChild(preview != null ? preview : StructurePreview.placeholder());
     }
-    previewArea.addChild(preview != null ? preview : StructurePreview.placeholder());
 
     extrasArea.clearAllChildren();
-    UIElement materials = MaterialList.build(StructureAnalysis.materials(structure));
-    if (materials != null) {
-      extrasArea.addChild(materials);
+    List<StructureAnalysis.MaterialEntry> materials = StructureAnalysis.materials(structure);
+    if (!materials.isEmpty()) {
+      Button matButton = new Button().setText(
+          Component.translatable("buildpack.materials.open", materials.size()));
+      matButton.addClass(BuildPack.cls("action"));
+      matButton.style(style ->
+          style.tooltips(Component.translatable("buildpack.materials.open.tooltip")));
+      matButton.setOnClick(event -> MaterialListScreen.open(name, materials));
+      matButton.layout(layout -> layout.height(16.0f).widthStretch());
+      extrasArea.addChild(matButton);
     }
   }
 
@@ -177,8 +197,8 @@ public final class InfoPanel {
     form.setModel(meta, false);
   }
 
-  /** 已安装建筑：.sk 字段只读展示。 */
-  public void showInstalled(InstalledBuilding building) {
+  /** 已安装建筑：.sk 字段只读展示 +（若能解析到结构）预览缩略图与材料清单。 */
+  public void showInstalled(InstalledBuilding building, StructureInfo info, NbtStructure structure) {
     setRows(
         row("buildpack.info.name", building.name()),
         row("buildpack.info.author", building.skFields().getOrDefault("author", "-")),
@@ -190,8 +210,12 @@ public final class InfoPanel {
             : (building.managed()
                 ? Component.translatable("buildpack.info.managed")
                 : Component.translatable("buildpack.info.external")));
-    previewArea.clearAllChildren();
-    extrasArea.clearAllChildren();
+    if (structure != null) {
+      showStructureExtras(building.name(), info, structure);
+    } else {
+      previewArea.clearAllChildren();
+      extrasArea.clearAllChildren();
+    }
 
     BuildingMetadata meta = new BuildingMetadata();
     meta.name = building.name();

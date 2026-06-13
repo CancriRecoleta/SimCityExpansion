@@ -10,6 +10,7 @@ import java.util.Locale;
 import com.github.simcityexpansion.buildpack.BuildPack;
 import com.github.simcityexpansion.buildpack.I18nLog;
 import com.github.simcityexpansion.buildpack.LocalizedIOException;
+import com.github.simcityexpansion.buildpack.convert.NbtStructure;
 import com.github.simcityexpansion.buildpack.convert.ParsedStructure;
 import com.github.simcityexpansion.buildpack.install.BuildingInstaller;
 import com.github.simcityexpansion.buildpack.install.InstallRegistry;
@@ -24,6 +25,8 @@ import com.github.simcityexpansion.buildpack.model.ImportScanner;
 import com.github.simcityexpansion.buildpack.model.InstalledBuilding;
 import com.github.simcityexpansion.buildpack.model.InstalledScanner;
 import com.github.simcityexpansion.buildpack.model.PackArchive;
+import com.github.simcityexpansion.buildpack.model.StructureFormat;
+import com.github.simcityexpansion.buildpack.model.StructureInfo;
 import com.github.simcityexpansion.buildpack.ui.component.BottomBar;
 import com.github.simcityexpansion.buildpack.ui.component.FileListPanel;
 import com.github.simcityexpansion.buildpack.ui.component.InfoPanel;
@@ -201,7 +204,7 @@ public final class BuildPackView {
     } else if (content instanceof PackBuildingSelection selection) {
       showPackBuilding(selection);
     } else if (content instanceof InstalledBuilding building) {
-      infoPanel.showInstalled(building);
+      showInstalled(building);
       bottomBar.setActions(false, building.managed());
     } else {
       clearSelection();
@@ -224,6 +227,23 @@ public final class BuildPackView {
       bottomBar.setMessage(Component.translatable(
           "buildpack.msg.parse_failed", LocalizedIOException.messageOf(e)), true);
     }
+  }
+
+  /** 已安装建筑：解析其结构 .nbt 以显示预览缩略图与材料清单（解析失败则只显示元数据）。 */
+  private void showInstalled(InstalledBuilding building) {
+    StructureInfo info = null;
+    NbtStructure structure = null;
+    if (building.structurePath() != null) {
+      try {
+        ParsedStructure parsed =
+            ParsedStructure.parse(building.structurePath(), StructureFormat.VANILLA_NBT);
+        info = parsed.info();
+        structure = parsed.structure();
+      } catch (IOException | RuntimeException e) {
+        I18nLog.warn(LOGGER, e, "buildpack.log.structure_parse_failed", building.structurePath());
+      }
+    }
+    infoPanel.showInstalled(building, info, structure);
   }
 
   /** 包内建筑：直接从 zip 流解析展示，无需解压（「安装」按钮变为单独安装该建筑）。 */

@@ -12,6 +12,7 @@
   "buildpack.action.export": "Export as Pack",
   "buildpack.action.batch": "Install All",
   "buildpack.action.delete": "Delete File",
+  "buildpack.action.back": "Back",
 
   "buildpack.tooltip.install": "Convert the selected structure and install it into the simukraftbuilding directory",
   "buildpack.tooltip.batch": "Install every listed file into the category currently selected in the form",
@@ -38,6 +39,10 @@
   "buildpack.tab.import": "Import Files",
   "buildpack.tab.packs": "Packs",
   "buildpack.tab.installed": "Installed",
+
+  "buildpack.tree.prev_page": "< Prev",
+  "buildpack.tree.next_page": "Next >",
+  "buildpack.tree.page_info": "Page %s / %s",
 
   "buildpack.category.residential": "Residential",
   "buildpack.category.commercial": "Commercial",
@@ -80,8 +85,17 @@
   "buildpack.materials.title": "Materials (%s types)",
   "buildpack.materials.entry": "%1$s × %2$s",
   "buildpack.materials.more": "…and %s more",
+  "buildpack.materials.open": "Materials (%s)",
+  "buildpack.materials.open.tooltip": "View the full material list on a separate page",
+  "buildpack.materials.screen_title": "Material List",
+  "buildpack.materials.screen_heading": "%1$s — Materials (%2$s types)",
 
   "buildpack.preview.none": "No preview",
+  "buildpack.preview.zoom_hint": "Click to enlarge",
+  "buildpack.preview.screen_title": "3D Preview",
+  "buildpack.preview.controls": "Left-drag rotate · Right-drag pan · Scroll zoom · Middle-click reset",
+  "buildpack.preview.reset": "Reset View",
+  "buildpack.preview.dims": "%1$s × %2$s × %3$s · %4$s blocks",
   "buildpack.detail.empty": "Select a file to view details",
   "buildpack.search.placeholder": "Search...",
 
