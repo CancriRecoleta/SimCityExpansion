@@ -256,6 +256,7 @@
   "buildpack.msg.pack_updated": "已更新 %1$s（%2$s 個建築，移除 %3$s 個舊檔案）",
   "buildpack.msg.clipboard_invalid": "剪貼簿不是有效的可匯入檔案路徑",
   "buildpack.preview.baking": "產生預覽…",
+  "buildpack.preview.lod": "簡化預覽（大型）",
   "buildpack.log.move_failed": "移動檔案失敗：%s",
   "buildpack.log.folder_failed": "建立資料夾失敗：%s",
   "buildpack.log.index_read_failed": "讀取匯入索引失敗：%s",
