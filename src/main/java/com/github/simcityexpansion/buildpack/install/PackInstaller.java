@@ -74,13 +74,38 @@ public final class PackInstaller {
       return new InstallResult(false, messages, null);
     }
 
+    InstallRegistry.Entry previous = registry.find(pack.manifest().id()).orElse(null);
+    int removed = removeOrphans(previous, installedFiles);
     registry.add(new InstallRegistry.Entry(
         pack.manifest().id(), pack.manifest().name(), pack.manifest().version(),
         System.currentTimeMillis(), installedFiles));
     registry.save();
-    messages.add(0, Component.translatable(
-        "buildpack.msg.pack_installed", pack.manifest().name(), installed));
+    messages.add(0, previous != null
+        ? Component.translatable(
+            "buildpack.msg.pack_updated", pack.manifest().name(), installed, removed)
+        : Component.translatable(
+            "buildpack.msg.pack_installed", pack.manifest().name(), installed));
     return new InstallResult(true, messages, null);
+  }
+
+  /** 更新拓展包时删除旧版本残留、且新版本不再包含的文件，返回删除数。 */
+  private static int removeOrphans(InstallRegistry.Entry previous, List<String> newFiles) {
+    if (previous == null) {
+      return 0;
+    }
+    int removed = 0;
+    for (String oldFile : previous.files()) {
+      if (!newFiles.contains(oldFile)) {
+        try {
+          if (Files.deleteIfExists(BuildPack.simukraftDir().resolve(oldFile))) {
+            removed++;
+          }
+        } catch (IOException e) {
+          I18nLog.warn(LOGGER, e, "buildpack.log.pack_file_delete_failed", oldFile);
+        }
+      }
+    }
+    return removed;
   }
 
   /**

@@ -1,11 +1,20 @@
 package com.github.simcityexpansion.buildpack.ui;
 
 import java.io.IOException;
+import java.nio.file.ClosedWatchServiceException;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardWatchEventKinds;
+import java.nio.file.WatchKey;
+import java.nio.file.WatchService;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.github.simcityexpansion.buildpack.BuildPack;
 import com.github.simcityexpansion.buildpack.I18nLog;
@@ -15,13 +24,14 @@ import com.github.simcityexpansion.buildpack.convert.NbtStructure;
 import com.github.simcityexpansion.buildpack.convert.ParsedStructure;
 import com.github.simcityexpansion.buildpack.install.BuildingInstaller;
 import com.github.simcityexpansion.buildpack.install.InstallRegistry;
-import com.github.simcityexpansion.buildpack.install.PackExporter;
 import com.github.simcityexpansion.buildpack.install.PackInstaller;
 import com.github.simcityexpansion.buildpack.install.PackReader;
 import com.github.simcityexpansion.buildpack.install.SkFileReader;
 import com.github.simcityexpansion.buildpack.model.BuildingCategory;
 import com.github.simcityexpansion.buildpack.model.BuildingMetadata;
+import com.github.simcityexpansion.buildpack.model.FileOps;
 import com.github.simcityexpansion.buildpack.model.ImportFile;
+import com.github.simcityexpansion.buildpack.model.ImportIndex;
 import com.github.simcityexpansion.buildpack.model.ImportScanner;
 import com.github.simcityexpansion.buildpack.model.InstalledBuilding;
 import com.github.simcityexpansion.buildpack.model.InstalledScanner;
@@ -67,6 +77,7 @@ public final class BuildPackScreen extends Screen {
   private static final int INFO_W = 170;
   private static final int REFRESH_W = 70;
   private static final int OPEN_W = 90;
+  private static final int DEDUPE_W = 90;
   private static final int CLOSE_W = 70;
 
   /** 会话内记住上次停留的页签。 */
@@ -95,13 +106,21 @@ public final class BuildPackScreen extends Screen {
   private List<InstalledBuilding> installed = List.of();
   private Object selected;
   private Path pendingDelete;
+  private boolean pendingCleanDup;
+  private boolean pendingBatchDelete;
   private TreeNode<String, Object> currentRoot;
+  private Set<Path> duplicates = Set.of();
+  private volatile boolean scanning;
+  private volatile int enrichGen;
+  private WatchService watcher;
+  private final AtomicBoolean refreshPending = new AtomicBoolean();
 
   private Component message = Component.empty();
   private boolean messageError;
   private Component count = Component.empty();
 
   private TreeView treeView;
+  private ContextMenu contextMenu;
   private ThemedButton sortButton;
   private final ThemedButton[] tabButtons = new ThemedButton[SourceTab.values().length];
   private ThemedButton installButton;
@@ -109,6 +128,7 @@ public final class BuildPackScreen extends Screen {
   private ThemedButton uninstallButton;
   private ThemedButton deleteButton;
   private ThemedButton exportButton;
+  private ThemedButton dedupeButton;
 
   // 布局缓存（随屏幕尺寸计算，init 与 render 共用）。
   private int leftX;
@@ -147,7 +167,7 @@ public final class BuildPackScreen extends Screen {
     row2Y = height - PAD - BTN_H;
     int row1Y = row2Y - ROW2_GAP - BTN_H;
     bodyBottom = row1Y - GAP;
-    statusX = PAD + REFRESH_W + GAP + OPEN_W + GAP;
+    statusX = PAD + REFRESH_W + GAP + OPEN_W + GAP + DEDUPE_W + GAP;
   }
 
   @Override
@@ -183,6 +203,8 @@ public final class BuildPackScreen extends Screen {
     // 文件树
     treeView = new TreeView(leftX + 2, treeY + 2, leftW - 4, bodyBottom - treeY - 4,
         this::onNodeSelected);
+    treeView.setOnCheckedChanged(this::updateActionButtons);
+    treeView.setOnContext(this::openContextMenu);
     treeView.setRoot(currentRoot);
     addRenderableWidget(treeView);
 
@@ -208,9 +230,12 @@ public final class BuildPackScreen extends Screen {
     // 底部工具行
     action("refresh", PAD, row2Y, REFRESH_W, this::refresh);
     action("open_folder", PAD + REFRESH_W + GAP, row2Y, OPEN_W, this::openFolder);
+    dedupeButton = action("dedupe",
+        PAD + REFRESH_W + GAP + OPEN_W + GAP, row2Y, DEDUPE_W, this::runCleanDuplicates);
     action("close", width - PAD - CLOSE_W, row2Y, CLOSE_W, this::onClose);
 
     updateActionButtons();
+    startWatch();
   }
 
   private ThemedButton action(String key, int x, int y, int w, Runnable onClick) {
@@ -240,9 +265,16 @@ public final class BuildPackScreen extends Screen {
     infoPanel.renderText(g);
 
     int statusY = row2Y + (BTN_H - font.lineHeight) / 2;
-    g.drawString(font, count, statusX, statusY, BuildPackTheme.COUNT, true);
+    int textX = statusX;
+    g.drawString(font, count, textX, statusY, BuildPackTheme.COUNT, true);
+    textX += font.width(count.getString()) + 8;
+    if (scanning) {
+      Component scan = Component.translatable("buildpack.status.scanning");
+      g.drawString(font, scan, textX, statusY, BuildPackTheme.HINT, true);
+      textX += font.width(scan.getString()) + 8;
+    }
     if (!message.getString().isEmpty()) {
-      g.drawString(font, message, statusX + 70, statusY,
+      g.drawString(font, message, textX, statusY,
           messageError ? BuildPackTheme.MESSAGE_ERROR : BuildPackTheme.MESSAGE_OK, true);
     }
 
@@ -251,6 +283,10 @@ public final class BuildPackScreen extends Screen {
     // 当前页签下划线（画在页签按钮之上）。
     int activeX = leftX + currentTab.ordinal() * (tabW + GAP);
     g.fill(activeX, tabsY + TAB_H, activeX + tabW, tabsY + TAB_H + 1, 0xFFFFFFFF);
+
+    if (contextMenu != null) {
+      contextMenu.render(g, mouseX, mouseY);
+    }
   }
 
   // ---- 页签 / 搜索 / 排序 ----
@@ -258,6 +294,8 @@ public final class BuildPackScreen extends Screen {
   private void switchTab(SourceTab tab) {
     currentTab = tab;
     lastTab = tab;
+    pendingCleanDup = false;
+    pendingBatchDelete = false;
     clearSelection();
     rebuildTree();
   }
@@ -301,13 +339,44 @@ public final class BuildPackScreen extends Screen {
       setMessage(Component.translatable(
           "buildpack.msg.invalid_pack", String.join(", ", invalidZips)), true);
     }
+    startEnrich();
+  }
+
+  /** 后台富集导入文件索引（解析摘要 + 内容哈希），完成后刷新重复标记与列表。 */
+  private void startEnrich() {
+    int gen = ++enrichGen;
+    List<ImportFile> snapshot = List.copyOf(importFiles);
+    if (snapshot.isEmpty()) {
+      scanning = false;
+      duplicates = Set.of();
+      return;
+    }
+    scanning = true;
+    CompletableFuture.runAsync(() -> {
+      for (ImportFile file : snapshot) {
+        if (gen != enrichGen) {
+          return;
+        }
+        ImportIndex.ensureEnriched(file.path(), file.format());
+      }
+      ImportIndex.save();
+    }).whenComplete((result, error) -> Minecraft.getInstance().execute(() -> {
+      if (gen != enrichGen || Minecraft.getInstance().screen != this) {
+        return;
+      }
+      scanning = false;
+      duplicates = ImportIndex.duplicatePaths(snapshot);
+      if (currentTab == SourceTab.IMPORT) {
+        rebuildTree();
+      }
+    }));
   }
 
   private void rebuildTree() {
     switch (currentTab) {
       case IMPORT -> {
         List<ImportFile> filtered = filteredImportFiles();
-        currentRoot = DirectoryTree.buildImport(BuildPack.importDir(), filtered);
+        currentRoot = DirectoryTree.buildImport(BuildPack.importDir(), filtered, duplicates);
         updateCount(filtered.size());
       }
       case PACKS -> {
@@ -328,14 +397,48 @@ public final class BuildPackScreen extends Screen {
     if (treeView != null) {
       treeView.setRoot(currentRoot);
     }
+    if (dedupeButton != null) {
+      dedupeButton.visible = currentTab == SourceTab.IMPORT && !duplicates.isEmpty();
+    }
     updateActionButtons();
+  }
+
+  /** 树中当前勾选、且为指定类型的内容。 */
+  @SuppressWarnings("unchecked")
+  private <T> List<T> checkedOfType(Class<T> type) {
+    if (treeView == null) {
+      return List.of();
+    }
+    return treeView.checked().stream()
+        .filter(type::isInstance)
+        .map(value -> (T) value)
+        .toList();
   }
 
   private List<ImportFile> filteredImportFiles() {
     return importFiles.stream()
-        .filter(file -> matches(file.fileName()))
+        .filter(this::matchesImport)
         .sorted(sortMode.comparator())
         .toList();
+  }
+
+  /** 导入文件匹配：文件名/索引名/作者/标签 子串；支持 {@code fav} 与 {@code tag:} 前缀。 */
+  private boolean matchesImport(ImportFile file) {
+    if (searchText.isEmpty()) {
+      return true;
+    }
+    if (searchText.equals("fav") || searchText.equals("favorite")) {
+      return ImportIndex.favorite(file.path());
+    }
+    if (searchText.startsWith("tag:")) {
+      String needle = searchText.substring(4);
+      return ImportIndex.tags(file.path()).stream()
+          .anyMatch(tag -> tag.toLowerCase(Locale.ROOT).contains(needle));
+    }
+    return matches(file.fileName())
+        || matches(ImportIndex.name(file.path()))
+        || matches(ImportIndex.author(file.path()))
+        || ImportIndex.tags(file.path()).stream().anyMatch(this::matches);
   }
 
   private boolean matches(String text) {
@@ -460,7 +563,8 @@ public final class BuildPackScreen extends Screen {
         || (selected instanceof PackArchive p && registry.find(p.manifest().id()).isPresent());
     setActive(installButton, canInstall);
     setActive(uninstallButton, canUninstall);
-    setActive(deleteButton, selected instanceof ImportFile);
+    setActive(deleteButton,
+        selected instanceof ImportFile || !checkedOfType(ImportFile.class).isEmpty());
     setActive(exportButton, currentTab == SourceTab.INSTALLED
         && installed.stream().anyMatch(building -> matches(building.name())));
     setActive(batchButton, currentTab == SourceTab.IMPORT
@@ -491,7 +595,10 @@ public final class BuildPackScreen extends Screen {
   }
 
   private void runBatchInstall() {
-    List<ImportFile> files = filteredImportFiles();
+    List<ImportFile> files = checkedOfType(ImportFile.class);
+    if (files.isEmpty()) {
+      files = filteredImportFiles();
+    }
     if (files.isEmpty()) {
       return;
     }
@@ -519,6 +626,11 @@ public final class BuildPackScreen extends Screen {
   }
 
   private void runDelete() {
+    List<ImportFile> checkedFiles = checkedOfType(ImportFile.class);
+    if (!checkedFiles.isEmpty()) {
+      runBatchDelete(checkedFiles);
+      return;
+    }
     if (!(selected instanceof ImportFile file)) {
       return;
     }
@@ -536,6 +648,28 @@ public final class BuildPackScreen extends Screen {
           "buildpack.msg.parse_failed", LocalizedIOException.messageOf(e)), true);
     }
     pendingDelete = null;
+    refresh();
+  }
+
+  /** 批量删除勾选的导入文件（两击确认）。 */
+  private void runBatchDelete(List<ImportFile> files) {
+    if (!pendingBatchDelete) {
+      pendingBatchDelete = true;
+      setMessage(Component.translatable("buildpack.msg.batch_delete_confirm", files.size()), false);
+      return;
+    }
+    pendingBatchDelete = false;
+    int removed = 0;
+    for (ImportFile file : files) {
+      try {
+        Files.deleteIfExists(file.path());
+        ImportIndex.forget(file.path());
+        removed++;
+      } catch (IOException e) {
+        I18nLog.warn(LOGGER, e, "buildpack.log.import_delete_failed", file.path());
+      }
+    }
+    setMessage(Component.translatable("buildpack.msg.batch_deleted", removed), false);
     refresh();
   }
 
@@ -559,18 +693,15 @@ public final class BuildPackScreen extends Screen {
   }
 
   private void runExport() {
-    List<InstalledBuilding> toExport = installed.stream()
-        .filter(building -> matches(building.name()))
-        .toList();
-    try {
-      Path zip = PackExporter.export(toExport);
-      setMessage(Component.translatable("buildpack.msg.exported", zip.getFileName().toString()), false);
-      Util.getPlatform().openPath(PackExporter.exportDir());
-    } catch (IOException | RuntimeException e) {
-      I18nLog.warn(LOGGER, e, "buildpack.log.export_failed");
-      setMessage(Component.translatable(
-          "buildpack.msg.parse_failed", LocalizedIOException.messageOf(e)), true);
+    List<InstalledBuilding> toExport = checkedOfType(InstalledBuilding.class);
+    if (toExport.isEmpty()) {
+      toExport = installed.stream().filter(building -> matches(building.name())).toList();
     }
+    if (toExport.isEmpty()) {
+      setMessage(Component.translatable("buildpack.error.export_empty"), true);
+      return;
+    }
+    ExportScreen.open(toExport);
   }
 
   private void runCaptureSelection() {
@@ -578,6 +709,149 @@ public final class BuildPackScreen extends Screen {
     setMessage(result.message(), !result.ok());
     if (result.ok()) {
       refresh();
+    }
+  }
+
+  /** 「清理重复」回调（两击确认）：删除内容相同的多余副本，每组保留一个。 */
+  private void runCleanDuplicates() {
+    List<Path> redundant = ImportIndex.redundantDuplicates(importFiles);
+    if (redundant.isEmpty()) {
+      setMessage(Component.translatable("buildpack.msg.dedupe_none"), false);
+      return;
+    }
+    if (!pendingCleanDup) {
+      pendingCleanDup = true;
+      setMessage(Component.translatable("buildpack.msg.dedupe_confirm", redundant.size()), false);
+      return;
+    }
+    pendingCleanDup = false;
+    int removed = 0;
+    for (Path path : redundant) {
+      try {
+        Files.deleteIfExists(path);
+        ImportIndex.forget(path);
+        removed++;
+      } catch (IOException e) {
+        I18nLog.warn(LOGGER, e, "buildpack.log.import_delete_failed", path);
+      }
+    }
+    setMessage(Component.translatable("buildpack.msg.dedupe_done", removed), false);
+    refresh();
+  }
+
+  // ---- 右键上下文菜单 ----
+
+  private void openContextMenu(Object content, int mouseX, int mouseY) {
+    List<ContextMenu.Item> items = new ArrayList<>();
+    if (content instanceof ImportFile file) {
+      Path path = file.path();
+      items.add(new ContextMenu.Item(
+          Component.translatable(ImportIndex.favorite(path)
+              ? "buildpack.menu.unfavorite" : "buildpack.menu.favorite"),
+          () -> {
+            ImportIndex.toggleFavorite(path);
+            rebuildTree();
+          }));
+      items.add(new ContextMenu.Item(
+          Component.translatable("buildpack.menu.rename"), () -> promptRename(file)));
+      items.add(new ContextMenu.Item(
+          Component.translatable("buildpack.menu.move"), () -> promptMove(file)));
+      items.add(new ContextMenu.Item(
+          Component.translatable("buildpack.menu.tags"), () -> promptTags(file)));
+      items.add(new ContextMenu.Item(
+          Component.translatable("buildpack.menu.note"), () -> promptNote(file)));
+      items.add(new ContextMenu.Item(
+          Component.translatable("buildpack.menu.reveal"), () -> reveal(path)));
+      items.add(new ContextMenu.Item(
+          Component.translatable("buildpack.menu.delete"), () -> deleteImportFileNow(file)));
+    } else if (content instanceof InstalledBuilding building) {
+      items.add(new ContextMenu.Item(Component.translatable("buildpack.menu.recategorize"),
+          () -> openCategoryMenu(building, mouseX, mouseY)));
+      items.add(new ContextMenu.Item(Component.translatable("buildpack.menu.reveal"),
+          () -> reveal(building.skPath())));
+      if (building.managed()) {
+        items.add(new ContextMenu.Item(Component.translatable("buildpack.menu.uninstall"), () -> {
+          selected = building;
+          runUninstall();
+        }));
+      }
+    }
+    contextMenu = items.isEmpty() ? null : new ContextMenu(mouseX, mouseY, items);
+  }
+
+  private void openCategoryMenu(InstalledBuilding building, int mouseX, int mouseY) {
+    List<ContextMenu.Item> items = new ArrayList<>();
+    for (BuildingCategory category : BuildingCategory.values()) {
+      items.add(new ContextMenu.Item(category.displayName(), () -> {
+        BuildingInstaller.recategorize(building, category, registry);
+        refresh();
+      }));
+    }
+    contextMenu = new ContextMenu(mouseX, mouseY, items);
+  }
+
+  private void promptRename(ImportFile file) {
+    TextPromptScreen.open(
+        Component.translatable("buildpack.menu.rename"),
+        Component.translatable("buildpack.prompt.rename"),
+        file.baseName(),
+        name -> {
+          FileOps.rename(file.path(), name);
+          refresh();
+        });
+  }
+
+  private void promptMove(ImportFile file) {
+    TextPromptScreen.open(
+        Component.translatable("buildpack.menu.move"),
+        Component.translatable("buildpack.prompt.move"),
+        "",
+        folder -> {
+          FileOps.moveToFolder(file.path(), folder);
+          refresh();
+        });
+  }
+
+  private void promptTags(ImportFile file) {
+    TextPromptScreen.open(
+        Component.translatable("buildpack.menu.tags"),
+        Component.translatable("buildpack.prompt.tags"),
+        String.join(", ", ImportIndex.tags(file.path())),
+        text -> {
+          List<String> tags = Arrays.stream(text.split(","))
+              .map(String::trim)
+              .filter(tag -> !tag.isEmpty())
+              .toList();
+          ImportIndex.setTags(file.path(), tags);
+          rebuildTree();
+        });
+  }
+
+  private void promptNote(ImportFile file) {
+    TextPromptScreen.open(
+        Component.translatable("buildpack.menu.note"),
+        Component.translatable("buildpack.prompt.note"),
+        ImportIndex.note(file.path()),
+        note -> ImportIndex.setNote(file.path(), note));
+  }
+
+  private void deleteImportFileNow(ImportFile file) {
+    try {
+      Files.deleteIfExists(file.path());
+      ImportIndex.forget(file.path());
+      setMessage(Component.translatable("buildpack.msg.deleted", file.fileName()), false);
+    } catch (IOException e) {
+      I18nLog.warn(LOGGER, e, "buildpack.log.import_delete_failed", file.path());
+      setMessage(Component.translatable(
+          "buildpack.msg.parse_failed", LocalizedIOException.messageOf(e)), true);
+    }
+    refresh();
+  }
+
+  private void reveal(Path path) {
+    Path dir = path.getParent();
+    if (dir != null) {
+      Util.getPlatform().openPath(dir);
     }
   }
 
@@ -651,6 +925,110 @@ public final class BuildPackScreen extends Screen {
       target = dir.resolve(base + "_" + suffix++ + extension);
     }
     return target;
+  }
+
+  @Override
+  public boolean mouseClicked(double mouseX, double mouseY, int button) {
+    if (contextMenu != null) {
+      ContextMenu menu = contextMenu;
+      contextMenu = null;
+      menu.click(mouseX, mouseY);
+      return true;
+    }
+    return super.mouseClicked(mouseX, mouseY, button);
+  }
+
+  @Override
+  public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+    if (contextMenu != null && keyCode == 256) {
+      contextMenu = null;
+      return true;
+    }
+    // Ctrl+V（未聚焦输入框时）：把剪贴板里的文件路径导入。
+    if (keyCode == 86 && Screen.hasControlDown() && !(getFocused() instanceof EditBox)) {
+      importFromClipboard();
+      return true;
+    }
+    return super.keyPressed(keyCode, scanCode, modifiers);
+  }
+
+  private void importFromClipboard() {
+    String clip = minecraft.keyboardHandler.getClipboard();
+    if (clip == null || clip.isBlank()) {
+      return;
+    }
+    try {
+      Path src = Path.of(clip.trim());
+      if (!Files.isRegularFile(src) || !isImportable(src)) {
+        setMessage(Component.translatable("buildpack.msg.clipboard_invalid"), true);
+        return;
+      }
+      Files.copy(src, uniqueTarget(ImportScanner.ensureImportDir(), src.getFileName().toString()));
+      setMessage(Component.translatable("buildpack.msg.files_dropped", 1), false);
+      refresh();
+    } catch (IOException | RuntimeException e) {
+      I18nLog.warn(LOGGER, e, "buildpack.log.drop_copy_failed", clip);
+      setMessage(Component.translatable("buildpack.msg.clipboard_invalid"), true);
+    }
+  }
+
+  // ---- 导入目录监听（外部放入文件自动刷新）----
+
+  private void startWatch() {
+    if (watcher != null) {
+      return;
+    }
+    try {
+      Path dir = ImportScanner.ensureImportDir();
+      watcher = FileSystems.getDefault().newWatchService();
+      dir.register(watcher, StandardWatchEventKinds.ENTRY_CREATE,
+          StandardWatchEventKinds.ENTRY_DELETE, StandardWatchEventKinds.ENTRY_MODIFY);
+      WatchService active = watcher;
+      Thread thread = new Thread(() -> watchLoop(active), "buildpack-import-watch");
+      thread.setDaemon(true);
+      thread.start();
+    } catch (IOException e) {
+      I18nLog.warn(LOGGER, e, "buildpack.log.import_dir_failed", BuildPack.importDir());
+    }
+  }
+
+  private void watchLoop(WatchService active) {
+    while (true) {
+      WatchKey key;
+      try {
+        key = active.take();
+      } catch (InterruptedException | ClosedWatchServiceException e) {
+        return;
+      }
+      key.pollEvents();
+      if (refreshPending.compareAndSet(false, true)) {
+        Minecraft.getInstance().execute(() -> {
+          refreshPending.set(false);
+          if (Minecraft.getInstance().screen == this) {
+            refresh();
+          }
+        });
+      }
+      if (!key.reset()) {
+        return;
+      }
+    }
+  }
+
+  private void stopWatch() {
+    if (watcher != null) {
+      try {
+        watcher.close();
+      } catch (IOException ignored) {
+        // 关闭监听失败无需处理。
+      }
+      watcher = null;
+    }
+  }
+
+  @Override
+  public void removed() {
+    stopWatch();
   }
 
   @Override

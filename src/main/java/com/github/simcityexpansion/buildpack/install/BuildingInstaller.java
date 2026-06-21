@@ -131,6 +131,49 @@ public final class BuildingInstaller {
     return ok;
   }
 
+  /** 把已安装建筑移动到另一个分类目录（含 .nbt/.sk/.json），并同步注册表路径。 */
+  public static boolean recategorize(
+      InstalledBuilding building, BuildingCategory target, InstallRegistry registry) {
+    if (building.category() == target) {
+      return true;
+    }
+    try {
+      Files.createDirectories(target.dir());
+      String base = building.baseName();
+      Path fromDir = building.category().dir();
+      Path toDir = target.dir();
+      String finalName = resolveConflict(toDir, base);
+      moveQuietly(fromDir.resolve(base + ".nbt"), toDir.resolve(finalName + ".nbt"));
+      moveQuietly(building.skPath(), toDir.resolve(finalName + ".sk"));
+      moveQuietly(fromDir.resolve(base + ".json"), toDir.resolve(finalName + ".json"));
+      if (building.packId() != null) {
+        String oldPrefix = building.category().dirName() + "/";
+        String newPrefix = target.dirName() + "/";
+        registry.replaceFile(building.packId(),
+            oldPrefix + base + ".nbt", newPrefix + finalName + ".nbt");
+        registry.replaceFile(building.packId(),
+            oldPrefix + base + ".sk", newPrefix + finalName + ".sk");
+        registry.replaceFile(building.packId(),
+            oldPrefix + base + ".json", newPrefix + finalName + ".json");
+        registry.save();
+      }
+      return true;
+    } catch (IOException | RuntimeException e) {
+      I18nLog.warn(LOGGER, e, "buildpack.log.move_failed", building.skPath());
+      return false;
+    }
+  }
+
+  private static void moveQuietly(Path from, Path to) {
+    try {
+      if (Files.isRegularFile(from)) {
+        Files.move(from, to);
+      }
+    } catch (IOException e) {
+      I18nLog.warn(LOGGER, e, "buildpack.log.move_failed", from);
+    }
+  }
+
   /** 替换 Windows/Unix 文件名非法字符，并裁剪首尾空白与点号。 */
   static String sanitizeFileName(String name) {
     String cleaned = name.replaceAll("[\\\\/:*?\"<>|]", "_").trim();

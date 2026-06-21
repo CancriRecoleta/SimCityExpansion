@@ -17,7 +17,6 @@ import com.github.simcityexpansion.buildpack.LocalizedIOException;
 import com.github.simcityexpansion.buildpack.model.InstalledBuilding;
 import com.github.simcityexpansion.buildpack.model.PackManifest;
 import com.google.gson.JsonObject;
-import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 
 /**
@@ -39,28 +38,38 @@ public final class PackExporter {
    * 把给定建筑导出为一个 zip 拓展包，返回生成的文件路径。
    * 元数据（.sk）与结构文件均原样打包。
    */
-  public static Path export(List<InstalledBuilding> buildings) throws IOException {
+  /** 导出选项：包元数据 + 是否携带 .sk / SimuKraft JSON。 */
+  public record ExportOptions(String name, String version, String author, String description,
+      boolean includeSk, boolean includeJson) {}
+
+  /** 把给定建筑按选项导出为一个 zip 拓展包，返回生成的文件路径。结构 .nbt 始终携带。 */
+  public static Path export(List<InstalledBuilding> buildings, ExportOptions options)
+      throws IOException {
     if (buildings.isEmpty()) {
       throw new LocalizedIOException(Component.translatable("buildpack.error.export_empty"));
     }
     Files.createDirectories(exportDir());
     String stamp = FILE_STAMP.format(LocalDateTime.now());
-    Path target = exportDir().resolve("buildpack_export_" + stamp + ".zip");
+    Path target = uniqueZip(options.name().isBlank() ? "buildpack_export_" + stamp : options.name());
 
     Set<String> writtenEntries = new HashSet<>();
     try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(target))) {
       putEntry(zip, "pack.json",
-          manifestJson(stamp, buildings.size()).getBytes(StandardCharsets.UTF_8));
+          manifestJson(options, stamp, buildings.size()).getBytes(StandardCharsets.UTF_8));
       for (InstalledBuilding building : buildings) {
         String dir = "buildings/" + building.category().dirName() + "/";
-        copyFileEntry(zip, building.skPath(), dir, writtenEntries);
         if (building.structurePath() != null) {
           copyFileEntry(zip, building.structurePath(), dir, writtenEntries);
         }
-        // SimuKraft 原生职业/交易定义随包携带（格式 v2 直通）。
-        copyFileEntry(zip,
-            building.skPath().resolveSibling(building.baseName() + ".json"),
-            dir, writtenEntries);
+        if (options.includeSk()) {
+          copyFileEntry(zip, building.skPath(), dir, writtenEntries);
+        }
+        if (options.includeJson()) {
+          // SimuKraft 原生职业/交易定义随包携带（格式 v2 直通）。
+          copyFileEntry(zip,
+              building.skPath().resolveSibling(building.baseName() + ".json"),
+              dir, writtenEntries);
+        }
       }
     } catch (IOException e) {
       Files.deleteIfExists(target);
@@ -69,24 +78,32 @@ public final class PackExporter {
     return target;
   }
 
-  private static String manifestJson(String stamp, int buildingCount) {
+  private static String manifestJson(ExportOptions options, String stamp, int buildingCount) {
     JsonObject json = new JsonObject();
     json.addProperty("format", PackManifest.CURRENT_FORMAT);
     json.addProperty("id", "export." + stamp);
-    // 包名/描述会显示在导入方的界面上，按导出者的游戏语言生成。
-    json.addProperty("name",
-        Component.translatable("buildpack.export.pack_name", stamp).getString());
-    json.addProperty("version", "1.0.0");
-    json.addProperty("author", exporterName());
-    json.addProperty("description",
-        Component.translatable("buildpack.export.pack_description", buildingCount).getString());
+    json.addProperty("name", options.name().isBlank()
+        ? Component.translatable("buildpack.export.pack_name", stamp).getString()
+        : options.name());
+    json.addProperty("version", options.version().isBlank() ? "1.0.0" : options.version());
+    json.addProperty("author", options.author());
+    json.addProperty("description", options.description().isBlank()
+        ? Component.translatable("buildpack.export.pack_description", buildingCount).getString()
+        : options.description());
     return json.toString();
   }
 
-  /** 导出者署名：当前玩家名，未进入存档时留空。 */
-  private static String exporterName() {
-    Minecraft minecraft = Minecraft.getInstance();
-    return minecraft.player != null ? minecraft.player.getGameProfile().getName() : "";
+  private static Path uniqueZip(String name) {
+    String base = name.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
+    if (base.isBlank()) {
+      base = "buildpack_export";
+    }
+    Path target = exportDir().resolve(base + ".zip");
+    int suffix = 2;
+    while (Files.exists(target)) {
+      target = exportDir().resolve(base + "_" + suffix++ + ".zip");
+    }
+    return target;
   }
 
   private static void copyFileEntry(

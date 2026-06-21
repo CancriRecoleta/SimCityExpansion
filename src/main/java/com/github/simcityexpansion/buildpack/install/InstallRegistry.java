@@ -142,4 +142,20 @@ public final class InstallRegistry {
       }
     });
   }
+
+  /** 把某条记录里的一个文件路径替换为另一个（改分类时用）。 */
+  public void replaceFile(String packId, String oldRelative, String newRelative) {
+    String oldNorm = oldRelative.replace('\\', '/');
+    String newNorm = newRelative.replace('\\', '/');
+    find(packId).ifPresent(entry -> {
+      List<String> files = new ArrayList<>(entry.files());
+      int index = files.indexOf(oldNorm);
+      if (index >= 0) {
+        files.set(index, newNorm);
+        entries.removeIf(existing -> existing.id().equals(packId));
+        entries.add(new Entry(
+            entry.id(), entry.name(), entry.version(), entry.installedAt(), files));
+      }
+    });
+  }
 }

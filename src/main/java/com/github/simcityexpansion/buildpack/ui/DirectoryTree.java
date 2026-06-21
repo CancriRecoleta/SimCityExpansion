@@ -3,14 +3,17 @@ package com.github.simcityexpansion.buildpack.ui;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import com.github.simcityexpansion.buildpack.model.BuildingCategory;
 import com.github.simcityexpansion.buildpack.model.ImportFile;
+import com.github.simcityexpansion.buildpack.model.ImportIndex;
 import com.github.simcityexpansion.buildpack.model.InstalledBuilding;
 import com.github.simcityexpansion.buildpack.model.PackArchive;
 import com.github.simcityexpansion.buildpack.model.PackBuildingEntry;
 import com.github.simcityexpansion.buildpack.ui.tree.TreeBuilder;
 import com.github.simcityexpansion.buildpack.ui.tree.TreeNode;
+import net.minecraft.network.chat.Component;
 
 /**
  * 把三种来源的数据组织成 {@link TreeNode} 层级树：分支节点内容为 {@code null}，
@@ -23,22 +26,36 @@ public final class DirectoryTree {
   /** 合成树根的键（TreeList 以 flattenRoot 模式隐藏该根）。 */
   public static final String ROOT_KEY = "buildpack";
 
-  /** 导入散文件：按相对导入目录的子目录建层级。 */
-  public static TreeNode<String, Object> buildImport(Path importRoot, List<ImportFile> files) {
+  /** 导入散文件：按相对导入目录的子目录建层级；收藏前缀 ★、内容重复后缀标记。 */
+  public static TreeNode<String, Object> buildImport(
+      Path importRoot, List<ImportFile> files, Set<Path> duplicates) {
     TreeBuilder<String, Object> builder = TreeBuilder.start(ROOT_KEY);
     for (ImportFile file : files) {
+      String label = importLabel(file, duplicates);
       Path relative = importRoot.relativize(file.path());
       List<String> folders = new ArrayList<>();
       for (int i = 0; i < relative.getNameCount() - 1; i++) {
         folders.add(relative.getName(i).toString());
       }
       if (folders.isEmpty()) {
-        builder.leaf(file.fileName(), file);
+        builder.leaf(label, file);
       } else {
-        builder.diveBranch(folders, branch -> branch.leaf(file.fileName(), file));
+        builder.diveBranch(folders, branch -> branch.leaf(label, file));
       }
     }
     return builder.build();
+  }
+
+  /** 列表显示名：收藏前缀 ★、内容重复后缀标记。 */
+  private static String importLabel(ImportFile file, Set<Path> duplicates) {
+    String label = file.fileName();
+    if (ImportIndex.favorite(file.path())) {
+      label = "★ " + label;
+    }
+    if (duplicates.contains(file.path())) {
+      label = label + " " + Component.translatable("buildpack.tree.duplicate_mark").getString();
+    }
+    return label;
   }
 
   /**

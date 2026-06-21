@@ -30,6 +30,8 @@ public final class TreeView extends AbstractWidget {
   private static final int ICON = 10;
   private static final int ARROW_BOX = 9;
   private static final int PAD_LEFT = 2;
+  private static final int CHECK_SIZE = 9;
+  private static final int CHECK_BOX = 11;
   private static final int PAGE_BAR_H = 13;
   private static final int TEXT_COLOR = 0xFFFFFFFF;
   private static final int ARROW_COLOR = 0xFFC0C0C0;
@@ -44,6 +46,9 @@ public final class TreeView extends AbstractWidget {
   private record Row(TreeNode<String, Object> node, int depth, boolean branch) {}
 
   private final Consumer<Object> onSelect;
+  private Runnable onCheckedChanged;
+  private ContextHandler onContext;
+  private final Set<Object> checked = new HashSet<>();
   private final Set<TreeNode<String, Object>> expanded = new HashSet<>();
   private final List<Row> rows = new ArrayList<>();
   private TreeNode<String, Object> root;
@@ -59,9 +64,35 @@ public final class TreeView extends AbstractWidget {
   public void setRoot(TreeNode<String, Object> root) {
     this.root = root;
     expanded.clear();
+    checked.clear();
     selected = null;
     page = 0;
     rebuild();
+  }
+
+  /** 当前勾选的叶子内容（多选）；搜索/排序/刷新会清空。 */
+  public Set<Object> checked() {
+    return Set.copyOf(checked);
+  }
+
+  /** 清空勾选。 */
+  public void clearChecked() {
+    checked.clear();
+  }
+
+  /** 设置勾选变化回调（用于刷新批量按钮可用态）。 */
+  public void setOnCheckedChanged(Runnable callback) {
+    this.onCheckedChanged = callback;
+  }
+
+  /** 右键上下文回调：内容（分支为 {@code null}）+ 屏幕坐标。 */
+  public interface ContextHandler {
+    void onContext(Object content, int mouseX, int mouseY);
+  }
+
+  /** 设置右键上下文回调。 */
+  public void setOnContext(ContextHandler handler) {
+    this.onContext = handler;
   }
 
   private void rebuild() {
@@ -132,10 +163,12 @@ public final class TreeView extends AbstractWidget {
       }
 
       int rowX = x + PAD_LEFT + row.depth * INDENT;
+      drawCheckbox(g, rowX, rowY + (ROW_HEIGHT - CHECK_SIZE) / 2, isRowChecked(row));
+      int afterCheck = rowX + CHECK_BOX;
       if (row.branch) {
-        drawArrow(g, rowX + 1, rowY + (ROW_HEIGHT - 7) / 2, expanded.contains(row.node));
+        drawArrow(g, afterCheck + 1, rowY + (ROW_HEIGHT - 7) / 2, expanded.contains(row.node));
       }
-      int iconX = rowX + ARROW_BOX;
+      int iconX = afterCheck + ARROW_BOX;
       int iconY = rowY + (ROW_HEIGHT - ICON) / 2;
       NodeIcons.draw(g, iconX, iconY, ICON, row.node.getContent(),
           row.branch, expanded.contains(row.node));
@@ -181,7 +214,13 @@ public final class TreeView extends AbstractWidget {
 
   @Override
   public boolean mouseClicked(double mouseX, double mouseY, int button) {
-    if (!active || !visible || button != 0 || !isMouseOver(mouseX, mouseY)) {
+    if (!active || !visible || !isMouseOver(mouseX, mouseY)) {
+      return false;
+    }
+    if (button == 1) {
+      return handleRightClick(mouseX, mouseY);
+    }
+    if (button != 0) {
       return false;
     }
     int x = getX();
@@ -214,7 +253,13 @@ public final class TreeView extends AbstractWidget {
     }
     Row row = rows.get(idx);
     int rowX = x + PAD_LEFT + row.depth * INDENT;
-    boolean arrowHit = row.branch && mouseX >= rowX && mouseX < rowX + ARROW_BOX;
+    // 复选框：切换勾选（多选），不改变当前选中项。
+    if (mouseX >= rowX && mouseX < rowX + CHECK_SIZE) {
+      toggleChecked(row);
+      return true;
+    }
+    int afterCheck = rowX + CHECK_BOX;
+    boolean arrowHit = row.branch && mouseX >= afterCheck && mouseX < afterCheck + ARROW_BOX;
     // 箭头：展开/折叠；无内容的分支（文件夹/分类）整行也展开/折叠；其余（文件/建筑/整包）选中。
     if (arrowHit || (row.branch && row.node.getContent() == null)) {
       toggle(row.node);
@@ -252,6 +297,91 @@ public final class TreeView extends AbstractWidget {
       expanded.add(node);
     }
     rebuild();
+  }
+
+  /** 右键：选中该行并请求上下文菜单。 */
+  private boolean handleRightClick(double mouseX, double mouseY) {
+    if (onContext == null) {
+      return false;
+    }
+    int x = getX();
+    int y = getY();
+    int h = getHeight();
+    int perPage = rowsPerPage(h);
+    int pages = pageCount(perPage);
+    page = Math.max(0, Math.min(pages - 1, page));
+    if (pages > 1 && mouseY >= y + h - PAGE_BAR_H) {
+      return false;
+    }
+    int rel = (int) Math.floor((mouseY - y) / ROW_HEIGHT);
+    int idx = page * perPage + rel;
+    if (rel < 0 || rel >= perPage || idx >= rows.size()
+        || mouseX < x || mouseX >= x + getWidth()) {
+      return false;
+    }
+    Row row = rows.get(idx);
+    selected = row.node;
+    onSelect.accept(row.node.getContent());
+    onContext.onContext(row.node.getContent(), (int) mouseX, (int) mouseY);
+    return true;
+  }
+
+  // ---- 勾选（多选）----
+
+  /** 行勾选态：叶子看自身，分支看其全部叶子后代是否都勾选。 */
+  private boolean isRowChecked(Row row) {
+    if (!row.branch) {
+      Object content = row.node.getContent();
+      return content != null && checked.contains(content);
+    }
+    List<Object> leaves = new ArrayList<>();
+    collectLeaves(row.node, leaves);
+    return !leaves.isEmpty() && checked.containsAll(leaves);
+  }
+
+  /** 切换行勾选：叶子切自身；分支切其全部叶子后代。 */
+  private void toggleChecked(Row row) {
+    if (!row.branch) {
+      Object content = row.node.getContent();
+      if (content != null && !checked.remove(content)) {
+        checked.add(content);
+      }
+    } else {
+      List<Object> leaves = new ArrayList<>();
+      collectLeaves(row.node, leaves);
+      if (!leaves.isEmpty() && checked.containsAll(leaves)) {
+        leaves.forEach(checked::remove);
+      } else {
+        checked.addAll(leaves);
+      }
+    }
+    if (onCheckedChanged != null) {
+      onCheckedChanged.run();
+    }
+  }
+
+  private static void collectLeaves(TreeNode<String, Object> node, List<Object> out) {
+    if (node.getChildren().isEmpty()) {
+      if (node.getContent() != null) {
+        out.add(node.getContent());
+      }
+      return;
+    }
+    for (TreeNode<String, Object> child : node.getChildren()) {
+      collectLeaves(child, out);
+    }
+  }
+
+  /** 9px 见方的复选框；勾选时填充绿色内块。 */
+  private static void drawCheckbox(GuiGraphics g, int x, int y, boolean on) {
+    g.fill(x, y, x + CHECK_SIZE, y + CHECK_SIZE, 0xFF202020);
+    g.fill(x, y, x + CHECK_SIZE, y + 1, 0xFFA0A0A0);
+    g.fill(x, y + CHECK_SIZE - 1, x + CHECK_SIZE, y + CHECK_SIZE, 0xFFA0A0A0);
+    g.fill(x, y, x + 1, y + CHECK_SIZE, 0xFFA0A0A0);
+    g.fill(x + CHECK_SIZE - 1, y, x + CHECK_SIZE, y + CHECK_SIZE, 0xFFA0A0A0);
+    if (on) {
+      g.fill(x + 2, y + 2, x + CHECK_SIZE - 2, y + CHECK_SIZE - 2, 0xFF55FF55);
+    }
   }
 
   @Override
