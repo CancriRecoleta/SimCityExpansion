@@ -73,12 +73,6 @@ ordering = "NONE"
 side = "BOTH"
 
 # LDLib2 provides the UI framework that the Building Pack Manager (BuildPack) screen is built on.
-[[dependencies."${mod_id}"]]
-modId = "ldlib2"
-type = "required"
-versionRange = "[2,)"
-ordering = "AFTER"
-side = "CLIENT"
 
 # Features are specific properties of the game environment, that you may want to declare you require. This example declares
 # that your mod requires GL version 3.2 or higher. Other features will be added. They are side aware so declaring this won't

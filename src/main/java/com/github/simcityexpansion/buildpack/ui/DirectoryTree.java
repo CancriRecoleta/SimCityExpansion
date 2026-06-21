@@ -9,12 +9,13 @@ import com.github.simcityexpansion.buildpack.model.ImportFile;
 import com.github.simcityexpansion.buildpack.model.InstalledBuilding;
 import com.github.simcityexpansion.buildpack.model.PackArchive;
 import com.github.simcityexpansion.buildpack.model.PackBuildingEntry;
-import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
-import com.lowdragmc.lowdraglib2.gui.util.TreeNode;
+import com.github.simcityexpansion.buildpack.ui.tree.TreeBuilder;
+import com.github.simcityexpansion.buildpack.ui.tree.TreeNode;
 
 /**
- * 把三种来源的数据组织成 {@link com.lowdragmc.lowdraglib2.gui.ui.elements.TreeList}
- * 可用的层级树：分支节点内容为 {@code null}，叶子内容为对应的数据对象。
+ * 把三种来源的数据组织成 {@link TreeNode} 层级树：分支节点内容为 {@code null}，
+ * 叶子内容为对应的数据对象（{@link ImportFile} / {@link PackArchive} /
+ * {@link PackBuildingSelection} / {@link InstalledBuilding}）。
  */
 public final class DirectoryTree {
   private DirectoryTree() {}

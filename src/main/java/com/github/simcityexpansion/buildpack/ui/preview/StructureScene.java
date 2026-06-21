@@ -5,9 +5,6 @@ import java.util.List;
 
 import com.github.simcityexpansion.buildpack.convert.NbtStructure;
 import com.github.simcityexpansion.buildpack.ui.StructurePreviewScreen;
-import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
-import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
-import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import com.mojang.blaze3d.platform.Lighting;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -15,6 +12,8 @@ import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.block.BlockRenderDispatcher;
@@ -35,11 +34,10 @@ import net.minecraft.world.level.block.state.BlockState;
  * <p>两种模式：<b>静态小预览</b>（{@code interactive=false}，固定角度、居中、点击打开精细界面）
  * 与<b>精细界面</b>（{@code interactive=true}：左键旋转、右键平移、滚轮缩放、中键重置、切顶看内部）。
  *
- * <p>拖拽走 ldlib 拖拽源机制：{@code mouseDown} 调 {@link #startDrag} 开始，源元素收到
- * {@code "dragSourceUpdate"}（带起点 {@code dragStartX/Y} 与当前 {@code x/y}）。渲染/命中区域
- * 取<b>父容器内容盒</b>（本元素在居中布局里可能被算成 0 尺寸）。
+ * <p>右键平移依赖宿主屏幕把非左键拖拽转发到 {@link #applyDrag}（原版容器默认只把左键拖拽
+ * 转发给获得焦点的控件）。
  */
-public final class StructureScene extends UIElement {
+public final class StructureScene extends AbstractWidget {
 
   /** 实时渲染的方块数上限（超过则放弃，调用方回退静态等距图）。 */
   private static final int MAX_BLOCKS = 6000;
@@ -62,28 +60,10 @@ public final class StructureScene extends UIElement {
   private float panY;
   /** 只渲染 y < clipMaxY 的方块（切顶看内部）。 */
   private int clipMaxY = Integer.MAX_VALUE;
-  // 拖拽起点快照。
-  private int dragButton;
-  private float startYaw;
-  private float startPitch;
-  private float startPanX;
-  private float startPanY;
 
-  public StructureScene(boolean interactive) {
+  public StructureScene(int x, int y, int width, int height, boolean interactive) {
+    super(x, y, width, height, Component.empty());
     this.interactive = interactive;
-    layout(l -> l.widthStretch().heightStretch());
-    if (interactive) {
-      addEventListener("mouseDown", this::onMouseDown);
-      addEventListener("dragSourceUpdate", this::onDragSource);
-      addEventListener("mouseWheel", this::onWheel);
-    } else {
-      addEventListener("mouseDown", e -> {
-        if (e.button == 0 && structure != null) {
-          StructurePreviewScreen.open(structure);
-          e.stopPropagation();
-        }
-      });
-    }
   }
 
   /** 解析结构并重置相机；返回是否可渲染（空/超限返回 false）。 */
@@ -164,42 +144,25 @@ public final class StructureScene extends UIElement {
     clipMaxY = Math.min(structHeight, clipMaxY + 1);
   }
 
-  /** 渲染/命中区域：父容器内容盒（本元素自身尺寸不可靠）。 */
-  private float[] box() {
-    UIElement p = getParent();
-    if (p != null) {
-      return new float[] {p.getContentX(), p.getContentY(), p.getContentWidth(), p.getContentHeight()};
-    }
-    return new float[] {getPositionX(), getPositionY(), getSizeWidth(), getSizeHeight()};
-  }
-
-  @Override
-  public boolean isIntersectWithPoint(double localX, double localY) {
-    float[] b = box();
-    return isMouseOverRect(b[0], b[1], b[2], b[3], localX, localY);
-  }
-
   // ---- 渲染 ----
 
   @Override
-  public void drawContents(GUIContext ctx) {
+  protected void renderWidget(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
     if (blocks.isEmpty()) {
       return;
     }
-    float[] bx = box();
-    float x = bx[0];
-    float y = bx[1];
-    float w = bx[2];
-    float h = bx[3];
-    if (w <= 0.0f || h <= 0.0f) {
+    int x = getX();
+    int y = getY();
+    int w = getWidth();
+    int h = getHeight();
+    if (w <= 0 || h <= 0) {
       return;
     }
-    GuiGraphics g = ctx.graphics;
-    Minecraft mc = ctx.mc;
+    Minecraft mc = Minecraft.getInstance();
     float scale = Math.min(w, h) * 0.85f / maxDim * zoom;
 
     g.flush();
-    ctx.enableScissor(x, y, w, h);
+    g.enableScissor(x, y, x + w, y + h);
     PoseStack pose = g.pose();
     pose.pushPose();
     try {
@@ -231,55 +194,84 @@ public final class StructureScene extends UIElement {
       pose.popPose();
       Lighting.setupForFlatItems();
       g.flush();
-      ctx.disableScissor();
+      g.disableScissor();
     }
 
     Font font = mc.font;
     if (!interactive) {
       String hint = Component.translatable("buildpack.preview.zoom_hint").getString();
       g.drawString(font, hint, Math.round(x + (w - font.width(hint)) / 2.0f),
-          Math.round(y + h - font.lineHeight - 1), 0xC0FFFFFF, true);
+          y + h - font.lineHeight - 1, 0xC0FFFFFF, true);
     } else {
       if (structure != null) {
         String dims = structure.sizeX + "×" + structure.sizeY + "×" + structure.sizeZ
             + " · " + structure.countNonAir();
-        g.drawString(font, dims, Math.round(x + 3), Math.round(y + 3), 0xC0FFFFFF, true);
+        g.drawString(font, dims, x + 3, y + 3, 0xC0FFFFFF, true);
       }
       if (clipMaxY < structHeight) {
-        String layer = Component.translatable("buildpack.preview.layer", clipMaxY, structHeight).getString();
-        g.drawString(font, layer, Math.round(x + 3), Math.round(y + 3 + font.lineHeight + 1), 0xFFFFFF55, true);
+        String layer =
+            Component.translatable("buildpack.preview.layer", clipMaxY, structHeight).getString();
+        g.drawString(font, layer, x + 3, y + 3 + font.lineHeight + 1, 0xFFFFFF55, true);
       }
     }
   }
 
   // ---- 交互（仅精细界面） ----
 
-  private void onMouseDown(UIEvent e) {
-    if (e.button == 0 || e.button == 1) {
-      startDrag(this, null);
-      dragButton = e.button;
-      startYaw = yaw;
-      startPitch = pitch;
-      startPanX = panX;
-      startPanY = panY;
-    } else if (e.button == 2) {
+  @Override
+  public boolean mouseClicked(double mouseX, double mouseY, int button) {
+    if (!active || !visible || !isMouseOver(mouseX, mouseY)) {
+      return false;
+    }
+    if (!interactive) {
+      if (button == 0 && structure != null) {
+        StructurePreviewScreen.open(structure);
+        return true;
+      }
+      return false;
+    }
+    if (button == 2) {
       resetView();
     }
+    // 左/右键：消费点击以便宿主转发后续拖拽。
+    return true;
   }
 
-  private void onDragSource(UIEvent e) {
-    if (dragButton == 1) {
-      panX = startPanX + (e.x - e.dragStartX);
-      panY = startPanY + (e.y - e.dragStartY);
-    } else {
-      yaw = startYaw + (e.x - e.dragStartX);
-      pitch = Math.max(-89.0f, Math.min(89.0f, startPitch + (e.y - e.dragStartY)));
+  @Override
+  public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+    if (!interactive) {
+      return false;
     }
-    e.stopPropagation();
+    applyDrag(button, dragX, dragY);
+    return true;
   }
 
-  private void onWheel(UIEvent e) {
-    zoom = Math.max(0.25f, Math.min(6.0f, zoom * (e.deltaY > 0.0f ? 1.15f : 0.87f)));
-    e.stopPropagation();
+  /**
+   * 应用一次拖拽增量：左键旋转、右键平移。供宿主屏幕转发非左键拖拽
+   * （原版容器默认只把左键拖拽转发给获得焦点的控件）。
+   */
+  public void applyDrag(int button, double dragX, double dragY) {
+    if (!interactive) {
+      return;
+    }
+    if (button == 1) {
+      panX += (float) dragX;
+      panY += (float) dragY;
+    } else if (button == 0) {
+      yaw += (float) dragX;
+      pitch = Math.max(-89.0f, Math.min(89.0f, pitch + (float) dragY));
+    }
   }
+
+  @Override
+  public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+    if (!interactive || !isMouseOver(mouseX, mouseY)) {
+      return false;
+    }
+    zoom = Math.max(0.25f, Math.min(6.0f, zoom * (scrollY > 0.0 ? 1.15f : 0.87f)));
+    return true;
+  }
+
+  @Override
+  protected void updateWidgetNarration(NarrationElementOutput output) {}
 }

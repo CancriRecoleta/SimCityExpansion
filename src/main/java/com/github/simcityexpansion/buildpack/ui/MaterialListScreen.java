@@ -2,70 +2,77 @@ package com.github.simcityexpansion.buildpack.ui;
 
 import java.util.List;
 
-import com.github.simcityexpansion.buildpack.BuildPack;
 import com.github.simcityexpansion.buildpack.convert.StructureAnalysis.MaterialEntry;
 import com.github.simcityexpansion.buildpack.ui.component.MaterialListView;
-import com.lowdragmc.lowdraglib2.gui.holder.ModularUIScreen;
-import com.lowdragmc.lowdraglib2.gui.ui.ModularUI;
-import com.lowdragmc.lowdraglib2.gui.ui.UI;
-import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
-import dev.vfyjxf.taffy.style.AlignItems;
-import dev.vfyjxf.taffy.style.FlexDirection;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
-/** 材料清单独立页面：满屏分页展示某建筑的全部材料；「返回」回到建筑拓展包管理器。 */
-public final class MaterialListScreen extends ModularUIScreen {
+/** 材料清单独立页面：满屏分页展示某建筑的全部材料；「返回」回到打开它的界面。 */
+public final class MaterialListScreen extends Screen {
 
-  private MaterialListScreen(ModularUI modularUI) {
-    super(modularUI, Component.translatable("buildpack.materials.screen_title"));
+  private static final int PAD = 10;
+  private static final int TITLE_H = 12;
+  private static final int GAP = 4;
+  private static final int BUTTON_H = 20;
+
+  private final Screen previous;
+  private final String buildingName;
+  private final List<MaterialEntry> materials;
+
+  private MaterialListScreen(Screen previous, String buildingName, List<MaterialEntry> materials) {
+    super(Component.translatable("buildpack.materials.screen_title"));
+    this.previous = previous;
+    this.buildingName = buildingName;
+    this.materials = materials;
   }
 
-  /** 打开材料清单页面。 */
+  /** 打开材料清单页面（返回时切回打开它的界面）。 */
   public static void open(String buildingName, List<MaterialEntry> materials) {
-    // 记下打开它的管理器界面，返回时切回同一实例以保留选中。
-    Screen previous = Minecraft.getInstance().screen;
-    MaterialListView list = new MaterialListView();
+    Minecraft mc = Minecraft.getInstance();
+    mc.setScreen(new MaterialListScreen(mc.screen, buildingName, materials));
+  }
+
+  private int boxY() {
+    return PAD + TITLE_H + GAP;
+  }
+
+  private int boxHeight() {
+    return height - PAD - BUTTON_H - GAP - boxY();
+  }
+
+  @Override
+  protected void init() {
+    MaterialListView list = new MaterialListView(PAD + 2, boxY() + 2, width - PAD * 2 - 4, boxHeight() - 4);
     list.setMaterials(materials);
+    addRenderableWidget(list);
 
-    UIElement root = new UIElement();
-    root.addClass(BuildPack.cls("root"));
-    root.layout(layout -> layout.widthPercent(100.0f).heightPercent(100.0f)
-        .flexDirection(FlexDirection.COLUMN).paddingAll(10.0f).gapRow(4.0f));
+    addRenderableWidget(new ThemedButton(PAD, height - PAD - BUTTON_H, 80, BUTTON_H,
+        Component.translatable("buildpack.action.back"), this::onClose));
+  }
 
-    Label title = new Label();
-    title.addClass(BuildPack.cls("title"));
-    title.setValue(Component.translatable(
-        "buildpack.materials.screen_heading", buildingName, materials.size()));
-    title.layout(layout -> layout.marginLeft(10.0f).height(12.0f));
+  @Override
+  public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+    // 覆盖原版：不做高斯模糊背景。
+  }
 
-    UIElement box = new UIElement();
-    box.addClass(BuildPack.cls("browser"));
-    box.layout(layout -> layout.flexDirection(FlexDirection.COLUMN)
-        .paddingAll(2.0f).widthStretch().flexGrow(1.0f));
-    box.addChild(list);
+  @Override
+  public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+    g.fill(0, 0, width, height, BuildPackTheme.ROOT_BG);
+    BuildPackTheme.panel(g, PAD, boxY(), width - PAD * 2, boxHeight());
+    g.drawString(font, Component.translatable(
+        "buildpack.materials.screen_heading", buildingName, materials.size()),
+        PAD + 10, PAD, BuildPackTheme.TITLE, true);
+    super.render(g, mouseX, mouseY, partialTick);
+  }
 
-    Button back = new Button().setText(Component.translatable("buildpack.action.back"));
-    back.addClass(BuildPack.cls("action"));
-    back.setOnClick(event -> {
-      if (previous != null) {
-        Minecraft.getInstance().setScreen(previous);
-      } else {
-        BuildPackScreen.open();
-      }
-    });
-
-    UIElement bottom = new UIElement();
-    bottom.layout(layout -> layout.flexDirection(FlexDirection.ROW)
-        .alignItems(AlignItems.CENTER).widthStretch().height(22.0f));
-    bottom.addChild(back);
-
-    root.addChildren(title, box, bottom);
-
-    UI ui = UI.of(root, BuildPack.STYLESHEET);
-    Minecraft.getInstance().setScreen(new MaterialListScreen(ModularUI.of(ui)));
+  @Override
+  public void onClose() {
+    if (previous != null) {
+      minecraft.setScreen(previous);
+    } else {
+      BuildPackScreen.open();
+    }
   }
 }

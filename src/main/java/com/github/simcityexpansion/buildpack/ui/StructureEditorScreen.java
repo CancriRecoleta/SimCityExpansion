@@ -4,9 +4,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
+import java.util.List;
 
-import com.github.simcityexpansion.buildpack.BuildPack;
 import com.github.simcityexpansion.buildpack.I18nLog;
 import com.github.simcityexpansion.buildpack.LocalizedIOException;
 import com.github.simcityexpansion.buildpack.convert.NbtStructure;
@@ -14,208 +15,248 @@ import com.github.simcityexpansion.buildpack.convert.StructureNbtWriter;
 import com.github.simcityexpansion.buildpack.convert.StructureTransforms;
 import com.github.simcityexpansion.buildpack.model.ImportScanner;
 import com.github.simcityexpansion.buildpack.ui.preview.StructureScene;
-import com.lowdragmc.lowdraglib2.gui.holder.ModularUIScreen;
-import com.lowdragmc.lowdraglib2.gui.ui.ModularUI;
-import com.lowdragmc.lowdraglib2.gui.ui.UI;
-import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.TextField;
-import dev.vfyjxf.taffy.style.AlignItems;
-import dev.vfyjxf.taffy.style.FlexDirection;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 建筑结构变换编辑器（重新设计）：左侧满高 3D 主视图（拖动旋转/平移/缩放/切顶，左上角实时显示尺寸），
- * 右侧分组工具面板（变换 / 编辑 / 历史 / 视图 / 保存）。「保存」把结果写到导入目录（.nbt）。
+ * 建筑结构变换编辑器：左侧满高 3D 主视图（拖动旋转/平移/缩放/切顶），右侧分组工具面板
+ * （变换 / 编辑 / 历史 / 视图 / 保存）。「保存」把结果写到导入目录（.nbt）。
  */
-public final class StructureEditorScreen extends ModularUIScreen {
+public final class StructureEditorScreen extends Screen {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(StructureEditorScreen.class);
 
-  private StructureEditorScreen(ModularUI modularUI) {
-    super(modularUI, Component.translatable("buildpack.editor.title"));
+  private static final int PAD = 10;
+  private static final int TITLE_H = 12;
+  private static final int GAP = 4;
+  private static final int STATUS_H = 12;
+  private static final int TOOL_W = 150;
+  private static final int TOOL_INNER = TOOL_W - 8;
+  private static final int BTN_H = 16;
+  private static final int ROW_H = 18;
+
+  /** 一条分组小标题：文本 + 绘制坐标。 */
+  private record SectionLabel(Component text, int x, int y) {}
+
+  private final Screen previous;
+  private final NbtStructure original;
+  private final StructureScene scene;
+  private final Deque<NbtStructure> undo = new ArrayDeque<>();
+  private final Deque<NbtStructure> redo = new ArrayDeque<>();
+  private final List<SectionLabel> sections = new ArrayList<>();
+
+  private NbtStructure work;
+  private String outName;
+  private Component status = Component.empty();
+  private boolean statusError;
+
+  private StructureEditorScreen(Screen previous, NbtStructure original, StructureScene scene,
+      String outName) {
+    super(Component.translatable("buildpack.editor.title"));
+    this.previous = previous;
+    this.original = original;
+    this.scene = scene;
+    this.work = original;
+    this.outName = outName;
   }
 
   /** 打开编辑器（结构超限/无法渲染时不打开）。 */
   public static void open(NbtStructure original, String baseName) {
-    StructureScene scene = new StructureScene(true);
+    StructureScene scene = new StructureScene(0, 0, 0, 0, true);
     if (!scene.setStructure(original)) {
       return;
     }
-    NbtStructure[] work = {original};
-    Deque<NbtStructure> undo = new ArrayDeque<>();
-    Deque<NbtStructure> redo = new ArrayDeque<>();
-    String[] outName = {sanitize(baseName) + "_edited"};
-    Screen previous = Minecraft.getInstance().screen;
-
-    UIElement root = new UIElement();
-    root.addClass(BuildPack.cls("root"));
-    root.layout(layout -> layout.widthPercent(100.0f).heightPercent(100.0f)
-        .flexDirection(FlexDirection.COLUMN).paddingAll(10.0f).gapRow(4.0f));
-
-    Label title = new Label();
-    title.addClass(BuildPack.cls("title"));
-    title.setValue(Component.translatable("buildpack.editor.title"));
-    title.layout(layout -> layout.marginLeft(10.0f).height(12.0f));
-
-    UIElement sceneBox = new UIElement();
-    sceneBox.addClass(BuildPack.cls("preview"));
-    sceneBox.layout(layout -> layout.flexDirection(FlexDirection.COLUMN).flexGrow(1.0f).heightStretch());
-    sceneBox.addChild(scene);
-
-    Label status = new Label();
-    status.addClass(BuildPack.cls("status-message"));
-    status.setValue(Component.empty());
-
-    // ---- 工具面板按钮 ----
-    Button rotate = button("buildpack.editor.rotate");
-    rotate.setOnClick(e -> apply(scene, work, undo, redo, StructureTransforms.rotateClockwise(work[0])));
-    Button rotateCcw = button("buildpack.editor.rotate_ccw");
-    rotateCcw.setOnClick(e -> apply(scene, work, undo, redo, StructureTransforms.rotateCounterClockwise(work[0])));
-    Button mirrorX = button("buildpack.editor.mirror_x");
-    mirrorX.setOnClick(e -> apply(scene, work, undo, redo, StructureTransforms.mirrorX(work[0])));
-    Button mirrorZ = button("buildpack.editor.mirror_z");
-    mirrorZ.setOnClick(e -> apply(scene, work, undo, redo, StructureTransforms.mirrorZ(work[0])));
-    Button crop = button("buildpack.editor.crop");
-    crop.setOnClick(e -> apply(scene, work, undo, redo, StructureTransforms.crop(work[0])));
-    Button hollow = button("buildpack.editor.hollow");
-    hollow.setOnClick(e -> apply(scene, work, undo, redo, StructureTransforms.hollow(work[0])));
-
-    Button remove = button("buildpack.editor.remove");
-    remove.setOnClick(e -> {
-      Screen editor = Minecraft.getInstance().screen;
-      BlockPickerScreen.open(work[0], id -> {
-        apply(scene, work, undo, redo, StructureTransforms.removeBlock(work[0], id));
-        Minecraft.getInstance().setScreen(editor);
-      });
-    });
-    Button replace = button("buildpack.editor.replace");
-    replace.setOnClick(e -> {
-      Screen editor = Minecraft.getInstance().screen;
-      BlockPickerScreen.open(work[0], from ->
-          BlockPickerScreen.open(work[0], to -> {
-            apply(scene, work, undo, redo, StructureTransforms.replaceBlock(work[0], from, to));
-            Minecraft.getInstance().setScreen(editor);
-          }));
-    });
-
-    Button undoBtn = button("buildpack.editor.undo");
-    undoBtn.setOnClick(e -> {
-      if (!undo.isEmpty()) {
-        redo.push(work[0]);
-        work[0] = undo.pop();
-        scene.setStructure(work[0], false);
-      }
-    });
-    Button redoBtn = button("buildpack.editor.redo");
-    redoBtn.setOnClick(e -> {
-      if (!redo.isEmpty()) {
-        undo.push(work[0]);
-        work[0] = redo.pop();
-        scene.setStructure(work[0], false);
-      }
-    });
-    Button revert = button("buildpack.editor.revert");
-    revert.setOnClick(e -> apply(scene, work, undo, redo, original));
-
-    Button peelDown = button("buildpack.preview.peel");
-    peelDown.setOnClick(e -> scene.peelTop());
-    Button peelUp = button("buildpack.preview.unpeel");
-    peelUp.setOnClick(e -> scene.unpeelTop());
-    Button resetView = button("buildpack.preview.reset");
-    resetView.setOnClick(e -> scene.resetView());
-
-    TextField nameField = new TextField();
-    nameField.setAnyString();
-    nameField.setText(outName[0]);
-    nameField.setTextResponder(value -> outName[0] = value);
-    nameField.layout(layout -> layout.widthStretch().height(16.0f));
-
-    Button save = button("buildpack.editor.save");
-    save.setOnClick(e -> save(work[0], outName[0], status));
-    Button back = button("buildpack.action.back");
-    back.setOnClick(e -> {
-      if (previous != null) {
-        Minecraft.getInstance().setScreen(previous);
-      } else {
-        BuildPackScreen.open();
-      }
-    });
-
-    UIElement tools = new UIElement();
-    tools.addClass(BuildPack.cls("browser"));
-    tools.layout(layout -> layout.flexDirection(FlexDirection.COLUMN)
-        .gapRow(3.0f).paddingAll(4.0f).width(150.0f).heightStretch());
-    tools.addChildren(
-        section("buildpack.editor.group.transform"),
-        row(rotate, rotateCcw), row(mirrorX, mirrorZ), row(crop, hollow),
-        section("buildpack.editor.group.edit"),
-        row(remove, replace),
-        section("buildpack.editor.group.history"),
-        row(undoBtn, redoBtn), row(revert),
-        section("buildpack.editor.group.view"),
-        row(peelDown, peelUp), row(resetView),
-        section("buildpack.editor.group.save"),
-        nameField, row(save, back));
-
-    UIElement body = new UIElement();
-    body.layout(layout -> layout.flexDirection(FlexDirection.ROW)
-        .gapColumn(4.0f).widthStretch().flexGrow(1.0f));
-    body.addChildren(sceneBox, tools);
-
-    root.addChildren(title, body, status);
-
-    UI ui = UI.of(root, BuildPack.STYLESHEET);
-    Minecraft.getInstance().setScreen(new StructureEditorScreen(ModularUI.of(ui)));
+    Minecraft mc = Minecraft.getInstance();
+    mc.setScreen(new StructureEditorScreen(mc.screen, original, scene, sanitize(baseName) + "_edited"));
   }
 
-  /** 一排按钮（等宽）。 */
-  private static UIElement row(Button... buttons) {
-    UIElement r = new UIElement();
-    r.layout(layout -> layout.flexDirection(FlexDirection.ROW)
-        .alignItems(AlignItems.CENTER).gapColumn(3.0f).widthStretch().height(18.0f));
-    for (Button button : buttons) {
-      button.layout(layout -> layout.flexGrow(1.0f).heightStretch());
-    }
-    r.addChildren(buttons);
-    return r;
+  private int bodyY() {
+    return PAD + TITLE_H + GAP;
   }
 
-  private static Label section(String key) {
-    Label label = new Label();
-    label.addClass(BuildPack.cls("form-title"));
-    label.setValue(Component.translatable(key));
-    label.layout(layout -> layout.marginTop(2.0f).height(10.0f));
-    return label;
+  private int bodyHeight() {
+    return height - PAD - STATUS_H - GAP - bodyY();
   }
 
-  private static void apply(StructureScene scene, NbtStructure[] work,
-      Deque<NbtStructure> undo, Deque<NbtStructure> redo, NbtStructure result) {
-    undo.push(work[0]);
+  private int toolX() {
+    return width - PAD - TOOL_W;
+  }
+
+  @Override
+  protected void init() {
+    sections.clear();
+
+    int leftW = toolX() - GAP - PAD;
+    scene.setX(PAD + 1);
+    scene.setY(bodyY() + 1);
+    scene.setWidth(leftW - 2);
+    scene.setHeight(bodyHeight() - 2);
+    addRenderableWidget(scene);
+
+    int x = toolX() + 4;
+    int y = bodyY() + 4;
+    y = section("buildpack.editor.group.transform", x, y);
+    y = row2(x, y,
+        "buildpack.editor.rotate", () -> apply(StructureTransforms.rotateClockwise(work)),
+        "buildpack.editor.rotate_ccw", () -> apply(StructureTransforms.rotateCounterClockwise(work)));
+    y = row2(x, y,
+        "buildpack.editor.mirror_x", () -> apply(StructureTransforms.mirrorX(work)),
+        "buildpack.editor.mirror_z", () -> apply(StructureTransforms.mirrorZ(work)));
+    y = row2(x, y,
+        "buildpack.editor.crop", () -> apply(StructureTransforms.crop(work)),
+        "buildpack.editor.hollow", () -> apply(StructureTransforms.hollow(work)));
+
+    y = section("buildpack.editor.group.edit", x, y);
+    y = row2(x, y,
+        "buildpack.editor.remove", () -> openRemove(),
+        "buildpack.editor.replace", () -> openReplace());
+
+    y = section("buildpack.editor.group.history", x, y);
+    y = row2(x, y,
+        "buildpack.editor.undo", () -> doUndo(),
+        "buildpack.editor.redo", () -> doRedo());
+    y = row1(x, y, "buildpack.editor.revert", () -> apply(original));
+
+    y = section("buildpack.editor.group.view", x, y);
+    y = row2(x, y,
+        "buildpack.preview.peel", () -> scene.peelTop(),
+        "buildpack.preview.unpeel", () -> scene.unpeelTop());
+    y = row1(x, y, "buildpack.preview.reset", () -> scene.resetView());
+
+    y = section("buildpack.editor.group.save", x, y);
+    EditBox nameField = new EditBox(font, x, y, TOOL_INNER, BTN_H, Component.empty());
+    nameField.setMaxLength(128);
+    nameField.setValue(outName);
+    nameField.setResponder(value -> outName = value);
+    addRenderableWidget(nameField);
+    y += ROW_H;
+    row2(x, y,
+        "buildpack.editor.save", () -> save(),
+        "buildpack.action.back", () -> onClose());
+  }
+
+  private int section(String key, int x, int y) {
+    sections.add(new SectionLabel(Component.translatable(key), x, y + 2));
+    return y + 12;
+  }
+
+  private int row1(int x, int y, String key, Runnable onPress) {
+    addRenderableWidget(
+        new ThemedButton(x, y, TOOL_INNER, BTN_H, Component.translatable(key), onPress));
+    return y + ROW_H;
+  }
+
+  private int row2(int x, int y, String k1, Runnable p1, String k2, Runnable p2) {
+    int w = (TOOL_INNER - 3) / 2;
+    addRenderableWidget(new ThemedButton(x, y, w, BTN_H, Component.translatable(k1), p1));
+    addRenderableWidget(
+        new ThemedButton(x + w + 3, y, TOOL_INNER - w - 3, BTN_H, Component.translatable(k2), p2));
+    return y + ROW_H;
+  }
+
+  // ---- 操作 ----
+
+  private void apply(NbtStructure result) {
+    undo.push(work);
     redo.clear();
-    work[0] = result;
+    work = result;
     scene.setStructure(result, false);
   }
 
-  private static void save(NbtStructure structure, String name, Label status) {
+  private void doUndo() {
+    if (!undo.isEmpty()) {
+      redo.push(work);
+      work = undo.pop();
+      scene.setStructure(work, false);
+    }
+  }
+
+  private void doRedo() {
+    if (!redo.isEmpty()) {
+      undo.push(work);
+      work = redo.pop();
+      scene.setStructure(work, false);
+    }
+  }
+
+  private void openRemove() {
+    BlockPickerScreen.open(work, id -> {
+      apply(StructureTransforms.removeBlock(work, id));
+      minecraft.setScreen(this);
+    });
+  }
+
+  private void openReplace() {
+    BlockPickerScreen.open(work, from ->
+        BlockPickerScreen.open(work, to -> {
+          apply(StructureTransforms.replaceBlock(work, from, to));
+          minecraft.setScreen(this);
+        }));
+  }
+
+  private void save() {
     try {
       Path dir = ImportScanner.ensureImportDir();
-      Path target = uniqueTarget(dir, sanitize(name) + ".nbt");
-      StructureNbtWriter.write(structure, target);
-      BuildPackView.setLastTab(SourceTab.IMPORT);
+      Path target = uniqueTarget(dir, sanitize(outName) + ".nbt");
+      StructureNbtWriter.write(work, target);
+      BuildPackScreen.setLastTab(SourceTab.IMPORT);
       BuildPackScreen.open();
     } catch (IOException | RuntimeException e) {
       I18nLog.warn(LOGGER, e, "buildpack.log.export_failed");
-      status.setValue(Component.translatable(
-          "buildpack.editor.save_failed", LocalizedIOException.messageOf(e)));
-      status.addClass(BuildPack.cls("status-error"));
+      status = Component.translatable("buildpack.editor.save_failed", LocalizedIOException.messageOf(e));
+      statusError = true;
     }
   }
+
+  // ---- 渲染 ----
+
+  @Override
+  public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+    // 覆盖原版：不做高斯模糊背景；遮罩由 render() 自行绘制。
+  }
+
+  @Override
+  public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+    g.fill(0, 0, width, height, BuildPackTheme.ROOT_BG);
+    int leftW = toolX() - GAP - PAD;
+    BuildPackTheme.previewPanel(g, PAD, bodyY(), leftW, bodyHeight());
+    BuildPackTheme.panel(g, toolX(), bodyY(), TOOL_W, bodyHeight());
+    g.drawString(font, Component.translatable("buildpack.editor.title"),
+        PAD + 10, PAD, BuildPackTheme.TITLE, true);
+    for (SectionLabel label : sections) {
+      g.drawString(font, label.text(), label.x(), label.y(), BuildPackTheme.TITLE, true);
+    }
+    super.render(g, mouseX, mouseY, partialTick);
+    if (!status.getString().isEmpty()) {
+      g.drawString(font, status, PAD, height - PAD - STATUS_H,
+          statusError ? BuildPackTheme.MESSAGE_ERROR : BuildPackTheme.MESSAGE_OK, true);
+    }
+  }
+
+  @Override
+  public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+    if (button != 0 && scene.isMouseOver(mouseX, mouseY)) {
+      scene.applyDrag(button, dragX, dragY);
+      return true;
+    }
+    return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+  }
+
+  @Override
+  public void onClose() {
+    if (previous != null) {
+      minecraft.setScreen(previous);
+    } else {
+      BuildPackScreen.open();
+    }
+  }
+
+  // ---- 工具 ----
 
   private static String sanitize(String name) {
     String cleaned = name == null ? "" : name.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
@@ -232,11 +273,5 @@ public final class StructureEditorScreen extends ModularUIScreen {
       target = dir.resolve(base + "_" + suffix++ + extension);
     }
     return target;
-  }
-
-  private static Button button(String key) {
-    Button button = new Button().setText(Component.translatable(key));
-    button.addClass(BuildPack.cls("action"));
-    return button;
   }
 }

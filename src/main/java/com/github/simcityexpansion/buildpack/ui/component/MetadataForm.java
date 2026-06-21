@@ -1,126 +1,150 @@
 package com.github.simcityexpansion.buildpack.ui.component;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
-import com.github.simcityexpansion.buildpack.BuildPack;
 import com.github.simcityexpansion.buildpack.model.BuildingCategory;
 import com.github.simcityexpansion.buildpack.model.BuildingMetadata;
-import com.github.simcityexpansion.buildpack.ui.UiCheckbox;
-import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.Selector;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.TextField;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.Toggle;
-import dev.vfyjxf.taffy.style.AlignItems;
-import dev.vfyjxf.taffy.style.FlexDirection;
+import com.github.simcityexpansion.buildpack.ui.BuildPackTheme;
+import com.github.simcityexpansion.buildpack.ui.ThemedButton;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.Checkbox;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.network.chat.Component;
 
 /**
- * .sk 元数据编辑表单：分类下拉 + 名称/价格/作者/描述/标签/岗位输入框，
- * 双向绑定到一个 {@link BuildingMetadata} 模型。
+ * .sk 元数据编辑表单：分类（点击循环的 {@link ThemedButton}）+ 名称/价格/作者/描述/标签/岗位输入框
+ * （{@link EditBox}）+「覆盖同名建筑」勾选框（{@link Checkbox}），双向绑定到一个
+ * {@link BuildingMetadata} 模型。控件由宿主屏幕在 {@link #rebuild} 时创建并登记，
+ * 标签文本由 {@link #renderLabels} 绘制。
  */
 public final class MetadataForm {
 
-  private final UIElement root;
-  private final Selector<BuildingCategory> categorySelector;
-  private final TextField nameField;
-  private final TextField amountField;
-  private final TextField authorField;
-  private final TextField descriptionField;
-  private final TextField tagsField;
-  private final TextField jobTypeField;
-  private final Toggle overwriteToggle;
+  private static final int LABEL_W = 44;
+  private static final int ROW_H = 16;
+  private static final int ROW_GAP = 3;
+
+  /** 一行标签：文本 + 绘制坐标。 */
+  private record FieldLabel(Component text, int x, int y) {}
 
   private BuildingMetadata model = new BuildingMetadata();
+  private boolean editable;
+  private boolean overwrite;
 
-  public MetadataForm() {
-    root = new UIElement();
-    root.addClass(BuildPack.cls("form"));
-    root.layout(layout -> layout.flexDirection(FlexDirection.COLUMN)
-        .gapRow(3.0f).widthStretch());
+  private Font font;
+  private int titleX;
+  private int titleY;
+  private final List<FieldLabel> labels = new ArrayList<>();
 
-    Label sectionTitle = new Label();
-    sectionTitle.addClass(BuildPack.cls("form-title"));
-    sectionTitle.setValue(Component.translatable("buildpack.form.title"));
+  private ThemedButton categoryButton;
+  private EditBox nameField;
+  private EditBox amountField;
+  private EditBox authorField;
+  private EditBox descriptionField;
+  private EditBox tagsField;
+  private EditBox jobTypeField;
+  private Checkbox overwriteCheckbox;
 
-    categorySelector = new Selector<>();
-    categorySelector.addClass(BuildPack.cls("form-category"));
-    categorySelector.setCandidates(List.of(BuildingCategory.values()));
-    // 自定义渲染并对 null 安全：Selector 在设置 provider 时会立即用「当前选中值」试渲染一次，
-    // 而此刻尚未 setSelected，值为 null，LDLib 自带的 UIElementProvider.text 会因此 NPE。
-    categorySelector.setCandidateUIProvider(category -> {
-      Label option = new Label();
-      option.setValue(category == null ? Component.empty() : category.displayName());
-      return option;
-    });
-    categorySelector.setSelected(BuildingCategory.OTHER);
-    categorySelector.setOnValueChanged(category -> {
-      if (category != null) {
-        model.category = category;
-      }
-    });
-    categorySelector.layout(layout -> layout.height(16.0f).flexGrow(1.0f));
+  /** 重建并放置全部表单控件（每次屏幕 init 调用一次），返回内容底部 y。 */
+  public int rebuild(Font font, int x, int y, int width, Consumer<AbstractWidget> add) {
+    this.font = font;
+    labels.clear();
+    titleX = x;
+    titleY = y;
 
-    nameField = field((meta, value) -> meta.name = value);
-    amountField = field((meta, value) -> meta.amount = value);
-    authorField = field((meta, value) -> meta.author = value);
-    descriptionField = field((meta, value) -> meta.description = value);
-    tagsField = field((meta, value) -> meta.tags = value);
-    jobTypeField = field((meta, value) -> meta.jobType = value);
+    int controlX = x + LABEL_W;
+    int controlW = Math.max(20, width - LABEL_W);
+    int cursor = y + font.lineHeight + ROW_GAP;
 
-    // 覆盖开关是安装行为选项而非 .sk 字段，跨选择保留用户偏好。
-    // 与来源页签同款的「带勾的勾选框」（空框 / 带勾框）。
-    overwriteToggle = new Toggle();
-    overwriteToggle.addClass(BuildPack.cls("form-overwrite"));
-    overwriteToggle.setText(Component.translatable("buildpack.form.overwrite"));
-    UiCheckbox.style(overwriteToggle);
-    overwriteToggle.setOn(false, false);
-    overwriteToggle.style(style ->
-        style.tooltips(Component.translatable("buildpack.tooltip.overwrite")));
-    overwriteToggle.layout(layout -> layout.height(UiCheckbox.HEIGHT));
+    categoryButton = new ThemedButton(controlX, cursor, controlW, ROW_H,
+        model.category.displayName(), this::cycleCategory);
+    add.accept(categoryButton);
+    labels.add(new FieldLabel(Component.translatable("buildpack.form.category"), x, cursor));
+    cursor += ROW_H + ROW_GAP;
 
-    root.addChildren(
-        sectionTitle,
-        row("category", categorySelector),
-        row("name", nameField),
-        row("amount", amountField),
-        row("author", authorField),
-        row("description", descriptionField),
-        row("tags", tagsField),
-        row("job_type", jobTypeField),
-        overwriteToggle);
+    nameField = field("name", x, controlX, cursor, controlW, add, (m, v) -> m.name = v);
+    cursor += ROW_H + ROW_GAP;
+    amountField = field("amount", x, controlX, cursor, controlW, add, (m, v) -> m.amount = v);
+    cursor += ROW_H + ROW_GAP;
+    authorField = field("author", x, controlX, cursor, controlW, add, (m, v) -> m.author = v);
+    cursor += ROW_H + ROW_GAP;
+    descriptionField =
+        field("description", x, controlX, cursor, controlW, add, (m, v) -> m.description = v);
+    cursor += ROW_H + ROW_GAP;
+    tagsField = field("tags", x, controlX, cursor, controlW, add, (m, v) -> m.tags = v);
+    cursor += ROW_H + ROW_GAP;
+    jobTypeField = field("job_type", x, controlX, cursor, controlW, add, (m, v) -> m.jobType = v);
+    cursor += ROW_H + ROW_GAP;
+
+    overwriteCheckbox = Checkbox.builder(Component.translatable("buildpack.form.overwrite"), font)
+        .pos(x, cursor)
+        .selected(overwrite)
+        .onValueChange((checkbox, value) -> overwrite = value)
+        .build();
+    add.accept(overwriteCheckbox);
+    cursor += ROW_H + ROW_GAP;
+
+    applyModel();
+    return cursor;
   }
 
-  /** 安装时是否覆盖同名建筑。 */
-  public boolean overwrite() {
-    return Boolean.TRUE.equals(overwriteToggle.getValue());
-  }
-
-  /** 返回表单根元素。 */
-  public UIElement root() {
-    return root;
+  private EditBox field(String key, int labelX, int controlX, int y, int controlW,
+      Consumer<AbstractWidget> add, BiConsumer<BuildingMetadata, String> writer) {
+    EditBox box = new EditBox(font, controlX, y, controlW, ROW_H, Component.empty());
+    box.setMaxLength(256);
+    box.setResponder(value -> writer.accept(model, value));
+    add.accept(box);
+    labels.add(new FieldLabel(Component.translatable("buildpack.form." + key), labelX, y));
+    return box;
   }
 
   /** 绑定新模型并刷新各输入框；{@code editable} 为 false 时全部置灰只读。 */
   public void setModel(BuildingMetadata meta, boolean editable) {
     this.model = meta;
-    categorySelector.setSelected(meta.category);
-    nameField.setText(meta.name);
-    amountField.setText(meta.amount);
-    authorField.setText(meta.author);
-    descriptionField.setText(meta.description);
-    tagsField.setText(meta.tags);
-    jobTypeField.setText(meta.jobType);
+    this.editable = editable;
+    applyModel();
+  }
 
-    categorySelector.setActive(editable);
-    nameField.setActive(editable);
-    amountField.setActive(editable);
-    authorField.setActive(editable);
-    descriptionField.setActive(editable);
-    tagsField.setActive(editable);
-    jobTypeField.setActive(editable);
-    overwriteToggle.setActive(editable);
+  private void applyModel() {
+    if (categoryButton == null) {
+      return;
+    }
+    categoryButton.setMessage(model.category.displayName());
+    nameField.setValue(model.name);
+    amountField.setValue(model.amount);
+    authorField.setValue(model.author);
+    descriptionField.setValue(model.description);
+    tagsField.setValue(model.tags);
+    jobTypeField.setValue(model.jobType);
+
+    categoryButton.active = editable;
+    setEditable(nameField);
+    setEditable(amountField);
+    setEditable(authorField);
+    setEditable(descriptionField);
+    setEditable(tagsField);
+    setEditable(jobTypeField);
+    overwriteCheckbox.active = editable;
+  }
+
+  private void setEditable(EditBox field) {
+    field.setEditable(editable);
+    field.active = editable;
+  }
+
+  private void cycleCategory() {
+    BuildingCategory[] values = BuildingCategory.values();
+    model.category = values[(model.category.ordinal() + 1) % values.length];
+    categoryButton.setMessage(model.category.displayName());
+  }
+
+  /** 安装时是否覆盖同名建筑。 */
+  public boolean overwrite() {
+    return overwrite;
   }
 
   /** 当前绑定的模型。 */
@@ -128,30 +152,16 @@ public final class MetadataForm {
     return model;
   }
 
-  private TextField field(BiConsumer<BuildingMetadata, String> writer) {
-    TextField field = new TextField();
-    field.addClass(BuildPack.cls("form-field"));
-    field.setAnyString();
-    field.setTextResponder(value -> writer.accept(model, value));
-    field.layout(layout -> layout.height(16.0f).flexGrow(1.0f));
-    return field;
-  }
-
-  /** 表单行：标签 + 控件，整行带该 .sk 字段的格式说明 tooltip。 */
-  private UIElement row(String fieldKey, UIElement control) {
-    UIElement row = new UIElement();
-    row.addClass(BuildPack.cls("form-row"));
-    row.layout(layout -> layout.flexDirection(FlexDirection.ROW)
-        .alignItems(AlignItems.CENTER).gapColumn(3.0f).widthStretch());
-    row.style(style ->
-        style.tooltips(Component.translatable("buildpack.tooltip.form." + fieldKey)));
-
-    Label label = new Label();
-    label.addClass(BuildPack.cls("form-label"));
-    label.setValue(Component.translatable("buildpack.form." + fieldKey));
-    label.layout(layout -> layout.width(44.0f));
-
-    row.addChildren(label, control);
-    return row;
+  /** 绘制分组标题与各行标签（控件本身由屏幕的 widget 渲染绘出）。 */
+  public void renderLabels(GuiGraphics g) {
+    if (font == null) {
+      return;
+    }
+    g.drawString(font, Component.translatable("buildpack.form.title"),
+        titleX, titleY, BuildPackTheme.TITLE, true);
+    for (FieldLabel label : labels) {
+      g.drawString(font, label.text(), label.x(),
+          label.y() + (ROW_H - font.lineHeight) / 2, BuildPackTheme.LABEL, true);
+    }
   }
 }

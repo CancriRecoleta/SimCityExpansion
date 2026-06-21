@@ -6,7 +6,7 @@ import java.util.List;
 
 import com.github.simcityexpansion.buildpack.convert.NbtStructure;
 import com.github.simcityexpansion.buildpack.convert.StructureAnalysis;
-import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
+import net.minecraft.client.gui.components.AbstractWidget;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -33,7 +33,7 @@ public final class IsoPreview {
 
   /** 渲染等距 3D 预览；不适用时返回 null。 */
   @Nullable
-  public static UIElement create(NbtStructure s) {
+  public static AbstractWidget create(NbtStructure s) {
     int sx = s.sizeX;
     int sy = s.sizeY;
     int sz = s.sizeZ;

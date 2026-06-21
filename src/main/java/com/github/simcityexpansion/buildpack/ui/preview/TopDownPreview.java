@@ -2,7 +2,7 @@ package com.github.simcityexpansion.buildpack.ui.preview;
 
 import com.github.simcityexpansion.buildpack.convert.NbtStructure;
 import com.github.simcityexpansion.buildpack.convert.StructureAnalysis;
-import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
+import net.minecraft.client.gui.components.AbstractWidget;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -17,7 +17,7 @@ public final class TopDownPreview {
 
   /** 渲染俯视图元素；结构过大或全空时返回 null。 */
   @Nullable
-  public static UIElement create(NbtStructure structure) {
+  public static AbstractWidget create(NbtStructure structure) {
     int sizeX = structure.sizeX;
     int sizeZ = structure.sizeZ;
     if (sizeX <= 0 || sizeZ <= 0 || (long) sizeX * sizeZ > MAX_FOOTPRINT) {

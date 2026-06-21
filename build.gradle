@@ -114,8 +114,6 @@ dependencies {
     implementation "curse.maven:modern-ui-352491:6956436"
     implementation "curse.maven:jei-238222:7420587"
     implementation fileTree(dir: 'libs', includes: ['*.jar'])
-    compileOnly files("libs/taffy-1.1.4.jar")
-    compileOnly files("libs/yoga-1.0.0.jar")
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.
