@@ -1,5 +1,7 @@
 package com.github.simcityexpansion.buildpack.ui;
 
+import java.util.function.BooleanSupplier;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -13,10 +15,17 @@ import net.minecraft.network.chat.Component;
  */
 public final class ThemedButton extends AbstractButton {
   private final Runnable action;
+  private BooleanSupplier selected;
 
   public ThemedButton(int x, int y, int width, int height, Component message, Runnable action) {
     super(x, y, width, height, message);
     this.action = action;
+  }
+
+  /** Optional selected-state predicate; when true the button shows a highlighted appearance. */
+  public ThemedButton selected(BooleanSupplier selected) {
+    this.selected = selected;
+    return this;
   }
 
   @Override
@@ -27,6 +36,7 @@ public final class ThemedButton extends AbstractButton {
   @Override
   protected void renderWidget(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
     boolean hovered = active && isMouseOver(mouseX, mouseY);
+    boolean sel = active && selected != null && selected.getAsBoolean();
     int bg;
     int border;
     int textColor;
@@ -34,6 +44,10 @@ public final class ThemedButton extends AbstractButton {
       bg = BuildPackTheme.BUTTON_BG_DISABLED;
       border = BuildPackTheme.BUTTON_BORDER;
       textColor = BuildPackTheme.BUTTON_TEXT_DISABLED;
+    } else if (sel) {
+      bg = BuildPackTheme.BUTTON_BG_HOVER;
+      border = 0xFFFFCC55;
+      textColor = BuildPackTheme.BUTTON_TEXT;
     } else if (hovered) {
       bg = BuildPackTheme.BUTTON_BG_HOVER;
       border = BuildPackTheme.BUTTON_BORDER_HOVER;

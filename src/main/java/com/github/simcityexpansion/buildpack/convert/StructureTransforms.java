@@ -23,6 +23,9 @@ import net.minecraft.world.level.block.state.BlockState;
 public final class StructureTransforms {
   private StructureTransforms() {}
 
+  /** 「填充」可处理的包围体积上限（再大放弃，避免泛洪填充耗时/占用过多内存）。 */
+  private static final int FILL_MAX_VOLUME = 2_000_000;
+
   /** 绕 Y 轴顺时针旋转 90°（俯视）。 */
   public static NbtStructure rotateClockwise(NbtStructure s) {
     List<PaletteEntry> palette = mapPalette(s.palette, state -> state.rotate(Rotation.CLOCKWISE_90));
@@ -59,17 +62,23 @@ public final class StructureTransforms {
     return rotateClockwise(rotateClockwise(rotateClockwise(s)));
   }
 
-  /** 把某方块 id 的全部实例替换为另一方块 id（取目标在调色板里的首个变体）。 */
+  /** Replace every instance of {@code fromId} with {@code toId} (appended to the palette if absent). */
   public static NbtStructure replaceBlock(NbtStructure s, String fromId, String toId) {
+    if (fromId.equals(toId)) {
+      return s;
+    }
+    List<PaletteEntry> palette = s.palette;
     int target = -1;
-    for (int i = 0; i < s.palette.size(); i++) {
-      if (s.palette.get(i).blockName().equals(toId)) {
+    for (int i = 0; i < palette.size(); i++) {
+      if (palette.get(i).blockName().equals(toId)) {
         target = i;
         break;
       }
     }
-    if (target < 0 || fromId.equals(toId)) {
-      return s;
+    if (target < 0) {
+      palette = new ArrayList<>(s.palette);
+      palette.add(new PaletteEntry(toId, null));
+      target = palette.size() - 1;
     }
     boolean[] match = new boolean[s.palette.size()];
     for (int i = 0; i < match.length; i++) {
@@ -84,7 +93,7 @@ public final class StructureTransforms {
         blocks.add(b);
       }
     }
-    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, s.palette, blocks);
+    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, palette, blocks);
   }
 
   /** 镂空：只保留至少有一面贴空气/边界的方块（去掉被完全包裹的内部方块）。 */
@@ -180,6 +189,327 @@ public final class StructureTransforms {
     }
     return new NbtStructure(maxX - minX + 1, maxY - minY + 1, maxZ - minZ + 1,
         s.dataVersion, s.palette, blocks);
+  }
+
+  /** 沿 Y 轴镜像（上下翻转）。注意：原版 Mirror 无垂直镜像，朝向类方块（楼梯上下半等）状态不翻转。 */
+  public static NbtStructure mirrorY(NbtStructure s) {
+    List<BlockEntry> blocks = new ArrayList<>(s.blocks.size());
+    for (BlockEntry b : s.blocks) {
+      blocks.add(new BlockEntry(b.x(), s.sizeY - 1 - b.y(), b.z(), b.stateIndex(), b.nbt()));
+    }
+    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, s.palette, blocks);
+  }
+
+  /** 绕 X 轴旋转 90°（向前翻立）。注意：原版仅支持绕 Y 轴的方块状态旋转，朝向类方块状态保持不变。 */
+  public static NbtStructure rotateX(NbtStructure s) {
+    List<BlockEntry> blocks = new ArrayList<>(s.blocks.size());
+    for (BlockEntry b : s.blocks) {
+      blocks.add(new BlockEntry(b.x(), s.sizeZ - 1 - b.z(), b.y(), b.stateIndex(), b.nbt()));
+    }
+    return new NbtStructure(s.sizeX, s.sizeZ, s.sizeY, s.dataVersion, s.palette, blocks);
+  }
+
+  /** 绕 Z 轴旋转 90°（向侧翻立）。注意同 {@link #rotateX}。 */
+  public static NbtStructure rotateZ(NbtStructure s) {
+    List<BlockEntry> blocks = new ArrayList<>(s.blocks.size());
+    for (BlockEntry b : s.blocks) {
+      blocks.add(new BlockEntry(s.sizeY - 1 - b.y(), b.x(), b.z(), b.stateIndex(), b.nbt()));
+    }
+    return new NbtStructure(s.sizeY, s.sizeX, s.sizeZ, s.dataVersion, s.palette, blocks);
+  }
+
+  /** 框架：只保留包围盒棱上的方块（至少两个坐标处于边界）。 */
+  public static NbtStructure frame(NbtStructure s) {
+    boolean[] air = airFlags(s);
+    List<BlockEntry> blocks = new ArrayList<>();
+    for (BlockEntry b : s.blocks) {
+      if (isAir(b, air) || !inBounds(b, s)) {
+        continue;
+      }
+      int extremes = 0;
+      if (b.x() == 0 || b.x() == s.sizeX - 1) {
+        extremes++;
+      }
+      if (b.y() == 0 || b.y() == s.sizeY - 1) {
+        extremes++;
+      }
+      if (b.z() == 0 || b.z() == s.sizeZ - 1) {
+        extremes++;
+      }
+      if (extremes >= 2) {
+        blocks.add(b);
+      }
+    }
+    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, s.palette, blocks);
+  }
+
+  /** 填充：把被完全包围（外部空气无法到达）的内部空腔填成结构里最常见的实心方块。 */
+  public static NbtStructure fill(NbtStructure s) {
+    long volume = s.volume();
+    if (volume <= 0 || volume > FILL_MAX_VOLUME) {
+      return s;
+    }
+    boolean[] air = airFlags(s);
+    int n = (int) volume;
+    boolean[] solid = new boolean[n];
+    int[] counts = new int[s.palette.size()];
+    for (BlockEntry b : s.blocks) {
+      if (!isAir(b, air) && inBounds(b, s)) {
+        solid[idx(b.x(), b.y(), b.z(), s)] = true;
+        if (b.stateIndex() >= 0 && b.stateIndex() < counts.length) {
+          counts[b.stateIndex()]++;
+        }
+      }
+    }
+    int fillIdx = -1;
+    int best = -1;
+    for (int i = 0; i < counts.length; i++) {
+      if (!air[i] && counts[i] > best) {
+        best = counts[i];
+        fillIdx = i;
+      }
+    }
+    if (fillIdx < 0) {
+      return s;
+    }
+    boolean[] reached = new boolean[n];
+    int[] stack = new int[n];
+    int sp = 0;
+    for (int y = 0; y < s.sizeY; y++) {
+      for (int z = 0; z < s.sizeZ; z++) {
+        for (int x = 0; x < s.sizeX; x++) {
+          boolean boundary = x == 0 || x == s.sizeX - 1 || y == 0 || y == s.sizeY - 1
+              || z == 0 || z == s.sizeZ - 1;
+          if (!boundary) {
+            continue;
+          }
+          int i = idx(x, y, z, s);
+          if (!solid[i] && !reached[i]) {
+            reached[i] = true;
+            stack[sp++] = i;
+          }
+        }
+      }
+    }
+    while (sp > 0) {
+      int i = stack[--sp];
+      int x = i % s.sizeX;
+      int t = i / s.sizeX;
+      int z = t % s.sizeZ;
+      int y = t / s.sizeZ;
+      sp = flood(solid, reached, stack, sp, x - 1, y, z, s);
+      sp = flood(solid, reached, stack, sp, x + 1, y, z, s);
+      sp = flood(solid, reached, stack, sp, x, y - 1, z, s);
+      sp = flood(solid, reached, stack, sp, x, y + 1, z, s);
+      sp = flood(solid, reached, stack, sp, x, y, z - 1, s);
+      sp = flood(solid, reached, stack, sp, x, y, z + 1, s);
+    }
+    List<BlockEntry> blocks = new ArrayList<>(s.blocks);
+    for (int y = 0; y < s.sizeY; y++) {
+      for (int z = 0; z < s.sizeZ; z++) {
+        for (int x = 0; x < s.sizeX; x++) {
+          int i = idx(x, y, z, s);
+          if (!solid[i] && !reached[i]) {
+            blocks.add(new BlockEntry(x, y, z, fillIdx, null));
+          }
+        }
+      }
+    }
+    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, s.palette, blocks);
+  }
+
+  private static int flood(boolean[] solid, boolean[] reached, int[] stack, int sp,
+      int x, int y, int z, NbtStructure s) {
+    if (x < 0 || x >= s.sizeX || y < 0 || y >= s.sizeY || z < 0 || z >= s.sizeZ) {
+      return sp;
+    }
+    int i = idx(x, y, z, s);
+    if (!solid[i] && !reached[i]) {
+      reached[i] = true;
+      stack[sp++] = i;
+    }
+    return sp;
+  }
+
+  /** 扩边：包围盒四周各加一层空气（尺寸 +2，内容整体平移 +1）。 */
+  public static NbtStructure expand(NbtStructure s) {
+    List<BlockEntry> blocks = new ArrayList<>(s.blocks.size());
+    for (BlockEntry b : s.blocks) {
+      blocks.add(new BlockEntry(b.x() + 1, b.y() + 1, b.z() + 1, b.stateIndex(), b.nbt()));
+    }
+    return new NbtStructure(s.sizeX + 2, s.sizeY + 2, s.sizeZ + 2, s.dataVersion, s.palette, blocks);
+  }
+
+  /** 删除选区（含边界，坐标自动归一化）内的全部方块。 */
+  public static NbtStructure deleteRegion(NbtStructure s,
+      int x0, int y0, int z0, int x1, int y1, int z1) {
+    int ax0 = Math.min(x0, x1);
+    int ay0 = Math.min(y0, y1);
+    int az0 = Math.min(z0, z1);
+    int ax1 = Math.max(x0, x1);
+    int ay1 = Math.max(y0, y1);
+    int az1 = Math.max(z0, z1);
+    List<BlockEntry> blocks = new ArrayList<>();
+    for (BlockEntry b : s.blocks) {
+      if (!inRegion(b, ax0, ay0, az0, ax1, ay1, az1)) {
+        blocks.add(b);
+      }
+    }
+    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, s.palette, blocks);
+  }
+
+  /** 裁剪到选区（含边界，自动归一化并夹取到结构范围），内容平移到原点。 */
+  public static NbtStructure cropToRegion(NbtStructure s,
+      int x0, int y0, int z0, int x1, int y1, int z1) {
+    int ax0 = clamp(Math.min(x0, x1), 0, s.sizeX - 1);
+    int ay0 = clamp(Math.min(y0, y1), 0, s.sizeY - 1);
+    int az0 = clamp(Math.min(z0, z1), 0, s.sizeZ - 1);
+    int ax1 = clamp(Math.max(x0, x1), 0, s.sizeX - 1);
+    int ay1 = clamp(Math.max(y0, y1), 0, s.sizeY - 1);
+    int az1 = clamp(Math.max(z0, z1), 0, s.sizeZ - 1);
+    List<BlockEntry> blocks = new ArrayList<>();
+    for (BlockEntry b : s.blocks) {
+      if (inRegion(b, ax0, ay0, az0, ax1, ay1, az1)) {
+        blocks.add(new BlockEntry(
+            b.x() - ax0, b.y() - ay0, b.z() - az0, b.stateIndex(), b.nbt()));
+      }
+    }
+    return new NbtStructure(ax1 - ax0 + 1, ay1 - ay0 + 1, az1 - az0 + 1,
+        s.dataVersion, s.palette, blocks);
+  }
+
+  /** 用指定方块填满选区（自动归一化并夹取；{@code blockId} 不在调色板则追加）。 */
+  public static NbtStructure fillRegion(NbtStructure s,
+      int x0, int y0, int z0, int x1, int y1, int z1, String blockId) {
+    int ax0 = clamp(Math.min(x0, x1), 0, s.sizeX - 1);
+    int ay0 = clamp(Math.min(y0, y1), 0, s.sizeY - 1);
+    int az0 = clamp(Math.min(z0, z1), 0, s.sizeZ - 1);
+    int ax1 = clamp(Math.max(x0, x1), 0, s.sizeX - 1);
+    int ay1 = clamp(Math.max(y0, y1), 0, s.sizeY - 1);
+    int az1 = clamp(Math.max(z0, z1), 0, s.sizeZ - 1);
+    PaletteEntry want = paletteEntryOf(blockId);
+    List<PaletteEntry> palette = s.palette;
+    int fillIdx = -1;
+    for (int i = 0; i < palette.size(); i++) {
+      if (palette.get(i).canonicalKey().equals(want.canonicalKey())) {
+        fillIdx = i;
+        break;
+      }
+    }
+    if (fillIdx < 0) {
+      palette = new ArrayList<>(s.palette);
+      palette.add(want);
+      fillIdx = palette.size() - 1;
+    }
+    List<BlockEntry> blocks = new ArrayList<>();
+    for (BlockEntry b : s.blocks) {
+      if (!inRegion(b, ax0, ay0, az0, ax1, ay1, az1)) {
+        blocks.add(b);
+      }
+    }
+    for (int y = ay0; y <= ay1; y++) {
+      for (int z = az0; z <= az1; z++) {
+        for (int x = ax0; x <= ax1; x++) {
+          blocks.add(new BlockEntry(x, y, z, fillIdx, null));
+        }
+      }
+    }
+    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, palette, blocks);
+  }
+
+  /** Set a single cell to {@code blockId} (appended to the palette if absent; clamped to bounds). */
+  public static NbtStructure setBlockAt(NbtStructure s, int x, int y, int z, String blockId) {
+    return fillRegion(s, x, y, z, x, y, z, blockId);
+  }
+
+  /** Remove whatever block occupies a single cell. */
+  public static NbtStructure removeBlockAt(NbtStructure s, int x, int y, int z) {
+    return deleteRegion(s, x, y, z, x, y, z);
+  }
+
+  /**
+   * Paste {@code clip} into {@code s} with its origin at (atX, atY, atZ), overwriting the covered
+   * cells. {@code clip}'s palette is merged into {@code s}'s; cells landing outside {@code s} are
+   * dropped.
+   */
+  public static NbtStructure pasteRegion(NbtStructure s, NbtStructure clip, int atX, int atY, int atZ) {
+    List<PaletteEntry> palette = new ArrayList<>(s.palette);
+    int[] map = new int[clip.palette.size()];
+    for (int i = 0; i < clip.palette.size(); i++) {
+      PaletteEntry entry = clip.palette.get(i);
+      int found = -1;
+      for (int j = 0; j < palette.size(); j++) {
+        if (palette.get(j).canonicalKey().equals(entry.canonicalKey())) {
+          found = j;
+          break;
+        }
+      }
+      if (found < 0) {
+        palette.add(entry);
+        found = palette.size() - 1;
+      }
+      map[i] = found;
+    }
+    int ex = atX + clip.sizeX - 1;
+    int ey = atY + clip.sizeY - 1;
+    int ez = atZ + clip.sizeZ - 1;
+    List<BlockEntry> blocks = new ArrayList<>();
+    for (BlockEntry b : s.blocks) {
+      if (!inRegion(b, atX, atY, atZ, ex, ey, ez)) {
+        blocks.add(b);
+      }
+    }
+    for (BlockEntry b : clip.blocks) {
+      int nx = atX + b.x();
+      int ny = atY + b.y();
+      int nz = atZ + b.z();
+      if (nx < 0 || nx >= s.sizeX || ny < 0 || ny >= s.sizeY || nz < 0 || nz >= s.sizeZ) {
+        continue;
+      }
+      int idx = b.stateIndex();
+      int mapped = idx >= 0 && idx < map.length ? map[idx] : 0;
+      blocks.add(new BlockEntry(nx, ny, nz, mapped, b.nbt()));
+    }
+    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, palette, blocks);
+  }
+
+  /** Parse {@code name} or {@code name[k=v,...]} into a palette entry. */
+  private static PaletteEntry paletteEntryOf(String spec) {
+    int bracket = spec.indexOf('[');
+    if (bracket < 0 || !spec.endsWith("]")) {
+      return new PaletteEntry(spec, null);
+    }
+    String name = spec.substring(0, bracket);
+    String inner = spec.substring(bracket + 1, spec.length() - 1);
+    CompoundTag props = new CompoundTag();
+    for (String kv : inner.split(",")) {
+      int eq = kv.indexOf('=');
+      if (eq > 0) {
+        props.putString(kv.substring(0, eq).trim(), kv.substring(eq + 1).trim());
+      }
+    }
+    return new PaletteEntry(name, props.isEmpty() ? null : props);
+  }
+
+  private static boolean inRegion(BlockEntry b, int x0, int y0, int z0, int x1, int y1, int z1) {
+    return b.x() >= x0 && b.x() <= x1 && b.y() >= y0 && b.y() <= y1
+        && b.z() >= z0 && b.z() <= z1;
+  }
+
+  private static int clamp(int v, int lo, int hi) {
+    return v < lo ? lo : Math.min(v, hi);
+  }
+
+  private static boolean[] airFlags(NbtStructure s) {
+    boolean[] air = new boolean[s.palette.size()];
+    for (int i = 0; i < air.length; i++) {
+      air[i] = s.palette.get(i).isAir();
+    }
+    return air;
+  }
+
+  private static int idx(int x, int y, int z, NbtStructure s) {
+    return (y * s.sizeZ + z) * s.sizeX + x;
   }
 
   private static boolean isAir(BlockEntry b, boolean[] air) {

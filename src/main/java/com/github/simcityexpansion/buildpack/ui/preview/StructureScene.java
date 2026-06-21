@@ -5,6 +5,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 import com.github.simcityexpansion.buildpack.convert.NbtStructure;
 import com.github.simcityexpansion.buildpack.convert.StructureAnalysis;
@@ -24,6 +25,7 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -40,6 +42,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import org.joml.Matrix4f;
+import org.joml.Vector4f;
+import org.lwjgl.opengl.GL11;
 
 /**
  * 真实方块模型 3D 预览，按规模分三档：
@@ -67,6 +71,9 @@ public final class StructureScene extends AbstractWidget {
 
   private record PosState(BlockPos pos, BlockState state) {}
 
+  /** A raycast result in the editor: the hit cell and the face the ray entered through. */
+  public record Hit(BlockPos pos, Direction face) {}
+
   private final boolean interactive;
   private final List<PosState> blocks = new ArrayList<>();
   private final Map<Long, BlockState> grid = new HashMap<>();
@@ -88,19 +95,57 @@ public final class StructureScene extends AbstractWidget {
   private int lodGz;
   private VertexBuffer lodBuffer;
 
+  // 选区高亮（编辑器）。
+  private boolean hasSelection;
+  private int selX0;
+  private int selY0;
+  private int selZ0;
+  private int selX1;
+  private int selY1;
+  private int selZ1;
+  private VertexBuffer selectionBuffer;
+
+  // 单方块编辑（编辑器）。
+  private boolean editMode;
+  private Consumer<Hit> onEdit;
+  private Hit hover;
+  private VertexBuffer hoverBuffer;
+  private boolean dragged;
+
   private float centerX;
   private float centerY;
   private float centerZ;
   private int maxDim = 1;
   private int structHeight = 1;
+  private int structWidth = 1;
+  private int structDepth = 1;
 
   private float yaw = 35.0f;
   private float pitch = 25.0f;
   private float zoom = 1.0f;
   private float panX;
   private float panY;
-  /** 只渲染 y < clipMaxY 的部分（切顶看内部）。 */
+  // Smooth-camera targets; drag/zoom set both (instant), presets/fit/focus set only the target.
+  private float targetYaw = 35.0f;
+  private float targetPitch = 25.0f;
+  private float targetZoom = 1.0f;
+  private float targetPanX;
+  private float targetPanY;
+  private float targetCenterX;
+  private float targetCenterY;
+  private float targetCenterZ;
+  /** 6 面裁剪盒（含 min、不含 max）；只渲染盒内方块（多轴切片看内部）。 */
+  private int clipMinX;
+  private int clipMinY;
+  private int clipMinZ;
+  private int clipMaxX = Integer.MAX_VALUE;
   private int clipMaxY = Integer.MAX_VALUE;
+  private int clipMaxZ = Integer.MAX_VALUE;
+  /** 当前切片目标：0=Y顶 1=Y底 2=X+ 3=X- 4=Z+ 5=Z-。 */
+  private int sliceTarget;
+  private boolean showGizmo;
+  private VertexBuffer decorBuffer;
+  private boolean perspective;
 
   public StructureScene(int x, int y, int width, int height, boolean interactive) {
     super(x, y, width, height, Component.empty());
@@ -119,6 +164,10 @@ public final class StructureScene extends AbstractWidget {
     cancelBake();
     closeBuffers();
     closeLod();
+    clearSelection();
+    hover = null;
+    closeHoverBuffer();
+    closeDecor();
     layerBlocks = null;
     useVbo = false;
     useLod = false;
@@ -134,13 +183,17 @@ public final class StructureScene extends AbstractWidget {
     centerX = s.sizeX / 2.0f;
     centerY = s.sizeY / 2.0f;
     centerZ = s.sizeZ / 2.0f;
+    targetCenterX = centerX;
+    targetCenterY = centerY;
+    targetCenterZ = centerZ;
     maxDim = Math.max(1, Math.max(s.sizeX, Math.max(s.sizeY, s.sizeZ)));
     structHeight = Math.max(1, s.sizeY);
+    structWidth = Math.max(1, s.sizeX);
+    structDepth = Math.max(1, s.sizeZ);
     if (resetCamera) {
       resetCamera();
-    } else {
-      clipMaxY = Math.min(clipMaxY, structHeight);
     }
+    resetClip();
 
     if (count > DETAIL_LIMIT) {
       useLod = true;
@@ -196,25 +249,72 @@ public final class StructureScene extends AbstractWidget {
   /** 重置视角（朝向/缩放/平移/切顶）。 */
   public void resetView() {
     resetCamera();
+    resetClip();
+    if (useVbo) {
+      startBake();
+    }
     if (useLod) {
       bakeLod();
     }
   }
 
-  /** 切掉一层顶（露出内部）。 */
+  /** Peel the current slice plane inward by one (reveals interior). */
   public void peelTop() {
-    clipMaxY = Math.max(1, Math.min(structHeight, clipMaxY) - 1);
-    if (useLod) {
-      bakeLod();
+    switch (sliceTarget) {
+      case 0 -> clipMaxY = Math.max(clipMinY + 1, clipMaxY - 1);
+      case 1 -> clipMinY = Math.min(clipMaxY - 1, clipMinY + 1);
+      case 2 -> clipMaxX = Math.max(clipMinX + 1, clipMaxX - 1);
+      case 3 -> clipMinX = Math.min(clipMaxX - 1, clipMinX + 1);
+      case 4 -> clipMaxZ = Math.max(clipMinZ + 1, clipMaxZ - 1);
+      default -> clipMinZ = Math.min(clipMaxZ - 1, clipMinZ + 1);
     }
+    afterSliceChange();
   }
 
-  /** 还原一层顶。 */
+  /** Restore the current slice plane outward by one. */
   public void unpeelTop() {
-    clipMaxY = Math.min(structHeight, clipMaxY + 1);
-    if (useLod) {
-      bakeLod();
+    switch (sliceTarget) {
+      case 0 -> clipMaxY = Math.min(structHeight, clipMaxY + 1);
+      case 1 -> clipMinY = Math.max(0, clipMinY - 1);
+      case 2 -> clipMaxX = Math.min(structWidth, clipMaxX + 1);
+      case 3 -> clipMinX = Math.max(0, clipMinX - 1);
+      case 4 -> clipMaxZ = Math.min(structDepth, clipMaxZ + 1);
+      default -> clipMinZ = Math.max(0, clipMinZ - 1);
     }
+    afterSliceChange();
+  }
+
+  /** Cycle which slice plane peel/unpeel act on (Y top → Y bottom → X± → Z±). */
+  public void cycleSlice() {
+    sliceTarget = (sliceTarget + 1) % 6;
+  }
+
+  /** Snap the camera to a fixed viewing angle (presets); keeps zoom/pan. */
+  public void setView(float newYaw, float newPitch) {
+    targetYaw = newYaw;
+    targetPitch = newPitch;
+  }
+
+  /** Reset zoom/pan and recenter on the whole structure. */
+  public void fitAll() {
+    if (structure != null) {
+      targetCenterX = structure.sizeX / 2.0f;
+      targetCenterY = structure.sizeY / 2.0f;
+      targetCenterZ = structure.sizeZ / 2.0f;
+    }
+    targetZoom = 1.0f;
+    targetPanX = 0.0f;
+    targetPanY = 0.0f;
+  }
+
+  /** Center on a point and zoom so a region of the given span roughly fills the view. */
+  public void focus(float cx, float cy, float cz, int span) {
+    targetCenterX = cx;
+    targetCenterY = cy;
+    targetCenterZ = cz;
+    targetZoom = Math.max(0.25f, Math.min(6.0f, (float) maxDim / Math.max(1, span)));
+    targetPanX = 0.0f;
+    targetPanY = 0.0f;
   }
 
   /** 释放 GPU 缓冲与进行中的烘焙（替换预览/关闭界面时调用）。 */
@@ -222,6 +322,74 @@ public final class StructureScene extends AbstractWidget {
     cancelBake();
     closeBuffers();
     closeLod();
+    closeSelectionBuffer();
+    closeHoverBuffer();
+    closeDecor();
+  }
+
+  /** 设置高亮选区（含边界，自动归一化）。 */
+  public void setSelection(int x0, int y0, int z0, int x1, int y1, int z1) {
+    selX0 = Math.min(x0, x1);
+    selY0 = Math.min(y0, y1);
+    selZ0 = Math.min(z0, z1);
+    selX1 = Math.max(x0, x1);
+    selY1 = Math.max(y0, y1);
+    selZ1 = Math.max(z0, z1);
+    hasSelection = true;
+    buildSelectionBuffer();
+  }
+
+  /** 清除选区高亮。 */
+  public void clearSelection() {
+    hasSelection = false;
+    closeSelectionBuffer();
+  }
+
+  /** Enable single-block edit mode (a left-click without dragging picks a cell). */
+  public void setEditMode(boolean on) {
+    editMode = on;
+    if (!on) {
+      hover = null;
+      closeHoverBuffer();
+    }
+  }
+
+  /** Set the callback invoked with the hit cell on a left-click (no drag) while in edit mode. */
+  public void setEditCallback(Consumer<Hit> callback) {
+    onEdit = callback;
+  }
+
+  /** Registry id of the block at a cell, or null if empty (eyedropper support). */
+  public String blockIdAt(BlockPos pos) {
+    BlockState state = grid.get(encode(pos.getX(), pos.getY(), pos.getZ()));
+    return state == null ? null : BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
+  }
+
+  /** Full block state at a cell as {@code name[k=v,...]} (or null if empty); used by the eyedropper. */
+  public String blockStateAt(BlockPos pos) {
+    BlockState state = grid.get(encode(pos.getX(), pos.getY(), pos.getZ()));
+    if (state == null) {
+      return null;
+    }
+    CompoundTag tag = NbtUtils.writeBlockState(state);
+    String name = tag.getString("Name");
+    if (!tag.contains("Properties")) {
+      return name;
+    }
+    CompoundTag props = tag.getCompound("Properties");
+    if (props.isEmpty()) {
+      return name;
+    }
+    StringBuilder sb = new StringBuilder(name).append('[');
+    boolean first = true;
+    for (String key : new java.util.TreeSet<>(props.getAllKeys())) {
+      if (!first) {
+        sb.append(',');
+      }
+      sb.append(key).append('=').append(props.getString(key));
+      first = false;
+    }
+    return sb.append(']').toString();
   }
 
   /** 若缓冲已被释放（界面切换后返回），重新烘焙。 */
@@ -240,7 +408,47 @@ public final class StructureScene extends AbstractWidget {
     zoom = 1.0f;
     panX = 0.0f;
     panY = 0.0f;
+    targetYaw = 35.0f;
+    targetPitch = 25.0f;
+    targetZoom = 1.0f;
+    targetPanX = 0.0f;
+    targetPanY = 0.0f;
+  }
+
+  /** Ease the live camera toward its target each frame (smooth presets/fit/focus). */
+  private void lerpCamera() {
+    float f = 0.35f;
+    yaw += (targetYaw - yaw) * f;
+    pitch += (targetPitch - pitch) * f;
+    zoom += (targetZoom - zoom) * f;
+    panX += (targetPanX - panX) * f;
+    panY += (targetPanY - panY) * f;
+    centerX += (targetCenterX - centerX) * f;
+    centerY += (targetCenterY - centerY) * f;
+    centerZ += (targetCenterZ - centerZ) * f;
+  }
+
+  private void resetClip() {
+    clipMinX = 0;
+    clipMinY = 0;
+    clipMinZ = 0;
+    clipMaxX = structWidth;
     clipMaxY = structHeight;
+    clipMaxZ = structDepth;
+    sliceTarget = 0;
+  }
+
+  private boolean inClip(int x, int y, int z) {
+    return x >= clipMinX && x < clipMaxX && y >= clipMinY && y < clipMaxY
+        && z >= clipMinZ && z < clipMaxZ;
+  }
+
+  private void afterSliceChange() {
+    if (useLod) {
+      bakeLod();
+    } else if (useVbo && sliceTarget >= 2) {
+      startBake();
+    }
   }
 
   // ---- 详细：按层网格烘焙（分帧增量）----
@@ -293,7 +501,9 @@ public final class StructureScene extends AbstractWidget {
       MultiBufferSource source = renderType -> builder;
       PoseStack pose = new PoseStack();
       for (PosState ps : layer) {
-        if (occluded(ps.pos())) {
+        int px = ps.pos().getX();
+        int pz = ps.pos().getZ();
+        if (occluded(ps.pos()) || px < clipMinX || px >= clipMaxX || pz < clipMinZ || pz >= clipMaxZ) {
           continue;
         }
         pose.pushPose();
@@ -520,6 +730,464 @@ public final class StructureScene extends AbstractWidget {
     }
   }
 
+  private void buildSelectionBuffer() {
+    closeSelectionBuffer();
+    if (!hasSelection) {
+      return;
+    }
+    float x0 = selX0;
+    float y0 = selY0;
+    float z0 = selZ0;
+    float x1 = selX1 + 1;
+    float y1 = selY1 + 1;
+    float z1 = selZ1 + 1;
+    int col = 0x6044AAFF;
+    try (ByteBufferBuilder bytes = new ByteBufferBuilder(4096)) {
+      BufferBuilder b =
+          new BufferBuilder(bytes, VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+      vertex(b, x0, y1, z0, col);
+      vertex(b, x0, y1, z1, col);
+      vertex(b, x1, y1, z1, col);
+      vertex(b, x1, y1, z0, col);
+      vertex(b, x0, y0, z0, col);
+      vertex(b, x1, y0, z0, col);
+      vertex(b, x1, y0, z1, col);
+      vertex(b, x0, y0, z1, col);
+      vertex(b, x0, y0, z0, col);
+      vertex(b, x0, y1, z0, col);
+      vertex(b, x1, y1, z0, col);
+      vertex(b, x1, y0, z0, col);
+      vertex(b, x0, y0, z1, col);
+      vertex(b, x1, y0, z1, col);
+      vertex(b, x1, y1, z1, col);
+      vertex(b, x0, y1, z1, col);
+      vertex(b, x0, y0, z0, col);
+      vertex(b, x0, y0, z1, col);
+      vertex(b, x0, y1, z1, col);
+      vertex(b, x0, y1, z0, col);
+      vertex(b, x1, y0, z0, col);
+      vertex(b, x1, y1, z0, col);
+      vertex(b, x1, y1, z1, col);
+      vertex(b, x1, y0, z1, col);
+      MeshData mesh = b.build();
+      if (mesh != null) {
+        VertexBuffer buffer = new VertexBuffer(VertexBuffer.Usage.STATIC);
+        try {
+          buffer.bind();
+          buffer.upload(mesh);
+          VertexBuffer.unbind();
+          selectionBuffer = buffer;
+        } catch (Throwable t) {
+          buffer.close();
+          selectionBuffer = null;
+        }
+      }
+    } catch (Throwable t) {
+      selectionBuffer = null;
+    }
+  }
+
+  private void closeSelectionBuffer() {
+    if (selectionBuffer != null) {
+      selectionBuffer.close();
+      selectionBuffer = null;
+    }
+  }
+
+  /** 选区盒（半透明、无深度，叠在结构之上）。 */
+  private void drawSelectionBox(GuiGraphics g, int x, int y, int w, int h, float scale, Minecraft mc) {
+    Matrix4f modelView = cameraModelView(g, x, y, w, h, scale);
+    Matrix4f projection = projectionFor(x, y, w, h);
+    g.flush();
+    g.enableScissor(x, y, x + w, y + h);
+    RenderSystem.disableDepthTest();
+    RenderSystem.enableBlend();
+    RenderSystem.defaultBlendFunc();
+    RenderSystem.disableCull();
+    RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
+    try {
+      RenderSystem.setShader(GameRenderer::getPositionColorShader);
+      selectionBuffer.bind();
+      selectionBuffer.drawWithShader(modelView, projection, RenderSystem.getShader());
+      VertexBuffer.unbind();
+    } catch (Throwable t) {
+      // 丢弃本帧。
+    } finally {
+      RenderSystem.disableBlend();
+      RenderSystem.enableDepthTest();
+      RenderSystem.enableCull();
+      g.flush();
+      g.disableScissor();
+    }
+  }
+
+  // ---- 单方块拾取（屏幕→体素射线，编辑器）----
+
+  /** Raycast the cursor into the voxel grid; returns the first solid cell hit, or null. */
+  public Hit raycast(double mouseX, double mouseY) {
+    if (grid.isEmpty()) {
+      return null;
+    }
+    int w = getWidth();
+    int h = getHeight();
+    if (w <= 0 || h <= 0) {
+      return null;
+    }
+    if (perspective) {
+      return raycastPerspective(mouseX, mouseY, w, h);
+    }
+    float scale = Math.min(w, h) * 0.85f / maxDim * zoom;
+    PoseStack pose = new PoseStack();
+    pose.translate(getX() + w / 2.0f + panX, getY() + h / 2.0f + panY, 400.0f);
+    pose.scale(scale, -scale, scale);
+    pose.mulPose(Axis.XP.rotationDegrees(pitch));
+    pose.mulPose(Axis.YP.rotationDegrees(yaw));
+    pose.translate(-centerX, -centerY, -centerZ);
+    Matrix4f inv = new Matrix4f(pose.last().pose());
+    if (inv.determinant() == 0.0f) {
+      return null;
+    }
+    inv.invert();
+    // Higher GUI z is toward the viewer, so start the ray camera-side (+z) and march inward
+    // to hit the frontmost block first.
+    Vector4f front = inv.transform(new Vector4f((float) mouseX, (float) mouseY, 1000.0f, 1.0f));
+    Vector4f back = inv.transform(new Vector4f((float) mouseX, (float) mouseY, -1000.0f, 1.0f));
+    float ox = front.x();
+    float oy = front.y();
+    float oz = front.z();
+    float dx = back.x() - ox;
+    float dy = back.y() - oy;
+    float dz = back.z() - oz;
+    float len = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (len < 1.0e-6f) {
+      return null;
+    }
+    // The ray starts well outside the box (GUI z = ±1000), so bound the march by its full
+    // length in block space rather than by the box size.
+    int steps = Math.min(4096, (int) Math.ceil(len) + maxDim + 8);
+    return ddaPick(ox, oy, oz, dx / len, dy / len, dz / len, steps);
+  }
+
+  /** Perspective unprojection: cast a diverging ray from the camera through the cursor. */
+  private Hit raycastPerspective(double mouseX, double mouseY, int w, int h) {
+    Matrix4f inv = new Matrix4f(projectionFor(getX(), getY(), w, h)).mul(perspectiveModelView());
+    if (inv.determinant() == 0.0f) {
+      return null;
+    }
+    inv.invert();
+    Minecraft mc = Minecraft.getInstance();
+    float guiW = Math.max(1, mc.getWindow().getGuiScaledWidth());
+    float guiH = Math.max(1, mc.getWindow().getGuiScaledHeight());
+    float ndcX = 2.0f * (float) mouseX / guiW - 1.0f;
+    float ndcY = 1.0f - 2.0f * (float) mouseY / guiH;
+    Vector4f near = inv.transform(new Vector4f(ndcX, ndcY, -1.0f, 1.0f));
+    Vector4f far = inv.transform(new Vector4f(ndcX, ndcY, 1.0f, 1.0f));
+    if (near.w() == 0.0f || far.w() == 0.0f) {
+      return null;
+    }
+    float ox = near.x() / near.w();
+    float oy = near.y() / near.w();
+    float oz = near.z() / near.w();
+    float dx = far.x() / far.w() - ox;
+    float dy = far.y() / far.w() - oy;
+    float dz = far.z() / far.w() - oz;
+    float len = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (len < 1.0e-6f) {
+      return null;
+    }
+    int steps = Math.min(8192, (int) Math.ceil(len) + maxDim + 8);
+    return ddaPick(ox, oy, oz, dx / len, dy / len, dz / len, steps);
+  }
+
+  /** Amanatides-Woo voxel traversal: walk cells along the ray until a solid one is found. */
+  private Hit ddaPick(float ox, float oy, float oz, float dx, float dy, float dz, int steps) {
+    int cx = (int) Math.floor(ox);
+    int cy = (int) Math.floor(oy);
+    int cz = (int) Math.floor(oz);
+    int stepX = dx > 0 ? 1 : -1;
+    int stepY = dy > 0 ? 1 : -1;
+    int stepZ = dz > 0 ? 1 : -1;
+    float tMaxX = boundary(ox, dx, cx, stepX);
+    float tMaxY = boundary(oy, dy, cy, stepY);
+    float tMaxZ = boundary(oz, dz, cz, stepZ);
+    float tDeltaX = dx != 0 ? Math.abs(1.0f / dx) : Float.MAX_VALUE;
+    float tDeltaY = dy != 0 ? Math.abs(1.0f / dy) : Float.MAX_VALUE;
+    float tDeltaZ = dz != 0 ? Math.abs(1.0f / dz) : Float.MAX_VALUE;
+    Direction face = Direction.UP;
+    for (int i = 0; i < steps; i++) {
+      if (inClip(cx, cy, cz) && grid.get(encode(cx, cy, cz)) != null) {
+        return new Hit(new BlockPos(cx, cy, cz), face);
+      }
+      if (tMaxX < tMaxY && tMaxX < tMaxZ) {
+        cx += stepX;
+        tMaxX += tDeltaX;
+        face = stepX > 0 ? Direction.WEST : Direction.EAST;
+      } else if (tMaxY < tMaxZ) {
+        cy += stepY;
+        tMaxY += tDeltaY;
+        face = stepY > 0 ? Direction.DOWN : Direction.UP;
+      } else {
+        cz += stepZ;
+        tMaxZ += tDeltaZ;
+        face = stepZ > 0 ? Direction.NORTH : Direction.SOUTH;
+      }
+    }
+    return null;
+  }
+
+  private static float boundary(float o, float d, int c, int step) {
+    if (d == 0.0f) {
+      return Float.MAX_VALUE;
+    }
+    float next = step > 0 ? c + 1 : c;
+    return (next - o) / d;
+  }
+
+  private void updateHover(double mouseX, double mouseY) {
+    Hit previous = hover;
+    hover = raycast(mouseX, mouseY);
+    if (hover == null) {
+      closeHoverBuffer();
+    } else if (previous == null || !previous.pos().equals(hover.pos())) {
+      buildHoverBuffer(hover.pos());
+    }
+  }
+
+  private void buildHoverBuffer(BlockPos pos) {
+    closeHoverBuffer();
+    float x0 = pos.getX() - 0.02f;
+    float y0 = pos.getY() - 0.02f;
+    float z0 = pos.getZ() - 0.02f;
+    float x1 = pos.getX() + 1.02f;
+    float y1 = pos.getY() + 1.02f;
+    float z1 = pos.getZ() + 1.02f;
+    int col = 0x80FFEE55;
+    try (ByteBufferBuilder bytes = new ByteBufferBuilder(4096)) {
+      BufferBuilder b =
+          new BufferBuilder(bytes, VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+      vertex(b, x0, y1, z0, col);
+      vertex(b, x0, y1, z1, col);
+      vertex(b, x1, y1, z1, col);
+      vertex(b, x1, y1, z0, col);
+      vertex(b, x0, y0, z0, col);
+      vertex(b, x1, y0, z0, col);
+      vertex(b, x1, y0, z1, col);
+      vertex(b, x0, y0, z1, col);
+      vertex(b, x0, y0, z0, col);
+      vertex(b, x0, y1, z0, col);
+      vertex(b, x1, y1, z0, col);
+      vertex(b, x1, y0, z0, col);
+      vertex(b, x0, y0, z1, col);
+      vertex(b, x1, y0, z1, col);
+      vertex(b, x1, y1, z1, col);
+      vertex(b, x0, y1, z1, col);
+      vertex(b, x0, y0, z0, col);
+      vertex(b, x0, y0, z1, col);
+      vertex(b, x0, y1, z1, col);
+      vertex(b, x0, y1, z0, col);
+      vertex(b, x1, y0, z0, col);
+      vertex(b, x1, y1, z0, col);
+      vertex(b, x1, y1, z1, col);
+      vertex(b, x1, y0, z1, col);
+      MeshData mesh = b.build();
+      if (mesh != null) {
+        VertexBuffer buffer = new VertexBuffer(VertexBuffer.Usage.STATIC);
+        try {
+          buffer.bind();
+          buffer.upload(mesh);
+          VertexBuffer.unbind();
+          hoverBuffer = buffer;
+        } catch (Throwable t) {
+          buffer.close();
+          hoverBuffer = null;
+        }
+      }
+    } catch (Throwable t) {
+      hoverBuffer = null;
+    }
+  }
+
+  private void drawHover(GuiGraphics g, int x, int y, int w, int h, float scale, Minecraft mc) {
+    Matrix4f modelView = cameraModelView(g, x, y, w, h, scale);
+    Matrix4f projection = projectionFor(x, y, w, h);
+    g.flush();
+    g.enableScissor(x, y, x + w, y + h);
+    RenderSystem.enableDepthTest();
+    RenderSystem.enableBlend();
+    RenderSystem.defaultBlendFunc();
+    RenderSystem.disableCull();
+    RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
+    try {
+      RenderSystem.setShader(GameRenderer::getPositionColorShader);
+      hoverBuffer.bind();
+      hoverBuffer.drawWithShader(modelView, projection, RenderSystem.getShader());
+      VertexBuffer.unbind();
+    } catch (Throwable t) {
+      // 丢弃本帧。
+    } finally {
+      RenderSystem.disableBlend();
+      RenderSystem.enableCull();
+      g.flush();
+      g.disableScissor();
+    }
+  }
+
+  private void closeHoverBuffer() {
+    if (hoverBuffer != null) {
+      hoverBuffer.close();
+      hoverBuffer = null;
+    }
+  }
+
+  // ---- 参考装饰：坐标轴 / 包围盒 / 地面网格（编辑器）----
+
+  /** Toggle the axis gizmo, bounding box and ground grid overlay. */
+  public void toggleGizmo() {
+    showGizmo = !showGizmo;
+  }
+
+  /** Toggle perspective projection (default orthographic). Forces baking for small structures. */
+  public void togglePerspective() {
+    perspective = !perspective;
+    if (!useLod && !blocks.isEmpty()) {
+      boolean wantVbo = perspective || blocks.size() > IMMEDIATE_LIMIT;
+      if (wantVbo && !useVbo) {
+        useVbo = true;
+        if (layerBlocks == null) {
+          groupLayers();
+        }
+        startBake();
+      } else if (!wantVbo && useVbo) {
+        useVbo = false;
+        cancelBake();
+        closeBuffers();
+      }
+    }
+  }
+
+  private void buildDecor() {
+    closeDecor();
+    if (structure == null) {
+      return;
+    }
+    int sx = structure.sizeX;
+    int sy = structure.sizeY;
+    int sz = structure.sizeZ;
+    float t = Math.max(0.05f, maxDim * 0.012f);
+    float tg = Math.max(0.03f, maxDim * 0.006f);
+    float axisLen = Math.max(2.0f, maxDim * 0.35f);
+    int edgeColor = 0xC0FFFFFF;
+    int gridColor = 0x40FFFFFF;
+    int step = Math.max(1, maxDim / 8);
+    try (ByteBufferBuilder bytes = new ByteBufferBuilder(64 * 1024)) {
+      BufferBuilder b =
+          new BufferBuilder(bytes, VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+      for (int z = 0; z <= sz; z += step) {
+        edge(b, 0, 0, z, sx, 0, z, tg, gridColor);
+      }
+      for (int x = 0; x <= sx; x += step) {
+        edge(b, x, 0, 0, x, 0, sz, tg, gridColor);
+      }
+      edge(b, 0, 0, 0, sx, 0, 0, t, edgeColor);
+      edge(b, 0, 0, sz, sx, 0, sz, t, edgeColor);
+      edge(b, 0, 0, 0, 0, 0, sz, t, edgeColor);
+      edge(b, sx, 0, 0, sx, 0, sz, t, edgeColor);
+      edge(b, 0, sy, 0, sx, sy, 0, t, edgeColor);
+      edge(b, 0, sy, sz, sx, sy, sz, t, edgeColor);
+      edge(b, 0, sy, 0, 0, sy, sz, t, edgeColor);
+      edge(b, sx, sy, 0, sx, sy, sz, t, edgeColor);
+      edge(b, 0, 0, 0, 0, sy, 0, t, edgeColor);
+      edge(b, sx, 0, 0, sx, sy, 0, t, edgeColor);
+      edge(b, 0, 0, sz, 0, sy, sz, t, edgeColor);
+      edge(b, sx, 0, sz, sx, sy, sz, t, edgeColor);
+      edge(b, 0, 0, 0, axisLen, 0, 0, t * 1.6f, 0xFFFF4040);
+      edge(b, 0, 0, 0, 0, axisLen, 0, t * 1.6f, 0xFF40FF40);
+      edge(b, 0, 0, 0, 0, 0, axisLen, t * 1.6f, 0xFF4060FF);
+      MeshData mesh = b.build();
+      if (mesh != null) {
+        VertexBuffer buffer = new VertexBuffer(VertexBuffer.Usage.STATIC);
+        try {
+          buffer.bind();
+          buffer.upload(mesh);
+          VertexBuffer.unbind();
+          decorBuffer = buffer;
+        } catch (Throwable th) {
+          buffer.close();
+          decorBuffer = null;
+        }
+      }
+    } catch (Throwable th) {
+      decorBuffer = null;
+    }
+  }
+
+  /** Emit a thin axis-aligned cuboid spanning the segment (used for wireframe lines). */
+  private void edge(BufferBuilder b, float ax, float ay, float az,
+      float bx, float by, float bz, float t, int color) {
+    box(b, Math.min(ax, bx) - t, Math.min(ay, by) - t, Math.min(az, bz) - t,
+        Math.max(ax, bx) + t, Math.max(ay, by) + t, Math.max(az, bz) + t, color);
+  }
+
+  private static void box(BufferBuilder b,
+      float x0, float y0, float z0, float x1, float y1, float z1, int c) {
+    vertex(b, x0, y1, z0, c);
+    vertex(b, x0, y1, z1, c);
+    vertex(b, x1, y1, z1, c);
+    vertex(b, x1, y1, z0, c);
+    vertex(b, x0, y0, z0, c);
+    vertex(b, x1, y0, z0, c);
+    vertex(b, x1, y0, z1, c);
+    vertex(b, x0, y0, z1, c);
+    vertex(b, x0, y0, z0, c);
+    vertex(b, x0, y1, z0, c);
+    vertex(b, x1, y1, z0, c);
+    vertex(b, x1, y0, z0, c);
+    vertex(b, x0, y0, z1, c);
+    vertex(b, x1, y0, z1, c);
+    vertex(b, x1, y1, z1, c);
+    vertex(b, x0, y1, z1, c);
+    vertex(b, x0, y0, z0, c);
+    vertex(b, x0, y0, z1, c);
+    vertex(b, x0, y1, z1, c);
+    vertex(b, x0, y1, z0, c);
+    vertex(b, x1, y0, z0, c);
+    vertex(b, x1, y1, z0, c);
+    vertex(b, x1, y1, z1, c);
+    vertex(b, x1, y0, z1, c);
+  }
+
+  private void drawDecor(GuiGraphics g, int x, int y, int w, int h, float scale, Minecraft mc) {
+    Matrix4f modelView = cameraModelView(g, x, y, w, h, scale);
+    Matrix4f projection = projectionFor(x, y, w, h);
+    g.flush();
+    g.enableScissor(x, y, x + w, y + h);
+    RenderSystem.enableDepthTest();
+    RenderSystem.enableBlend();
+    RenderSystem.defaultBlendFunc();
+    RenderSystem.disableCull();
+    RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
+    try {
+      RenderSystem.setShader(GameRenderer::getPositionColorShader);
+      decorBuffer.bind();
+      decorBuffer.drawWithShader(modelView, projection, RenderSystem.getShader());
+      VertexBuffer.unbind();
+    } catch (Throwable t) {
+      // 丢弃本帧。
+    } finally {
+      RenderSystem.disableBlend();
+      RenderSystem.enableCull();
+      g.flush();
+      g.disableScissor();
+    }
+  }
+
+  private void closeDecor() {
+    if (decorBuffer != null) {
+      decorBuffer.close();
+      decorBuffer = null;
+    }
+  }
+
   // ---- 渲染 ----
 
   @Override
@@ -535,7 +1203,14 @@ public final class StructureScene extends AbstractWidget {
       return;
     }
     Minecraft mc = Minecraft.getInstance();
+    lerpCamera();
     float scale = Math.min(w, h) * 0.85f / maxDim * zoom;
+    if (perspective) {
+      g.flush();
+      g.enableScissor(x, y, x + w, y + h);
+      RenderSystem.clear(GL11.GL_DEPTH_BUFFER_BIT, false);
+      g.disableScissor();
+    }
     if (useLod) {
       if (lodBuffer != null) {
         drawLod(g, x, y, w, h, scale, mc);
@@ -553,10 +1228,69 @@ public final class StructureScene extends AbstractWidget {
     } else {
       drawImmediate(g, x, y, w, h, scale, mc);
     }
+    if (showGizmo) {
+      if (decorBuffer == null) {
+        buildDecor();
+      }
+      if (decorBuffer != null) {
+        drawDecor(g, x, y, w, h, scale, mc);
+      }
+    }
+    if (hasSelection && selectionBuffer != null) {
+      drawSelectionBox(g, x, y, w, h, scale, mc);
+    }
+    if (editMode) {
+      updateHover(mouseX, mouseY);
+      if (hoverBuffer != null) {
+        drawHover(g, x, y, w, h, scale, mc);
+      }
+    }
     drawHints(g, x, y, w, h, mc);
   }
 
+  private static final float PERSPECTIVE_FOV = (float) Math.toRadians(45.0);
+
+  private float perspectiveDist() {
+    float zoomClamped = Math.max(0.25f, zoom);
+    return maxDim / (0.85f * zoomClamped * 2.0f * (float) Math.tan(PERSPECTIVE_FOV / 2.0))
+        + maxDim;
+  }
+
+  /** View matrix for perspective mode: structure centered/rotated and pushed away from the camera. */
+  private Matrix4f perspectiveModelView() {
+    float dist = perspectiveDist();
+    float viewPerPixel = 2.0f * dist * (float) Math.tan(PERSPECTIVE_FOV / 2.0)
+        / Math.max(1, getHeight());
+    Matrix4f mv = new Matrix4f();
+    mv.translate(panX * viewPerPixel, -panY * viewPerPixel, -dist);
+    mv.rotate(Axis.XP.rotationDegrees(pitch));
+    mv.rotate(Axis.YP.rotationDegrees(yaw));
+    mv.translate(-centerX, -centerY, -centerZ);
+    return mv;
+  }
+
+  /** Projection: GUI ortho, or (perspective) a frustum mapped into the widget's screen rect. */
+  private Matrix4f projectionFor(int x, int y, int w, int h) {
+    if (!perspective) {
+      return RenderSystem.getProjectionMatrix();
+    }
+    Minecraft mc = Minecraft.getInstance();
+    float guiW = Math.max(1, mc.getWindow().getGuiScaledWidth());
+    float guiH = Math.max(1, mc.getWindow().getGuiScaledHeight());
+    float nl = 2.0f * x / guiW - 1.0f;
+    float nr = 2.0f * (x + w) / guiW - 1.0f;
+    float nt = 1.0f - 2.0f * y / guiH;
+    float nb = 1.0f - 2.0f * (y + h) / guiH;
+    return new Matrix4f()
+        .translate((nl + nr) / 2.0f, (nb + nt) / 2.0f, 0.0f)
+        .scale((nr - nl) / 2.0f, (nt - nb) / 2.0f, 1.0f)
+        .perspective(PERSPECTIVE_FOV, 1.0f, 0.05f, maxDim * 8.0f + 100.0f);
+  }
+
   private Matrix4f cameraModelView(GuiGraphics g, int x, int y, int w, int h, float scale) {
+    if (perspective) {
+      return perspectiveModelView();
+    }
     PoseStack pose = g.pose();
     pose.pushPose();
     pose.translate(x + w / 2.0f + panX, y + h / 2.0f + panY, 400.0f);
@@ -574,7 +1308,7 @@ public final class StructureScene extends AbstractWidget {
   /** 详细：画已烘焙好的各 Y 层缓存（只画 y < clipMaxY 的层，切顶即时）。 */
   private void drawBaked(GuiGraphics g, int x, int y, int w, int h, float scale, Minecraft mc) {
     Matrix4f modelView = cameraModelView(g, x, y, w, h, scale);
-    Matrix4f projection = RenderSystem.getProjectionMatrix();
+    Matrix4f projection = projectionFor(x, y, w, h);
     g.flush();
     g.enableScissor(x, y, x + w, y + h);
     RenderSystem.enableDepthTest();
@@ -586,7 +1320,7 @@ public final class StructureScene extends AbstractWidget {
     renderType.setupRenderState();
     try {
       int top = Math.min(clipMaxY, layerBuffers.length);
-      for (int ly = 0; ly < top; ly++) {
+      for (int ly = Math.max(0, clipMinY); ly < top; ly++) {
         VertexBuffer buffer = layerBuffers[ly];
         if (buffer != null) {
           buffer.bind();
@@ -609,7 +1343,7 @@ public final class StructureScene extends AbstractWidget {
   /** 体素 LOD：画彩色立方体缓冲（POSITION_COLOR，无纹理/光照贴图）。 */
   private void drawLod(GuiGraphics g, int x, int y, int w, int h, float scale, Minecraft mc) {
     Matrix4f modelView = cameraModelView(g, x, y, w, h, scale);
-    Matrix4f projection = RenderSystem.getProjectionMatrix();
+    Matrix4f projection = projectionFor(x, y, w, h);
     g.flush();
     g.enableScissor(x, y, x + w, y + h);
     RenderSystem.enableDepthTest();
@@ -648,7 +1382,7 @@ public final class StructureScene extends AbstractWidget {
       MultiBufferSource.BufferSource buffers = mc.renderBuffers().bufferSource();
       BlockRenderDispatcher dispatcher = mc.getBlockRenderer();
       for (PosState ps : blocks) {
-        if (ps.pos().getY() >= clipMaxY) {
+        if (!inClip(ps.pos().getX(), ps.pos().getY(), ps.pos().getZ())) {
           continue;
         }
         pose.pushPose();
@@ -676,6 +1410,17 @@ public final class StructureScene extends AbstractWidget {
         y + (h - font.lineHeight) / 2, 0xC0FFFFFF, true);
   }
 
+  private String sliceTargetName() {
+    return switch (sliceTarget) {
+      case 0 -> "Y+";
+      case 1 -> "Y-";
+      case 2 -> "X+";
+      case 3 -> "X-";
+      case 4 -> "Z+";
+      default -> "Z-";
+    };
+  }
+
   private void drawHints(GuiGraphics g, int x, int y, int w, int h, Minecraft mc) {
     Font font = mc.font;
     if (useLod) {
@@ -693,10 +1438,18 @@ public final class StructureScene extends AbstractWidget {
           + " · " + structure.countNonAir();
       g.drawString(font, dims, x + 3, y + 3, 0xC0FFFFFF, true);
     }
-    if (clipMaxY < structHeight) {
-      String layer =
-          Component.translatable("buildpack.preview.layer", clipMaxY, structHeight).getString();
-      g.drawString(font, layer, x + 3, y + 3 + font.lineHeight + 1, 0xFFFFFF55, true);
+    boolean sliced = clipMinX > 0 || clipMaxX < structWidth || clipMinY > 0
+        || clipMaxY < structHeight || clipMinZ > 0 || clipMaxZ < structDepth;
+    String slice = Component.translatable("buildpack.preview.slice", sliceTargetName()).getString();
+    g.drawString(font, slice, x + 3, y + 3 + font.lineHeight + 1,
+        sliced ? 0xFFFFFF55 : 0xC0FFFFFF, true);
+    if (editMode && hover != null) {
+      String info = hover.pos().getX() + "," + hover.pos().getY() + "," + hover.pos().getZ();
+      String id = blockIdAt(hover.pos());
+      if (id != null) {
+        info = info + " · " + id;
+      }
+      g.drawString(font, info, x + 3, y + h - font.lineHeight - 1, 0xFFFFD080, true);
     }
   }
 
@@ -717,6 +1470,9 @@ public final class StructureScene extends AbstractWidget {
     if (button == 2) {
       resetView();
     }
+    if (button == 0) {
+      dragged = false;
+    }
     // 左/右键：消费点击以便宿主转发后续拖拽。
     return true;
   }
@@ -725,6 +1481,17 @@ public final class StructureScene extends AbstractWidget {
   public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
     if (!interactive) {
       return false;
+    }
+    if (editMode && button == 0 && Screen.hasControlDown() && onEdit != null) {
+      dragged = true;
+      Hit hit = raycast(mouseX, mouseY);
+      if (hit != null) {
+        onEdit.accept(hit);
+      }
+      return true;
+    }
+    if (button == 0 && (Math.abs(dragX) > 0.5 || Math.abs(dragY) > 0.5)) {
+      dragged = true;
     }
     applyDrag(button, dragX, dragY);
     return true;
@@ -741,9 +1508,13 @@ public final class StructureScene extends AbstractWidget {
     if (button == 1) {
       panX += (float) dragX;
       panY += (float) dragY;
+      targetPanX = panX;
+      targetPanY = panY;
     } else if (button == 0) {
       yaw += (float) dragX;
       pitch = Math.max(-89.0f, Math.min(89.0f, pitch + (float) dragY));
+      targetYaw = yaw;
+      targetPitch = pitch;
     }
   }
 
@@ -753,7 +1524,21 @@ public final class StructureScene extends AbstractWidget {
       return false;
     }
     zoom = Math.max(0.25f, Math.min(6.0f, zoom * (scrollY > 0.0 ? 1.15f : 0.87f)));
+    targetZoom = zoom;
     return true;
+  }
+
+  @Override
+  public boolean mouseReleased(double mouseX, double mouseY, int button) {
+    if (interactive && editMode && button == 0 && !dragged && onEdit != null
+        && isMouseOver(mouseX, mouseY)) {
+      Hit hit = raycast(mouseX, mouseY);
+      if (hit != null) {
+        onEdit.accept(hit);
+      }
+    }
+    dragged = false;
+    return super.mouseReleased(mouseX, mouseY, button);
   }
 
   @Override
