@@ -255,6 +255,7 @@
   "buildpack.export.do": "导出",
   "buildpack.msg.pack_updated": "已更新 %1$s（%2$s 个建筑，移除 %3$s 个旧文件）",
   "buildpack.msg.clipboard_invalid": "剪贴板不是有效的可导入文件路径",
+  "buildpack.preview.baking": "生成预览…",
   "buildpack.log.move_failed": "移动文件失败：%s",
   "buildpack.log.folder_failed": "创建文件夹失败：%s",
   "buildpack.log.index_read_failed": "读取导入索引失败：%s",

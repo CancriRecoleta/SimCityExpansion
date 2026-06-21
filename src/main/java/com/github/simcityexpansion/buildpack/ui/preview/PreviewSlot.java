@@ -19,8 +19,11 @@ public final class PreviewSlot extends AbstractWidget {
     super(x, y, width, height, Component.empty());
   }
 
-  /** 设置当前预览子控件（{@code null} 表示清空）。 */
+  /** 设置当前预览子控件（{@code null} 表示清空）；替换时释放上一个场景的 GPU 缓冲。 */
   public void setChild(@Nullable AbstractWidget child) {
+    if (this.child instanceof StructureScene scene && this.child != child) {
+      scene.close();
+    }
     this.child = child;
     syncBounds();
   }

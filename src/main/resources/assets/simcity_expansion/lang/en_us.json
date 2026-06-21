@@ -255,6 +255,7 @@
   "buildpack.export.do": "Export",
   "buildpack.msg.pack_updated": "Updated %1$s (%2$s buildings, removed %3$s old file(s))",
   "buildpack.msg.clipboard_invalid": "Clipboard is not a valid importable file path",
+  "buildpack.preview.baking": "Building preview…",
   "buildpack.log.move_failed": "Failed to move file: %s",
   "buildpack.log.folder_failed": "Failed to create folder: %s",
   "buildpack.log.index_read_failed": "Failed to read import index: %s",

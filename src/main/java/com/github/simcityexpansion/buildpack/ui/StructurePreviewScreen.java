@@ -55,6 +55,7 @@ public final class StructurePreviewScreen extends Screen {
     scene.setWidth(width - PAD * 2 - 2);
     scene.setHeight(boxHeight() - 2);
     addRenderableWidget(scene);
+    scene.ensureBaked();
 
     int by = height - PAD - BUTTON_H;
     int bx = PAD;
@@ -98,6 +99,11 @@ public final class StructurePreviewScreen extends Screen {
       return true;
     }
     return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+  }
+
+  @Override
+  public void removed() {
+    scene.close();
   }
 
   @Override

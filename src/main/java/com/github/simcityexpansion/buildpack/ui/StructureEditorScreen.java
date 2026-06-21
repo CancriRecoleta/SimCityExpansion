@@ -97,6 +97,7 @@ public final class StructureEditorScreen extends Screen {
     scene.setWidth(leftW - 2);
     scene.setHeight(bodyHeight() - 2);
     addRenderableWidget(scene);
+    scene.ensureBaked();
 
     int x = toolX() + 4;
     int y = bodyY() + 4;
@@ -245,6 +246,11 @@ public final class StructureEditorScreen extends Screen {
       return true;
     }
     return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+  }
+
+  @Override
+  public void removed() {
+    scene.close();
   }
 
   @Override
