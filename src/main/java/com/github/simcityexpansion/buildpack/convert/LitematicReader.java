@@ -21,16 +21,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Litematica 投影（.litematic）读取器。
+ * Reader for Litematica projections (.litematic).
  *
- * <p>格式要点：
+ * <p>Format highlights:
  * <ul>
- *   <li>顶层：{@code Version / MinecraftDataVersion / Metadata / Regions}；</li>
- *   <li>每个 Region：{@code Position}、{@code Size}（分量可为负）、{@code BlockStatePalette}、
- *       {@code BlockStates}（long 数组，<b>紧密跨 long 边界</b>位打包，区别于 1.16+ 区块格式）、
- *       {@code TileEntities}（坐标为区域局部 x/y/z）；</li>
- *   <li>每条目位宽 {@code bits = max(2, ceil(log2(调色板大小)))}，
- *       索引顺序为 YZX（x 变化最快）。</li>
+ *   <li>Top level: {@code Version / MinecraftDataVersion / Metadata / Regions}.</li>
+ *   <li>Each Region: {@code Position}, {@code Size} (components may be negative),
+ *       {@code BlockStatePalette}, {@code BlockStates} (long array, <b>tightly packed across long
+ *       boundaries</b>, unlike the 1.16+ chunk format), and {@code TileEntities} (coordinates are
+ *       region-local x/y/z).</li>
+ *   <li>Bits per entry: {@code bits = max(2, ceil(log2(palette size)))}; index order is YZX
+ *       (x changes fastest).</li>
  * </ul>
  */
 public final class LitematicReader {
@@ -38,15 +39,15 @@ public final class LitematicReader {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(LitematicReader.class);
 
-  /** 合并后包围体积上限（格），超过则拒绝转换以防内存失控。 */
+  /** Maximum merged bounding volume in blocks; conversion is refused above this limit to prevent memory exhaustion. */
   private static final long MAX_MERGED_VOLUME = 16_000_000L;
 
-  /** 仅读取 Metadata 摘要（不解包方块数据），供列表选中时快速展示。 */
+  /** Reads only the Metadata summary (without unpacking block data) for fast display when an item is selected in a list. */
   public static StructureInfo readInfo(Path path) throws IOException {
     return readInfo(NbtIo.readCompressed(path, NbtAccounter.unlimitedHeap()));
   }
 
-  /** 从已读出的根标签提取摘要。 */
+  /** Extracts the summary from an already-read root tag. */
   public static StructureInfo readInfo(CompoundTag root) {
     CompoundTag metadata = root.getCompound("Metadata");
     CompoundTag enclosing = metadata.getCompound("EnclosingSize");
@@ -76,19 +77,19 @@ public final class LitematicReader {
         preview, previewSize);
   }
 
-  /** 完整解析并把所有区域合并为一个包围盒内的 {@link NbtStructure}。 */
+  /** Fully parses and merges all regions into a single {@link NbtStructure} within one bounding box. */
   public static NbtStructure readAndMerge(Path path) throws IOException {
     return readAndMerge(NbtIo.readCompressed(path, NbtAccounter.unlimitedHeap()));
   }
 
-  /** 完整解析（根标签版本）。 */
+  /** Fully parses from an already-read root tag. */
   public static NbtStructure readAndMerge(CompoundTag root) throws IOException {
     CompoundTag regionsTag = root.getCompound("Regions");
     if (regionsTag.isEmpty()) {
       throw new LocalizedIOException(Component.translatable("buildpack.error.no_regions"));
     }
 
-    // 第一遍：归一化各区域包围范围，求全局包围盒。
+    // First pass: normalize each region's bounding extent and compute the global bounding box.
     List<Region> regions = new ArrayList<>();
     int gMinX = Integer.MAX_VALUE;
     int gMinY = Integer.MAX_VALUE;
@@ -115,7 +116,7 @@ public final class LitematicReader {
           "buildpack.error.volume_exceeded", sizeX + " x " + sizeY + " x " + sizeZ));
     }
 
-    // 全局调色板：空气固定占索引 0，按规范化键去重。
+    // Global palette: air is fixed at index 0; entries are deduplicated by canonical key.
     List<NbtStructure.PaletteEntry> palette = new ArrayList<>();
     Map<String, Integer> paletteIndex = new LinkedHashMap<>();
     palette.add(NbtStructure.PaletteEntry.AIR);
@@ -124,13 +125,13 @@ public final class LitematicReader {
     int[] grid = new int[(int) volume];
     Map<Long, CompoundTag> tileEntities = new HashMap<>();
 
-    // 第二遍：逐区域解包并写入全局网格（后写区域覆盖先写）。
+    // Second pass: unpack each region and write into the global grid (later regions overwrite earlier ones).
     for (Region region : regions) {
       mergeRegion(region, palette, paletteIndex, grid,
           tileEntities, gMinX, gMinY, gMinZ, sizeX, sizeZ);
     }
 
-    // 输出 blocks 列表：包含空气条目，保证 SimuKraft 建造时按模板清空内部空间。
+    // Output blocks list: includes air entries so the builder clears the interior space according to the template.
     List<NbtStructure.BlockEntry> blocks = new ArrayList<>((int) volume);
     for (int y = 0; y < sizeY; y++) {
       for (int z = 0; z < sizeZ; z++) {
@@ -150,7 +151,7 @@ public final class LitematicReader {
       List<NbtStructure.PaletteEntry> palette, Map<String, Integer> paletteIndex,
       int[] grid, Map<Long, CompoundTag> tileEntities,
       int gMinX, int gMinY, int gMinZ, int sizeX, int sizeZ) throws IOException {
-    // 局部调色板 → 全局调色板索引映射。
+    // Local palette to global palette index mapping.
     int[] localToGlobal = new int[region.palette.size()];
     for (int i = 0; i < region.palette.size(); i++) {
       NbtStructure.PaletteEntry entry = region.palette.get(i);
@@ -194,7 +195,7 @@ public final class LitematicReader {
       I18nLog.warn(LOGGER, "buildpack.log.litematic_bad_indices", badIndices);
     }
 
-    // 方块实体：区域局部坐标 → 全局坐标，并移除坐标键（原版格式的 blocks[].nbt 不含坐标）。
+    // Block entities: convert region-local coordinates to global coordinates and remove the coordinate keys (vanilla format blocks[].nbt does not contain coordinates).
     for (int i = 0; i < region.tileEntities.size(); i++) {
       CompoundTag te = region.tileEntities.getCompound(i).copy();
       int gx = offsetX + te.getInt("x");
@@ -207,7 +208,7 @@ public final class LitematicReader {
     }
   }
 
-  /** 紧密位打包解码：条目可跨越相邻两个 long。 */
+  /** Tightly packed bit-unpacking: an entry may span two adjacent longs. */
   private static int unpack(long[] longs, long index, int bits, long mask) {
     long startBit = index * bits;
     int startLong = (int) (startBit >>> 6);
@@ -223,7 +224,7 @@ public final class LitematicReader {
     return ((long) y << 42) | ((long) (z & 0x1FFFFF) << 21) | (x & 0x1FFFFF);
   }
 
-  /** 一个已归一化（尺寸恒为正）的 litematic 区域。 */
+  /** A normalized litematic region (dimensions are always positive). */
   private record Region(int minX, int minY, int minZ, int sizeX, int sizeY, int sizeZ,
       List<NbtStructure.PaletteEntry> palette, long[] blockStates, ListTag tileEntities) {
 
@@ -239,7 +240,7 @@ public final class LitematicReader {
       if (sx == 0 || sy == 0 || sz == 0) {
         throw new LocalizedIOException(Component.translatable("buildpack.error.zero_region"));
       }
-      // Size 分量可为负：负值表示从 Position 往负方向延伸。
+      // Size components may be negative: a negative value means the region extends in the negative direction from Position.
       int minX = sx >= 0 ? px : px + sx + 1;
       int minY = sy >= 0 ? py : py + sy + 1;
       int minZ = sz >= 0 ? pz : pz + sz + 1;

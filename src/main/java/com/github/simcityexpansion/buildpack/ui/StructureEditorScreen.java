@@ -36,8 +36,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 建筑结构变换编辑器：左侧满高 3D 主视图（拖动旋转/平移/缩放/切顶），右侧分组工具面板
- * （变换 / 编辑 / 历史 / 视图 / 保存）。「保存」把结果写到导入目录（.nbt）。
+ * Structure transform editor: full-height 3D main view on the left (drag to rotate/pan/zoom/peel
+ * top), grouped tool panel on the right (transform, edit, history, view, save). "Save" writes
+ * the result to the import directory (.nbt).
  */
 public final class StructureEditorScreen extends Screen {
 
@@ -53,7 +54,7 @@ public final class StructureEditorScreen extends Screen {
   private static final int ROW_H = 16;
   private static final int MAX_HISTORY = 30;
 
-  /** 一条分组小标题：文本 + 绘制坐标。 */
+  /** A section sub-header: display text and render coordinates. */
   private record SectionLabel(Component text, int x, int y) {}
 
   private final Screen previous;
@@ -100,7 +101,7 @@ public final class StructureEditorScreen extends Screen {
     this.workBlocks = this.origBlocks;
   }
 
-  /** 打开编辑器（结构超限/无法渲染时不打开）。 */
+  /** Opens the editor (does nothing if the structure exceeds limits or cannot be rendered). */
   public static void open(NbtStructure original, String baseName) {
     StructureScene scene = new StructureScene(0, 0, 0, 0, true);
     if (!scene.setStructure(original)) {
@@ -242,7 +243,7 @@ public final class StructureEditorScreen extends Screen {
     return y + ROW_H;
   }
 
-  // ---- 操作 ----
+  // ---- Operations ----
 
   private void apply(NbtStructure result) {
     undo.push(work);
@@ -292,7 +293,7 @@ public final class StructureEditorScreen extends Screen {
     }
   }
 
-  // ---- 区域选区 ----
+  // ---- Region selection ----
 
   private void selectAll() {
     selMin[0] = 0;
@@ -380,7 +381,7 @@ public final class StructureEditorScreen extends Screen {
         }));
   }
 
-  // ---- 单方块编辑 ----
+  // ---- Single-block editing ----
 
   private void setTool(EditTool selected) {
     tool = tool == selected ? EditTool.NONE : selected;
@@ -656,11 +657,11 @@ public final class StructureEditorScreen extends Screen {
     }
   }
 
-  // ---- 渲染 ----
+  // ---- Rendering ----
 
   @Override
   public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-    // 覆盖原版：不做高斯模糊背景；遮罩由 render() 自行绘制。
+    // Override vanilla: no Gaussian-blur background; the dim overlay is drawn by render().
   }
 
   @Override
@@ -854,7 +855,7 @@ public final class StructureEditorScreen extends Screen {
     }
   }
 
-  // ---- 工具 ----
+  // ---- Utilities ----
 
   private static String sanitize(String name) {
     String cleaned = name == null ? "" : name.replaceAll("[\\\\/:*?\"<>|]", "_").trim();

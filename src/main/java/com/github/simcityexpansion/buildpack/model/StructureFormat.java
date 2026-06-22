@@ -4,17 +4,18 @@ import java.util.Locale;
 import java.util.Optional;
 
 /**
- * 支持导入的结构文件格式。
+ * Structure file formats supported for import.
  *
- * <p>SimuKraft 的建造系统只解析原版 NBT 结构格式（palette + blocks），因此
- * {@link #LITEMATIC} 在安装时必须先转换为 {@link #VANILLA_NBT} 再写入其建筑目录。
+ * <p>SimuKraft's build system only parses the vanilla NBT structure format (palette + blocks),
+ * so {@link #LITEMATIC} must be converted to {@link #VANILLA_NBT} before being written to its
+ * building directory during installation.
  */
 public enum StructureFormat {
-  /** 原版结构方块导出的 .nbt 模板。 */
+  /** .nbt template exported by a vanilla structure block. */
   VANILLA_NBT(".nbt"),
-  /** Litematica 投影 .litematic。 */
+  /** Litematica projection .litematic. */
   LITEMATIC(".litematic"),
-  /** Sponge / WorldEdit 原理图 .schem（v1/v2/v3）。 */
+  /** Sponge / WorldEdit schematic .schem (v1/v2/v3). */
   SCHEM(".schem");
 
   private final String extension;
@@ -23,12 +24,12 @@ public enum StructureFormat {
     this.extension = extension;
   }
 
-  /** 文件扩展名（含点，小写）。 */
+  /** File extension (including dot, lowercase). */
   public String extension() {
     return extension;
   }
 
-  /** 按文件名扩展名识别格式。 */
+  /** Identifies the format by file name extension. */
   public static Optional<StructureFormat> byFileName(String fileName) {
     String lower = fileName.toLowerCase(Locale.ROOT);
     for (StructureFormat format : values()) {

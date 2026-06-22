@@ -9,7 +9,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
-/** 材料清单独立页面：满屏分页展示某建筑的全部材料；「返回」回到打开它的界面。 */
+/** Full-screen material list page: paginates all materials for a building; "Back" returns to the screen that opened it. */
 public final class MaterialListScreen extends Screen {
 
   private static final int PAD = 10;
@@ -28,7 +28,7 @@ public final class MaterialListScreen extends Screen {
     this.materials = materials;
   }
 
-  /** 打开材料清单页面（返回时切回打开它的界面）。 */
+  /** Opens the material list screen (returns to the screen that opened it on close). */
   public static void open(String buildingName, List<MaterialEntry> materials) {
     Minecraft mc = Minecraft.getInstance();
     mc.setScreen(new MaterialListScreen(mc.screen, buildingName, materials));
@@ -54,7 +54,7 @@ public final class MaterialListScreen extends Screen {
 
   @Override
   public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-    // 覆盖原版：不做高斯模糊背景。
+    // Override vanilla: skip the Gaussian-blur background.
   }
 
   @Override

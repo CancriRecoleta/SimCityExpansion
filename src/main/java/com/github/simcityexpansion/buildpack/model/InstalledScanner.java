@@ -18,13 +18,13 @@ import com.github.simcityexpansion.buildpack.install.InstallRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** 扫描 SimuKraft 建筑目录（{@code simukraftbuilding/<分类>/*.sk}），列出已安装建筑。 */
+/** Scans the SimuKraft building directory ({@code simukraftbuilding/<category>/*.sk}) and lists installed buildings. */
 public final class InstalledScanner {
   private InstalledScanner() {}
 
   private static final Logger LOGGER = LoggerFactory.getLogger(InstalledScanner.class);
 
-  /** 列出全部分类下的已安装建筑，按「分类 → 名称」排序。 */
+  /** Lists all installed buildings across every category, sorted by category then name. */
   public static List<InstalledBuilding> scan(InstallRegistry registry) {
     List<InstalledBuilding> result = new ArrayList<>();
     for (BuildingCategory category : BuildingCategory.values()) {
@@ -81,7 +81,7 @@ public final class InstalledScanner {
   }
 
   private static Path findStructureFile(Path dir, String baseName) {
-    // SimuKraft 自带建筑均为 .nbt；同时兼容用户手动放入的其他扩展名。
+    // SimuKraft built-in buildings use .nbt; other extensions are also supported for files placed manually by the user.
     for (String extension : new String[] {".nbt", ".litematic", ".schem", ".schematic"}) {
       Path candidate = dir.resolve(baseName + extension);
       if (Files.isRegularFile(candidate)) {

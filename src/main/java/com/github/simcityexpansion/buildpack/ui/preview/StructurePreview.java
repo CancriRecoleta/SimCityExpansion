@@ -22,9 +22,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 结构预览：litematic 内嵌的 PreviewImageData（方形 ARGB 像素）注册为动态纹理后渲染；
- * 任意 ARGB 像素阵列（如俯视图/等距图）也走同一管线。返回的 {@link AbstractWidget}
- * 会在给定区域内按比例居中绘制（最长边 120px）。
+ * Structure preview: registers a litematic's embedded PreviewImageData (square ARGB pixels) as a
+ * dynamic texture and renders it; arbitrary ARGB pixel arrays (e.g., top-down or isometric views)
+ * use the same pipeline. The returned {@link AbstractWidget} draws the image centered and
+ * proportionally scaled within the given area (longest side 120px).
  */
 public final class StructurePreview {
   private StructurePreview() {}
@@ -32,10 +33,10 @@ public final class StructurePreview {
   private static final Logger LOGGER = LoggerFactory.getLogger(StructurePreview.class);
   private static final int MAX_SIZE = 120;
 
-  /** 已注册动态纹理缓存：像素数据+尺寸哈希 → 纹理路径，避免重复注册。 */
+  /** Cache of registered dynamic textures: pixel-data + size hash -> texture location, to avoid duplicate registrations. */
   private static final Map<Long, ResourceLocation> TEXTURE_CACHE = new HashMap<>();
 
-  /** litematic 内嵌缩略图预览；无内嵌图时返回 {@code null}（调用方决定回退）。 */
+  /** Returns a preview widget from the litematic's embedded thumbnail; returns {@code null} if no embedded image exists (caller decides the fallback). */
   @Nullable
   public static AbstractWidget embedded(StructureInfo info) {
     if (info.previewArgb() == null || info.previewSize() <= 0) {
@@ -44,7 +45,7 @@ public final class StructurePreview {
     return fromPixels(info.previewArgb(), info.previewSize(), info.previewSize());
   }
 
-  /** 把 ARGB 像素阵列注册为动态纹理并构建展示控件；注册失败时回退占位。 */
+  /** Registers an ARGB pixel array as a dynamic texture and builds the display widget; falls back to a placeholder on registration failure. */
   public static AbstractWidget fromPixels(int[] argb, int width, int height) {
     try {
       ResourceLocation texture = registerTexture(argb, width, height);
@@ -55,7 +56,7 @@ public final class StructurePreview {
     }
   }
 
-  /** 「暂无预览」占位控件。 */
+  /** Returns the "no preview available" placeholder widget. */
   public static AbstractWidget placeholder() {
     return new PreviewImage(null, 0, 0);
   }
@@ -67,7 +68,7 @@ public final class StructurePreview {
       for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
           int pixel = argb[y * width + x];
-          // ARGB → ABGR（NativeImage 像素布局），交换红蓝通道。
+          // ARGB -> ABGR (NativeImage pixel layout): swap red and blue channels.
           int abgr = (pixel & 0xFF00FF00)
               | ((pixel & 0x00FF0000) >>> 16)
               | ((pixel & 0x000000FF) << 16);
@@ -81,7 +82,7 @@ public final class StructurePreview {
     });
   }
 
-  /** 在给定区域内居中按比例绘制预览图；纹理为 {@code null} 时绘制占位文本。 */
+  /** Draws the preview image centered and proportionally scaled within the given area; draws placeholder text when the texture is {@code null}. */
   private static final class PreviewImage extends AbstractWidget {
     @Nullable
     private final ResourceLocation texture;

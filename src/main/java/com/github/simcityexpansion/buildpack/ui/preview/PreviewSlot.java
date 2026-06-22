@@ -7,9 +7,11 @@ import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * 预览插槽：一个持久存在的控件，内部托管「当前预览子控件」（3D 场景 / 等距图 / 俯视图 /
- * 内嵌缩略图 / 占位）。选中项变化时只需 {@link #setChild} 换子控件，无需在屏幕上反复增删控件。
- * 渲染与鼠标事件都按本插槽边界同步给子控件后再转发。
+ * Preview slot: a persistent widget that hosts the "current preview child widget" (3D scene /
+ * isometric view / top-down view / embedded thumbnail / placeholder). When the selection changes,
+ * only {@link #setChild} is needed to swap the child — no need to repeatedly add or remove widgets
+ * from the screen. Render and mouse events are forwarded to the child after syncing this slot's
+ * bounds.
  */
 public final class PreviewSlot extends AbstractWidget {
   @Nullable
@@ -19,7 +21,7 @@ public final class PreviewSlot extends AbstractWidget {
     super(x, y, width, height, Component.empty());
   }
 
-  /** 设置当前预览子控件（{@code null} 表示清空）；替换时释放上一个场景的 GPU 缓冲。 */
+  /** Sets the current preview child widget ({@code null} clears it); releases the previous scene's GPU buffer on replacement. */
   public void setChild(@Nullable AbstractWidget child) {
     if (this.child instanceof StructureScene scene && this.child != child) {
       scene.close();

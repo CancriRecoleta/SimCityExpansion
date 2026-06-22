@@ -7,17 +7,17 @@ import com.github.simcityexpansion.buildpack.model.ImportFile;
 import com.github.simcityexpansion.buildpack.model.ImportIndex;
 import net.minecraft.network.chat.Component;
 
-/** 导入文件列表的排序方式。 */
+/** Sort modes for the imported file list. */
 public enum SortMode {
-  /** 按文件名升序。 */
+  /** Sort by file name, ascending. */
   NAME("name"),
-  /** 按修改时间降序（最新在前）。 */
+  /** Sort by modification time, descending (newest first). */
   MODIFIED("modified"),
-  /** 按文件大小降序（最大在前）。 */
+  /** Sort by file size, descending (largest first). */
   SIZE("size"),
-  /** 按非空气方块数降序（需索引富集）。 */
+  /** Sort by non-air block count, descending (requires enriched index). */
   BLOCKS("blocks"),
-  /** 按包围体积降序（需索引富集）。 */
+  /** Sort by bounding volume, descending (requires enriched index). */
   VOLUME("volume");
 
   private final String key;
@@ -26,12 +26,12 @@ public enum SortMode {
     this.key = key;
   }
 
-  /** 本地化显示名。 */
+  /** Localized display name. */
   public Component displayName() {
     return Component.translatable("buildpack.sort." + key);
   }
 
-  /** 对应的导入文件比较器。 */
+  /** Comparator for imported files corresponding to this sort mode. */
   public Comparator<ImportFile> comparator() {
     return switch (this) {
       case NAME -> Comparator.comparing(file -> file.fileName().toLowerCase(Locale.ROOT));

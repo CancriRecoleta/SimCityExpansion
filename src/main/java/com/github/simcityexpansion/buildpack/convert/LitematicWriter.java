@@ -13,23 +13,24 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtIo;
 
 /**
- * 把 {@link NbtStructure} 写为 Litematica 投影（.litematic）：单区域、紧密位打包的 BlockStates、
- * 元数据。是 {@link LitematicReader} 的逆过程（位打包/YZX 顺序与之一致）。
+ * Writes an {@link NbtStructure} as a Litematica projection (.litematic): single region, tightly
+ * bit-packed BlockStates, and metadata. This is the inverse of {@link LitematicReader} (bit packing
+ * and YZX order match exactly).
  */
 public final class LitematicWriter {
   private LitematicWriter() {}
 
-  /** litematic schema 版本（读取端不校验具体值，取常见值）。 */
+  /** Litematic schema version (the reader does not validate the exact value; a common value is used). */
   private static final int SCHEMATIC_VERSION = 6;
 
-  /** 写出为 .litematic。 */
+  /** Writes the structure as a .litematic file. */
   public static void write(NbtStructure s, String name, String author, Path target) throws IOException {
     int sizeX = s.sizeX;
     int sizeY = s.sizeY;
     int sizeZ = s.sizeZ;
     int volume = sizeX * sizeY * sizeZ;
 
-    // 调色板（确保含空气，作为网格默认值）。
+    // Palette: ensure air is present as the grid default.
     List<PaletteEntry> palette = new ArrayList<>(s.palette);
     int airIndex = -1;
     for (int i = 0; i < palette.size(); i++) {
@@ -64,7 +65,7 @@ public final class LitematicWriter {
       }
     }
 
-    // 位打包（与读取端 unpack 对应：bits>=2、YZX、可跨 long）。
+    // Bit packing (mirrors the reader's unpack: bits >= 2, YZX order, may span long boundaries).
     int bits = Math.max(2, 32 - Integer.numberOfLeadingZeros(Math.max(palette.size() - 1, 1)));
     long mask = (1L << bits) - 1;
     long[] longs = new long[(int) (((long) volume * bits + 63) / 64)];

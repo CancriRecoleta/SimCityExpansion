@@ -4,21 +4,21 @@ import java.nio.file.Path;
 import java.time.Instant;
 
 /**
- * 导入目录中发现的一个结构散文件。
+ * A loose structure file discovered in the import directory.
  *
- * @param path 文件绝对路径
- * @param format 结构格式（按扩展名识别）
- * @param sizeBytes 文件大小
- * @param modifiedAt 最后修改时间
+ * @param path absolute path to the file
+ * @param format structure format (identified by extension)
+ * @param sizeBytes file size in bytes
+ * @param modifiedAt last modification time
  */
 public record ImportFile(Path path, StructureFormat format, long sizeBytes, Instant modifiedAt) {
 
-  /** 文件名（含扩展名）。 */
+  /** File name including extension. */
   public String fileName() {
     return path.getFileName().toString();
   }
 
-  /** 去掉扩展名的基础名，作为建筑默认名。 */
+  /** Base name with the extension stripped, used as the default building name. */
   public String baseName() {
     String name = fileName();
     int dot = name.lastIndexOf('.');

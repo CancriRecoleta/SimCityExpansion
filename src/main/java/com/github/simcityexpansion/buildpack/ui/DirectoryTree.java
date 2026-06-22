@@ -16,17 +16,17 @@ import com.github.simcityexpansion.buildpack.ui.tree.TreeNode;
 import net.minecraft.network.chat.Component;
 
 /**
- * 把三种来源的数据组织成 {@link TreeNode} 层级树：分支节点内容为 {@code null}，
- * 叶子内容为对应的数据对象（{@link ImportFile} / {@link PackArchive} /
- * {@link PackBuildingSelection} / {@link InstalledBuilding}）。
+ * Organizes data from three sources into a {@link TreeNode} hierarchy: branch node content is
+ * {@code null}, and leaf content is the corresponding data object ({@link ImportFile} /
+ * {@link PackArchive} / {@link PackBuildingSelection} / {@link InstalledBuilding}).
  */
 public final class DirectoryTree {
   private DirectoryTree() {}
 
-  /** 合成树根的键（TreeList 以 flattenRoot 模式隐藏该根）。 */
+  /** Key for the synthetic tree root (hidden by TreeList in flattenRoot mode). */
   public static final String ROOT_KEY = "buildpack";
 
-  /** 导入散文件：按相对导入目录的子目录建层级；收藏前缀 ★、内容重复后缀标记。 */
+  /** Imported loose files: builds a hierarchy from subdirectories relative to the import root; favorites are prefixed with ★ and duplicates are suffixed with a marker. */
   public static TreeNode<String, Object> buildImport(
       Path importRoot, List<ImportFile> files, Set<Path> duplicates) {
     TreeBuilder<String, Object> builder = TreeBuilder.start(ROOT_KEY);
@@ -46,7 +46,7 @@ public final class DirectoryTree {
     return builder.build();
   }
 
-  /** 列表显示名：收藏前缀 ★、内容重复后缀标记。 */
+  /** Display label: favorites prefixed with ★, duplicates suffixed with a marker. */
   private static String importLabel(ImportFile file, Set<Path> duplicates) {
     String label = file.fileName();
     if (ImportIndex.favorite(file.path())) {
@@ -59,8 +59,9 @@ public final class DirectoryTree {
   }
 
   /**
-   * zip 拓展包：包为分支节点（content 为 {@link PackArchive}，选中可整包安装），
-   * 展开后直接浏览包内建筑（分类 → 建筑，叶子为 {@link PackBuildingSelection}）。
+   * Zip-based build pack: the pack itself is a branch node (content is {@link PackArchive};
+   * selecting it installs the entire pack). Expanding it shows the buildings inside, organized
+   * as category -> building, with leaves as {@link PackBuildingSelection}.
    */
   public static TreeNode<String, Object> buildPacks(List<PackArchive> packs) {
     TreeBuilder<String, Object> builder = TreeBuilder.start(ROOT_KEY);
@@ -85,7 +86,7 @@ public final class DirectoryTree {
     return builder.build();
   }
 
-  /** 已安装建筑：按「分类 → 建筑」建层级。 */
+  /** Installed buildings: organized as category -> building. */
   public static TreeNode<String, Object> buildInstalled(List<InstalledBuilding> buildings) {
     TreeBuilder<String, Object> builder = TreeBuilder.start(ROOT_KEY);
     for (BuildingCategory category : BuildingCategory.values()) {

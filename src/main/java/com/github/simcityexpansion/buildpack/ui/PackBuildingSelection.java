@@ -4,9 +4,9 @@ import com.github.simcityexpansion.buildpack.model.PackArchive;
 import com.github.simcityexpansion.buildpack.model.PackBuildingEntry;
 
 /**
- * 「拓展包」页签中选中的<b>包内建筑</b>（直接从 zip 读取，未解压）。
+ * A <b>building inside a pack</b> selected on the "build pack" tab (read directly from the zip, not extracted).
  *
- * @param pack 所属拓展包
- * @param entry 包内建筑条目
+ * @param pack the build pack this building belongs to
+ * @param entry the building entry inside the pack
  */
 public record PackBuildingSelection(PackArchive pack, PackBuildingEntry entry) {}

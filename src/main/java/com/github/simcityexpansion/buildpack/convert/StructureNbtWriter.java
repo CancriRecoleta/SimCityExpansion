@@ -9,16 +9,16 @@ import net.minecraft.nbt.IntTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtIo;
 
-/** 把 {@link NbtStructure} 写出为 gzip 压缩的原版 NBT 结构模板文件。 */
+/** Writes an {@link NbtStructure} to a gzip-compressed vanilla NBT structure template file. */
 public final class StructureNbtWriter {
   private StructureNbtWriter() {}
 
-  /** 写出到目标路径（覆盖已存在文件）。 */
+  /** Writes to the target path (overwrites any existing file). */
   public static void write(NbtStructure structure, Path target) throws IOException {
     writeTag(toTag(structure), target);
   }
 
-  /** 直接写出一个已构建（可能经过 DataFixer 升级）的根标签。 */
+  /** Writes an already-built (possibly DataFixer-upgraded) root tag directly. */
   public static void writeTag(CompoundTag root, Path target) throws IOException {
     if (target.getParent() != null) {
       Files.createDirectories(target.getParent());
@@ -26,7 +26,7 @@ public final class StructureNbtWriter {
     NbtIo.writeCompressed(root, target);
   }
 
-  /** 构建原版结构模板的根标签。 */
+  /** Builds the root tag of a vanilla structure template. */
   public static CompoundTag toTag(NbtStructure structure) {
     CompoundTag root = new CompoundTag();
 

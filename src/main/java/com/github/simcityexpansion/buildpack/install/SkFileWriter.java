@@ -11,13 +11,13 @@ import com.github.simcityexpansion.buildpack.BuildPack;
 import com.github.simcityexpansion.buildpack.model.BuildingMetadata;
 
 /**
- * 把 {@link BuildingMetadata} 写出为 SimuKraft 的 .sk 元数据文件
- * （UTF-8 逐行 {@code key:value}，与其内置建筑格式一致）。
+ * Writes {@link BuildingMetadata} as a SimuKraft .sk metadata file
+ * (UTF-8, one {@code key:value} per line, matching the format used by SimuKraft's built-in buildings).
  */
 public final class SkFileWriter {
   private SkFileWriter() {}
 
-  /** 写出 .sk（覆盖已存在文件）。 */
+  /** Writes a .sk file, overwriting any existing file. */
   public static void write(Path skPath, BuildingMetadata meta) throws IOException {
     if (skPath.getParent() != null) {
       Files.createDirectories(skPath.getParent());
@@ -28,7 +28,7 @@ public final class SkFileWriter {
     putLine(lines, "size", meta.sizeString());
     putLine(lines, "amount", meta.amount);
     putLine(lines, "author", meta.author);
-    // .sk 为行式格式，多行描述压成单行。
+    // .sk is a line-oriented format; collapse multi-line descriptions to a single line.
     putLine(lines, "description", meta.description.replace('\r', ' ').replace('\n', ' '));
     putLine(lines, "tags", meta.tags);
     putLine(lines, "job_type", meta.jobType);

@@ -15,24 +15,25 @@ import net.minecraft.world.level.EmptyBlockGetter;
 import net.minecraft.world.level.block.Block;
 
 /**
- * 结构静态分析：材料清单（按方块种类计数）与缺失方块检测
- * （调色板对照当前注册表——所属模组未安装的方块建造时会变成空气）。
+ * Static structure analysis: material list (block counts by type) and missing block detection
+ * (palette checked against the current registry — blocks whose mod is not installed become air
+ * during placement).
  */
 public final class StructureAnalysis {
   private StructureAnalysis() {}
 
   /**
-   * 一种材料。
+   * A single material entry.
    *
-   * @param blockId 方块 id 字符串
-   * @param displayName 本地化名（注册表缺失时回退为 id 文本）
-   * @param count 数量
-   * @param missing 当前环境是否缺失该方块
+   * @param blockId block id string
+   * @param displayName localized name (falls back to the id text if missing from the registry)
+   * @param count quantity
+   * @param missing whether the block is missing in the current environment
    */
   public record MaterialEntry(
       String blockId, Component displayName, long count, boolean missing) {}
 
-  /** 统计材料清单（不含空气），缺失方块排在最前，其余按数量降序。 */
+  /** Computes the material list (excluding air); missing blocks are sorted first, the rest in descending count order. */
   public static List<MaterialEntry> materials(NbtStructure structure) {
     long[] countsByIndex = new long[structure.palette.size()];
     for (NbtStructure.BlockEntry block : structure.blocks) {
@@ -66,7 +67,7 @@ public final class StructureAnalysis {
     return result;
   }
 
-  /** 调色板中当前注册表查不到的方块 id（不含空气）。 */
+  /** Returns block ids in the palette that are not found in the current registry (excluding air). */
   public static List<String> findMissingBlocks(NbtStructure structure) {
     List<String> missing = new ArrayList<>();
     for (NbtStructure.PaletteEntry entry : structure.palette) {
@@ -78,7 +79,7 @@ public final class StructureAnalysis {
     return missing;
   }
 
-  /** 调色板各条目的地图色（ARGB；空气/缺失为 0，即透明）。 */
+  /** Returns the map color (ARGB) for each palette entry; air or missing blocks are 0 (transparent). */
   public static int[] paletteMapColors(NbtStructure structure) {
     int[] colors = new int[structure.palette.size()];
     for (int i = 0; i < structure.palette.size(); i++) {
@@ -92,7 +93,7 @@ public final class StructureAnalysis {
                 .getMapColor(EmptyBlockGetter.INSTANCE, BlockPos.ZERO).col;
             return rgb == 0 ? 0 : 0xFF000000 | rgb;
           })
-          // 缺失方块画成显眼的品红，提示「这里有东西但当前环境没有」。
+          // Missing blocks are drawn in conspicuous magenta, signaling "something is here but not available in this environment".
           .orElse(0xFFCC00CC);
     }
     return colors;

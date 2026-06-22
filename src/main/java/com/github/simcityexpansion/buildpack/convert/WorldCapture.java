@@ -15,15 +15,17 @@ import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
- * 从当前世界（存档）捕获一个包围盒区域为 {@link NbtStructure}：逐格读取方块状态，
- * 去重建立调色板（空气固定占索引 0），生成完整网格的 blocks 列表。
+ * Captures a bounding box region from the current world (save) into an {@link NbtStructure}:
+ * reads block states cell by cell, deduplicates them into a palette (air is always at index 0),
+ * and produces a complete grid blocks list.
  *
- * <p>暂不捕获方块实体数据（箱子内容/告示牌文字等）——对建筑蓝图通常更想要空建筑；可后续再加。
+ * <p>Block entity data (chest contents, sign text, etc.) is not captured for now — building
+ * blueprints typically want empty buildings; this can be added later.
  */
 public final class WorldCapture {
   private WorldCapture() {}
 
-  /** 捕获 [min, max] 闭区间内的方块（含空气）为结构。 */
+  /** Captures all blocks (including air) within the inclusive range [min, max] as a structure. */
   public static NbtStructure capture(LevelReader level, BlockPos min, BlockPos max) {
     int sizeX = max.getX() - min.getX() + 1;
     int sizeY = max.getY() - min.getY() + 1;

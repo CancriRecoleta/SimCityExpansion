@@ -44,33 +44,35 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * {@code /buildpack} 服务端管理命令（OP 等级 2），为专用服务器提供原生安装能力：
- * 扫描<b>服务端</b>游戏目录的 {@code simcity_expansion/import/}，
- * 复用与客户端界面完全相同的转换/安装链路写入 {@code simukraftbuilding/}。
+ * {@code /buildpack} server-side admin command (OP level 2), providing native install capability
+ * for dedicated servers: scans {@code simcity_expansion/import/} in the <b>server</b> game
+ * directory and reuses the same conversion/install pipeline as the client GUI to write into
+ * {@code simukraftbuilding/}.
  *
  * <pre>
- * /buildpack list                              列出导入目录中的结构与 zip 包
- * /buildpack install &lt;文件&gt; [分类] [名称]      安装散文件（默认分类 other）
- * /buildpack installpack &lt;zip&gt;                 安装 zip 拓展包
- * /buildpack packs                             列出已安装拓展包
- * /buildpack uninstallpack &lt;包id&gt;              按注册表卸载拓展包
+ * /buildpack list                              List structures and zip packs in the import directory
+ * /buildpack install &lt;file&gt; [category] [name]  Install a loose file (default category: other)
+ * /buildpack installpack &lt;zip&gt;                 Install a zip build pack
+ * /buildpack packs                             List installed build packs
+ * /buildpack uninstallpack &lt;packId&gt;            Uninstall a build pack by registry ID
  * </pre>
  *
- * <p>消息使用翻译组件：发给装有本模组的玩家时按其语言显示；
- * 服务端控制台按内置英文（en_us）解析。
+ * <p>Messages use translation components: they are rendered in the player's language when sent to
+ * a player who has the mod installed, and resolved using the built-in English (en_us) on the
+ * server console.
  */
 public final class BuildPackCommands {
   private BuildPackCommands() {}
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BuildPackCommands.class);
 
-  /** 列表类输出的最大行数。 */
+  /** Maximum number of lines for list-style output. */
   private static final int MAX_LINES = 30;
 
-  /** 从世界捕获结构的体积上限（格）。 */
+  /** Maximum volume (in blocks) for capturing a structure from the world. */
   private static final long MAX_CAPTURE_VOLUME = 2_000_000L;
 
-  /** 挂到 NeoForge 总线（逻辑服务端创建命令树时触发，单人与专服皆有效）。 */
+  /** Subscribed to the NeoForge bus; fired when the logical server builds the command tree (works in both singleplayer and dedicated server). */
   public static void onRegisterCommands(RegisterCommandsEvent event) {
     register(event.getDispatcher());
   }
@@ -110,7 +112,7 @@ public final class BuildPackCommands {
         .then(captureNode()));
   }
 
-  /** {@code /buildpack capture <from> <to> [name] [format]} 子命令节点。 */
+  /** {@code /buildpack capture <from> <to> [name] [format]} subcommand node. */
   private static LiteralArgumentBuilder<CommandSourceStack> captureNode() {
     return Commands.literal("capture")
         .then(Commands.argument("from", BlockPosArgument.blockPos())
@@ -132,7 +134,7 @@ public final class BuildPackCommands {
                             StringArgumentType.getString(context, "format")))))));
   }
 
-  // ---- 子命令实现 ----
+  // ---- Subcommand implementations ----
 
   private static int list(CommandSourceStack source) {
     List<String> entries = new ArrayList<>();
@@ -249,7 +251,7 @@ public final class BuildPackCommands {
     return 1;
   }
 
-  /** 捕获 [from,to] 区域为结构并按 format（nbt/litematic/both）导出到导入目录。 */
+  /** Captures the [from, to] region as a structure and exports it to the import directory in the given format (nbt/litematic/both). */
   private static int capture(CommandSourceStack source, BlockPos a, BlockPos b,
       @Nullable String name, String format) {
     BlockPos min = new BlockPos(Math.min(a.getX(), b.getX()),
@@ -293,9 +295,9 @@ public final class BuildPackCommands {
     }
   }
 
-  // ---- 工具 ----
+  // ---- Utilities ----
 
-  /** 解析导入目录下的相对路径，并防止 {@code ../} 越界。 */
+  /** Resolves a relative path under the import directory and guards against {@code ../} traversal. */
   @Nullable
   private static Path resolveImportFile(String relative) {
     Path importDir = ImportScanner.ensureImportDir().toAbsolutePath().normalize();
@@ -354,7 +356,7 @@ public final class BuildPackCommands {
     }
   }
 
-  // ---- 补全 ----
+  // ---- Suggestions ----
 
   private static CompletableFuture<Suggestions> suggestStructures(
       CommandContext<CommandSourceStack> context,
@@ -400,7 +402,7 @@ public final class BuildPackCommands {
     return SharedSuggestionProvider.suggest(List.of("nbt", "litematic", "both"), builder);
   }
 
-  /** 含空格的建议项加引号，匹配 {@link StringArgumentType#string()} 的解析规则。 */
+  /** Wraps suggestion entries that contain spaces in quotes, matching the parsing rules of {@link StringArgumentType#string()}. */
   private static String quoteIfNeeded(String text) {
     return text.contains(" ") ? "\"" + text + "\"" : text;
   }

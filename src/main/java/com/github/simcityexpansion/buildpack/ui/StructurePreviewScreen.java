@@ -8,8 +8,9 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
 /**
- * 精细 3D 预览界面：满屏真实方块模型，左键旋转、右键平移、滚轮缩放、中键/按钮重置、切顶看内部；
- * 「返回」回到打开它的那个管理器界面（保留选中）。
+ * Full-screen 3D preview: full-size real block models; left-click to rotate, right-click to pan,
+ * scroll to zoom, middle-click/button to reset, peel top to see the interior.
+ * "Back" returns to the manager screen that opened this view (preserving the selection).
  */
 public final class StructurePreviewScreen extends Screen {
 
@@ -30,7 +31,7 @@ public final class StructurePreviewScreen extends Screen {
     this.scene = scene;
   }
 
-  /** 打开精细 3D 预览（结构超限/无法渲染时不打开）。 */
+  /** Opens the full-screen 3D preview (does nothing if the structure exceeds limits or cannot be rendered). */
   public static void open(NbtStructure structure) {
     StructureScene scene = new StructureScene(0, 0, 0, 0, true);
     if (!scene.setStructure(structure)) {
@@ -74,7 +75,7 @@ public final class StructurePreviewScreen extends Screen {
 
   @Override
   public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-    // 覆盖原版：不做高斯模糊背景。
+    // Override vanilla: no Gaussian-blur background.
   }
 
   @Override
@@ -93,7 +94,8 @@ public final class StructurePreviewScreen extends Screen {
 
   @Override
   public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
-    // 原版容器只把左键拖拽转发给获得焦点的控件；右键平移需手动转发给 3D 场景。
+    // The vanilla container forwards only left-button drags to the focused widget;
+    // right-button pan must be forwarded to the 3D scene manually.
     if (button != 0 && scene.isMouseOver(mouseX, mouseY)) {
       scene.applyDrag(button, dragX, dragY);
       return true;

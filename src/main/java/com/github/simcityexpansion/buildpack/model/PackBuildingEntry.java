@@ -3,15 +3,15 @@ package com.github.simcityexpansion.buildpack.model;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * zip 拓展包内的一个建筑条目（{@code buildings/<分类>/<名>.*}）。
+ * A single building entry inside a zip build pack ({@code buildings/<category>/<name>.*}).
  *
- * @param category 分类（取自 zip 内路径）
- * @param name 基础名（不含扩展名）
- * @param structureEntry 结构文件在 zip 内的条目路径
- * @param format 结构格式
- * @param skEntry 同基础名 .sk 条目路径（可选；存在时原样安装，优先于 metaJsonEntry）
- * @param metaJsonEntry 本模组元数据 JSON 条目路径（v2 为 {@code <名>.meta.json}；可选）
- * @param simukraftJsonEntry SimuKraft 原生职业/交易定义 {@code <名>.json}（原样安装；可选）
+ * @param category category (derived from the path inside the zip)
+ * @param name base name (without extension)
+ * @param structureEntry entry path of the structure file inside the zip
+ * @param format structure format
+ * @param skEntry entry path of the same-base-name .sk file (optional; installed as-is when present, takes priority over metaJsonEntry)
+ * @param metaJsonEntry entry path of this mod's metadata JSON (v2: {@code <name>.meta.json}; optional)
+ * @param simukraftJsonEntry SimuKraft native profession/trade definition {@code <name>.json} (installed as-is; optional)
  */
 public record PackBuildingEntry(
     BuildingCategory category,

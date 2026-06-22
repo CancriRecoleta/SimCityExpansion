@@ -2,13 +2,13 @@ package com.github.simcityexpansion.buildpack.ui;
 
 import net.minecraft.network.chat.Component;
 
-/** 左栏来源页签。 */
+/** Source tabs shown in the left panel. */
 public enum SourceTab {
-  /** 导入目录中的 .nbt / .litematic 散文件。 */
+  /** Loose .nbt / .litematic files in the import directory. */
   IMPORT("import"),
-  /** 导入目录中的 zip 拓展包。 */
+  /** Zip build packs in the import directory. */
   PACKS("packs"),
-  /** SimuKraft 建筑目录中已安装的建筑。 */
+  /** Buildings installed in the SimuKraft building directory. */
   INSTALLED("installed");
 
   private final String key;
@@ -17,12 +17,12 @@ public enum SourceTab {
     this.key = key;
   }
 
-  /** 本地化页签名。 */
+  /** Returns the localized tab name. */
   public Component displayName() {
     return Component.translatable("buildpack.tab." + key);
   }
 
-  /** 页签悬停提示。 */
+  /** Returns the tab hover tooltip. */
   public Component tooltip() {
     return Component.translatable("buildpack.tooltip.tab." + key);
   }

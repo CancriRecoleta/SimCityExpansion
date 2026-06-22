@@ -7,12 +7,13 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
 /**
- * 数值选区对话框：分别输入 min/max 的 X/Y/Z（自动夹取到结构范围），确定后回调。
- * 用于编辑器的区域操作（删除/裁剪/填充选区）。
+ * Numeric selection dialog: enter X/Y/Z for both min and max (automatically clamped to the
+ * structure bounds), then invoke a callback on confirmation.
+ * Used by the editor for region operations (delete/crop/fill region).
  */
 public final class SelectionScreen extends Screen {
 
-  /** 确定回调：传回归一化前的 min/max（各长度 3）。 */
+  /** Confirmation callback: receives the un-clamped min/max arrays (each of length 3). */
   public interface Callback {
     void apply(int[] min, int[] max);
   }
@@ -48,7 +49,7 @@ public final class SelectionScreen extends Screen {
     this.callback = callback;
   }
 
-  /** 打开选区对话框。 */
+  /** Opens the selection dialog. */
   public static void open(int[] min, int[] max,
       int sizeX, int sizeY, int sizeZ, Callback callback) {
     Minecraft mc = Minecraft.getInstance();
@@ -124,7 +125,7 @@ public final class SelectionScreen extends Screen {
 
   @Override
   public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-    // 不做高斯模糊背景。
+    // No Gaussian-blur background.
   }
 
   @Override

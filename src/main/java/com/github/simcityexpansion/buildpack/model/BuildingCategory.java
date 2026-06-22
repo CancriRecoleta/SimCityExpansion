@@ -7,10 +7,10 @@ import com.github.simcityexpansion.buildpack.BuildPack;
 import net.minecraft.network.chat.Component;
 
 /**
- * SimuKraft 的五个固定建筑分类，对应 {@code simukraftbuilding/} 下的子目录名。
+ * SimuKraft's five fixed building categories, corresponding to subdirectory names under {@code simukraftbuilding/}.
  *
- * <p>目录名为 SimuKraft 端硬编码（其 BuildingBuiltinResourceService 仅复制/扫描这五个），
- * 因此本枚举不可随意增删。
+ * <p>The directory names are hard-coded on the SimuKraft side (its BuildingBuiltinResourceService
+ * only copies/scans these five), so entries in this enum must not be added or removed arbitrarily.
  */
 public enum BuildingCategory {
   RESIDENTIAL("residential"),
@@ -25,22 +25,22 @@ public enum BuildingCategory {
     this.dirName = dirName;
   }
 
-  /** SimuKraft 建筑根目录下的子目录名。 */
+  /** Subdirectory name under the SimuKraft building root directory. */
   public String dirName() {
     return dirName;
   }
 
-  /** 本分类的目标安装目录（{@code <游戏目录>/simukraftbuilding/<dirName>}）。 */
+  /** Target installation directory for this category ({@code <game-dir>/simukraftbuilding/<dirName>}). */
   public Path dir() {
     return BuildPack.simukraftDir().resolve(dirName);
   }
 
-  /** 本地化显示名。 */
+  /** Localized display name. */
   public Component displayName() {
     return Component.translatable("buildpack.category." + dirName);
   }
 
-  /** 按目录名（忽略大小写）解析分类。 */
+  /** Resolves a category by directory name (case-insensitive). */
   public static Optional<BuildingCategory> byDirName(String name) {
     for (BuildingCategory category : values()) {
       if (category.dirName.equalsIgnoreCase(name)) {

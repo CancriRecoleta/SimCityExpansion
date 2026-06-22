@@ -15,20 +15,21 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 
 /**
- * 原版 NBT 结构模板读取器。
+ * Vanilla NBT structure template reader.
  *
- * <p>兼容 SimuKraft 同样认可的「{@code Schematic} 包装层」：若根标签没有 {@code blocks}
- * 但有 {@code Schematic} 子 compound，则解开一层后再按原版格式解析。
+ * <p>Compatible with the "wrapper layer" also accepted by SimuKraft: if the root tag lacks
+ * {@code blocks} but contains a {@code Schematic} sub-compound, the wrapper is unwrapped
+ * before parsing in vanilla format.
  */
 public final class StructureNbtReader {
   private StructureNbtReader() {}
 
-  /** 从文件读取（gzip 压缩的 NBT）。 */
+  /** Reads from a file (gzip-compressed NBT). */
   public static NbtStructure read(Path path) throws IOException {
     return read(NbtIo.readCompressed(path, NbtAccounter.unlimitedHeap()));
   }
 
-  /** 从已读出的根标签解析。 */
+  /** Parses from an already-read root tag. */
   public static NbtStructure read(CompoundTag root) throws IOException {
     if (!root.contains("blocks", Tag.TAG_LIST) && root.contains("Schematic", Tag.TAG_COMPOUND)) {
       root = root.getCompound("Schematic");
@@ -68,7 +69,7 @@ public final class StructureNbtReader {
     return new NbtStructure(sizeX, sizeY, sizeZ, root.getInt("DataVersion"), palette, blocks);
   }
 
-  /** 生成只读摘要（原版 .nbt / .schem 无内嵌名称、作者、创建时间与预览）。 */
+  /** Generates a read-only summary (vanilla .nbt / .schem files have no embedded name, author, creation time, or preview). */
   public static StructureInfo summarize(NbtStructure structure) {
     return new StructureInfo(null, null,
         structure.sizeX, structure.sizeY, structure.sizeZ,

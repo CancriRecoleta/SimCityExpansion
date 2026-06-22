@@ -8,12 +8,14 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 
 /**
- * 轻量右键上下文菜单：一列「文本 + 动作」。点击某项执行其动作并关闭，点击空白也关闭。
- * 由宿主屏幕在最上层渲染并优先转发点击；不是注册控件，便于控制层级。
+ * Lightweight right-click context menu: a single column of "text + action" items. Clicking an
+ * item executes its action and closes the menu; clicking outside also closes it. Rendered on top
+ * by the host screen, which also forwards clicks with priority; not a registered widget, so
+ * z-order is easy to control.
  */
 public final class ContextMenu {
 
-  /** 一个菜单项。 */
+  /** A single menu item. */
   public record Item(Component label, Runnable action) {}
 
   private static final int ROW_H = 12;
@@ -42,7 +44,7 @@ public final class ContextMenu {
     return items.size() * ROW_H + PAD * 2;
   }
 
-  /** 在最上层绘制菜单。 */
+  /** Renders the menu on top of all other content. */
   public void render(GuiGraphics g, int mouseX, int mouseY) {
     BuildPackTheme.fillPanel(g, x, y, width, height(), 0xF0101010);
     Font font = Minecraft.getInstance().font;
@@ -58,7 +60,7 @@ public final class ContextMenu {
     }
   }
 
-  /** 处理一次点击：命中某项则执行其动作。无论命中与否都应由宿主关闭菜单。 */
+  /** Handles a click: executes the action of the hit item, if any. The host should close the menu regardless of whether an item was hit. */
   public void click(double mouseX, double mouseY) {
     if (mouseX < x || mouseX >= x + width || mouseY < y + PAD || mouseY >= y + height() - PAD) {
       return;

@@ -16,12 +16,15 @@ import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.network.chat.Component;
 
 /**
- * 自绘文件列表/树控件：用 Minecraft 原生 {@link GuiGraphics} 绘制「缩进 + 展开箭头 +
- * 图标 + 文本」的行，自管理展开/折叠、选中、悬停、<b>分页</b>，并铺满给定区域。
+ * Custom-drawn file list/tree widget: renders rows of "indent + expand arrow +
+ * icon + text" using Minecraft's native {@link GuiGraphics}, self-managing
+ * collapse/expand, selection, hover, and <b>pagination</b>, filling the given area.
  *
- * <p>列表项超过一页时，底部出现「上一页 / 第 X/Y 页 / 下一页」翻页条，可点按钮或用滚轮翻页。
+ * <p>When items exceed one page, a "Previous / Page X of Y / Next" navigation bar
+ * appears at the bottom; it responds to button clicks and scroll-wheel events.
  *
- * <p>数据用 {@link TreeNode}（纯数据结构，非 UI 组件）：合成根被隐藏，只渲染其后代。
+ * <p>Data is supplied via {@link TreeNode} (a pure data structure, not a UI component):
+ * the synthetic root is hidden and only its descendants are rendered.
  */
 public final class TreeView extends AbstractWidget {
 
@@ -42,7 +45,7 @@ public final class TreeView extends AbstractWidget {
   private static final int PAGE_BTN_COLOR = 0xFFFFFFFF;
   private static final int PAGE_BTN_DISABLED = 0xFF808080;
 
-  /** 一条可见行：节点 + 缩进层级 + 是否为可展开分支。 */
+  /** A single visible row: node + indent depth + whether it is an expandable branch. */
   private record Row(TreeNode<String, Object> node, int depth, boolean branch) {}
 
   private final Consumer<Object> onSelect;
@@ -60,7 +63,7 @@ public final class TreeView extends AbstractWidget {
     this.onSelect = onSelect;
   }
 
-  /** 替换整棵树（合成根的后代为顶层项）；折叠所有、清空选中、回到第一页。 */
+  /** Replaces the entire tree (the synthetic root's children become top-level items); collapses all, clears selection, and resets to the first page. */
   public void setRoot(TreeNode<String, Object> root) {
     this.root = root;
     expanded.clear();
@@ -70,27 +73,27 @@ public final class TreeView extends AbstractWidget {
     rebuild();
   }
 
-  /** 当前勾选的叶子内容（多选）；搜索/排序/刷新会清空。 */
+  /** Currently checked leaf contents (multi-selection); cleared on search, sort, or refresh. */
   public Set<Object> checked() {
     return Set.copyOf(checked);
   }
 
-  /** 清空勾选。 */
+  /** Clears all checked items. */
   public void clearChecked() {
     checked.clear();
   }
 
-  /** 设置勾选变化回调（用于刷新批量按钮可用态）。 */
+  /** Sets the callback invoked when the checked set changes (used to refresh the enabled state of bulk-action buttons). */
   public void setOnCheckedChanged(Runnable callback) {
     this.onCheckedChanged = callback;
   }
 
-  /** 右键上下文回调：内容（分支为 {@code null}）+ 屏幕坐标。 */
+  /** Right-click context callback: content (branches pass {@code null}) + screen coordinates. */
   public interface ContextHandler {
     void onContext(Object content, int mouseX, int mouseY);
   }
 
-  /** 设置右键上下文回调。 */
+  /** Sets the right-click context callback. */
   public void setOnContext(ContextHandler handler) {
     this.onContext = handler;
   }
@@ -114,9 +117,9 @@ public final class TreeView extends AbstractWidget {
     }
   }
 
-  // ---- 分页参数 ----
+  // ---- Pagination parameters ----
 
-  /** 单页可容纳的行数（不含翻页条）。 */
+  /** Number of rows that fit on one page (excluding the navigation bar). */
   private int rowsPerPage(int h) {
     int full = Math.max(1, h / ROW_HEIGHT);
     if (rows.size() <= full) {
@@ -129,7 +132,7 @@ public final class TreeView extends AbstractWidget {
     return Math.max(1, (rows.size() + perPage - 1) / perPage);
   }
 
-  // ---- 渲染 ----
+  // ---- Rendering ----
 
   @Override
   protected void renderWidget(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
@@ -184,7 +187,7 @@ public final class TreeView extends AbstractWidget {
     }
   }
 
-  /** 7px 见方的三角箭头：展开为向下 ▼，折叠为向右 ▶。 */
+  /** 7px triangular arrow: down (▼) when expanded, right (▶) when collapsed. */
   private static void drawArrow(GuiGraphics g, int x, int y, boolean open) {
     if (open) {
       for (int r = 0; r < 4; r++) {
@@ -197,7 +200,7 @@ public final class TreeView extends AbstractWidget {
     }
   }
 
-  /** 底部翻页条：[上一页]  第 X / Y 页  [下一页]。 */
+  /** Bottom navigation bar: [Previous]  Page X / Y  [Next]. */
   private void drawPageBar(GuiGraphics g, Font font, int x, int barY, int w, int pages) {
     g.fill(x, barY, x + w, barY + 1, PAGE_SEP_COLOR);
     int textY = barY + (PAGE_BAR_H - font.lineHeight) / 2 + 1;
@@ -210,7 +213,7 @@ public final class TreeView extends AbstractWidget {
     g.drawString(font, info, x + (w - font.width(info)) / 2, textY, PAGE_INFO_COLOR, true);
   }
 
-  // ---- 交互 ----
+  // ---- Interaction ----
 
   @Override
   public boolean mouseClicked(double mouseX, double mouseY, int button) {
@@ -232,7 +235,7 @@ public final class TreeView extends AbstractWidget {
     page = Math.max(0, Math.min(pages - 1, page));
     boolean paged = pages > 1;
 
-    // 翻页条
+    // Navigation bar
     if (paged && mouseY >= y + h - PAGE_BAR_H) {
       Font font = Minecraft.getInstance().font;
       String prev = Component.translatable("buildpack.tree.prev_page").getString();
@@ -245,7 +248,7 @@ public final class TreeView extends AbstractWidget {
       return true;
     }
 
-    // 行
+    // Row
     int rel = (int) Math.floor((mouseY - y) / ROW_HEIGHT);
     int idx = page * perPage + rel;
     if (rel < 0 || rel >= perPage || idx >= rows.size() || mouseX < x || mouseX >= x + w) {
@@ -253,14 +256,14 @@ public final class TreeView extends AbstractWidget {
     }
     Row row = rows.get(idx);
     int rowX = x + PAD_LEFT + row.depth * INDENT;
-    // 复选框：切换勾选（多选），不改变当前选中项。
+    // Checkbox: toggle checked state (multi-selection) without changing the current selection.
     if (mouseX >= rowX && mouseX < rowX + CHECK_SIZE) {
       toggleChecked(row);
       return true;
     }
     int afterCheck = rowX + CHECK_BOX;
     boolean arrowHit = row.branch && mouseX >= afterCheck && mouseX < afterCheck + ARROW_BOX;
-    // 箭头：展开/折叠；无内容的分支（文件夹/分类）整行也展开/折叠；其余（文件/建筑/整包）选中。
+    // Arrow: expand/collapse; content-less branches (folders/categories) also expand/collapse on full-row click; others (files/buildings/packs) are selected.
     if (arrowHit || (row.branch && row.node.getContent() == null)) {
       toggle(row.node);
     } else {
@@ -270,7 +273,7 @@ public final class TreeView extends AbstractWidget {
     return true;
   }
 
-  /** 滚轮翻页：上滚上一页，下滚下一页。 */
+  /** Scroll-wheel pagination: scroll up for the previous page, scroll down for the next page. */
   @Override
   public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
     if (!isMouseOver(mouseX, mouseY)) {
@@ -299,7 +302,7 @@ public final class TreeView extends AbstractWidget {
     rebuild();
   }
 
-  /** 右键：选中该行并请求上下文菜单。 */
+  /** Right-click: selects the row and requests the context menu. */
   private boolean handleRightClick(double mouseX, double mouseY) {
     if (onContext == null) {
       return false;
@@ -326,9 +329,9 @@ public final class TreeView extends AbstractWidget {
     return true;
   }
 
-  // ---- 勾选（多选）----
+  // ---- Checked state (multi-selection) ----
 
-  /** 行勾选态：叶子看自身，分支看其全部叶子后代是否都勾选。 */
+  /** Row checked state: for leaves, checks the leaf itself; for branches, checks whether all leaf descendants are checked. */
   private boolean isRowChecked(Row row) {
     if (!row.branch) {
       Object content = row.node.getContent();
@@ -339,7 +342,7 @@ public final class TreeView extends AbstractWidget {
     return !leaves.isEmpty() && checked.containsAll(leaves);
   }
 
-  /** 切换行勾选：叶子切自身；分支切其全部叶子后代。 */
+  /** Toggles row checked state: for leaves, toggles the leaf itself; for branches, toggles all leaf descendants. */
   private void toggleChecked(Row row) {
     if (!row.branch) {
       Object content = row.node.getContent();
@@ -372,7 +375,7 @@ public final class TreeView extends AbstractWidget {
     }
   }
 
-  /** 9px 见方的复选框；勾选时填充绿色内块。 */
+  /** 9px square checkbox; fills a green inner block when checked. */
   private static void drawCheckbox(GuiGraphics g, int x, int y, boolean on) {
     g.fill(x, y, x + CHECK_SIZE, y + CHECK_SIZE, 0xFF202020);
     g.fill(x, y, x + CHECK_SIZE, y + 1, 0xFFA0A0A0);

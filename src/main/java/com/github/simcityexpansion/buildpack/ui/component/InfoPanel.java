@@ -30,12 +30,15 @@ import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.network.chat.Component;
 
 /**
- * 右侧定宽信息面板（对照 Litematica 的 WidgetSchematicBrowser 信息栏）：上部元数据行
- * （标签灰、值白），中部预览（{@link PreviewSlot} 托管 3D/等距/俯视/缩略图/占位），
- * 下部为 .sk 元数据表单（导入页签可编辑，其余只读）与材料清单/编辑器入口。
+ * Fixed-width info panel on the right side (analogous to Litematica's
+ * WidgetSchematicBrowser info bar): metadata rows at the top (labels in grey,
+ * values in white), a preview in the middle ({@link PreviewSlot} hosting
+ * 3D/isometric/top-down/thumbnail/placeholder), and at the bottom a .sk
+ * metadata form (editable on the import tab, read-only elsewhere) plus
+ * material list and editor entry points.
  *
- * <p>控件由宿主屏幕在 {@link #rebuild} 时创建并登记；信息行与表单标签文本由
- * {@link #renderText} 绘制。
+ * <p>Widgets are created and registered by the host screen in {@link #rebuild};
+ * info-row and form label text is drawn by {@link #renderText}.
  */
 public final class InfoPanel {
 
@@ -69,7 +72,7 @@ public final class InfoPanel {
     rows.add(Component.translatable("buildpack.detail.empty"));
   }
 
-  /** 重建并放置面板控件（每次屏幕 init 调用一次）。 */
+  /** Rebuilds and positions all panel widgets (called once per screen init). */
   public void rebuild(Font font, int x, int y, int width, int height, Consumer<AbstractWidget> add) {
     this.font = font;
     this.infoX = x + PAD;
@@ -107,14 +110,14 @@ public final class InfoPanel {
     form.rebuild(font, infoX, formY, infoW, add);
   }
 
-  /** 空态：未选中任何条目。 */
+  /** Empty state: no entry is selected. */
   public void showEmpty() {
     setRows(Component.translatable("buildpack.detail.empty"));
     clearExtras();
     form.setModel(new BuildingMetadata(), false);
   }
 
-  /** 导入文件：结构摘要 + 文件信息 + 预览 + 可编辑表单 + 材料清单入口。 */
+  /** Import file: structure summary + file info + preview + editable form + material list entry. */
   public void showImport(
       ImportFile file, StructureInfo info, NbtStructure structure, BuildingMetadata model) {
     List<Component> list = new ArrayList<>(List.of(
@@ -137,7 +140,7 @@ public final class InfoPanel {
     form.setModel(model, true);
   }
 
-  /** 包内建筑（直接从 zip 读取）：摘要 + 预览 + 材料清单 + 元数据只读。 */
+  /** Pack building (read directly from zip): summary + preview + material list + read-only metadata. */
   public void showPackBuilding(PackBuildingSelection selection, StructureInfo info,
       NbtStructure structure, BuildingMetadata model) {
     List<Component> list = new ArrayList<>(List.of(
@@ -160,7 +163,7 @@ public final class InfoPanel {
     form.setModel(model, false);
   }
 
-  /** zip 拓展包：清单摘要（表单只读展示包信息）。 */
+  /** Zip build pack: manifest summary (form shows pack info in read-only mode). */
   public void showPack(PackArchive pack, boolean installed) {
     setRows(
         row("buildpack.info.name", pack.manifest().name()),
@@ -181,7 +184,7 @@ public final class InfoPanel {
     form.setModel(meta, false);
   }
 
-  /** 已安装建筑：.sk 字段只读展示 +（若能解析到结构）预览与材料清单。 */
+  /** Installed building: .sk fields displayed read-only + preview and material list (if the structure can be parsed). */
   public void showInstalled(InstalledBuilding building, StructureInfo info, NbtStructure structure) {
     setRows(
         row("buildpack.info.name", building.name()),
@@ -211,7 +214,7 @@ public final class InfoPanel {
     form.setModel(meta, false);
   }
 
-  /** 预览（内嵌缩略图 → 真实方块 3D → 等距 → 俯视 → 占位）与材料/编辑入口。 */
+  /** Preview (embedded thumbnail → real-block 3D → isometric → top-down → placeholder) and material/editor entry points. */
   private void showStructureExtras(String name, StructureInfo info, NbtStructure structure) {
     currentName = name;
     currentStructure = structure;
@@ -258,7 +261,7 @@ public final class InfoPanel {
     }
   }
 
-  /** 绘制信息行与表单标签（控件本身由屏幕 widget 渲染绘出）。 */
+  /** Draws info rows and form labels (widgets themselves are drawn by the screen's widget renderer). */
   public void renderText(GuiGraphics g) {
     if (font == null) {
       return;

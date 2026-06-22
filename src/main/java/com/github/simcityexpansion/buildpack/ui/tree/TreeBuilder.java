@@ -6,12 +6,13 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * {@link TreeNode} 的流式构建器（替代原先 ldlib2 的 TreeBuilder）：维护一个「当前分支」
- * 栈，既支持有状态写法（{@link #startBranch}/{@link #content}/{@link #endBranch}），
- * 也支持函数式写法（{@link #branch}/{@link #diveBranch}/{@link #leaf}）。
+ * Fluent builder for {@link TreeNode} (replaces the original ldlib2 TreeBuilder):
+ * maintains a "current branch" stack and supports both a stateful style
+ * ({@link #startBranch}/{@link #content}/{@link #endBranch}) and a functional
+ * style ({@link #branch}/{@link #diveBranch}/{@link #leaf}).
  *
- * @param <K> 节点键
- * @param <V> 节点内容类型
+ * @param <K> node key type
+ * @param <V> node content type
  */
 public final class TreeBuilder<K, V> {
   private final TreeNode<K, V> root;
@@ -22,18 +23,18 @@ public final class TreeBuilder<K, V> {
     stack.push(root);
   }
 
-  /** 以给定根键开始构建。 */
+  /** Starts building with the given root key. */
   public static <K, V> TreeBuilder<K, V> start(K rootKey) {
     return new TreeBuilder<>(rootKey);
   }
 
-  /** 在当前分支下追加一个叶子。 */
+  /** Appends a leaf node under the current branch. */
   public TreeBuilder<K, V> leaf(K key, V value) {
     current().addChild(new TreeNode<>(key, value));
     return this;
   }
 
-  /** 开启一个新分支并进入它（content 默认 {@code null}）。 */
+  /** Opens a new branch and enters it (content defaults to {@code null}). */
   public TreeBuilder<K, V> startBranch(K key) {
     TreeNode<K, V> branch = new TreeNode<>(key, null);
     current().addChild(branch);
@@ -41,26 +42,26 @@ public final class TreeBuilder<K, V> {
     return this;
   }
 
-  /** 给当前分支设置内容（如把整包对象挂到包分支上）。 */
+  /** Sets content on the current branch (e.g., attaches a pack object to a pack branch node). */
   public TreeBuilder<K, V> content(V value) {
     current().setContent(value);
     return this;
   }
 
-  /** 结束当前分支，回到上一层。 */
+  /** Ends the current branch and returns to the parent level. */
   public TreeBuilder<K, V> endBranch() {
     stack.pop();
     return this;
   }
 
-  /** 创建一个分支并在其中执行 {@code populate}。 */
+  /** Creates a branch and executes {@code populate} inside it. */
   public TreeBuilder<K, V> branch(K key, Consumer<TreeBuilder<K, V>> populate) {
     startBranch(key);
     populate.accept(this);
     return endBranch();
   }
 
-  /** 沿 {@code keys} 路径逐级查找或创建分支，在最深层执行 {@code populate}（同名分支复用）。 */
+  /** Traverses the {@code keys} path level by level, finding or creating each branch, then executes {@code populate} at the deepest level (reusing an existing branch if a matching key is found). */
   public TreeBuilder<K, V> diveBranch(List<K> keys, Consumer<TreeBuilder<K, V>> populate) {
     int pushed = 0;
     for (K key : keys) {
@@ -79,7 +80,7 @@ public final class TreeBuilder<K, V> {
     return this;
   }
 
-  /** 完成构建，返回根节点。 */
+  /** Finalizes the build and returns the root node. */
   public TreeNode<K, V> build() {
     return root;
   }

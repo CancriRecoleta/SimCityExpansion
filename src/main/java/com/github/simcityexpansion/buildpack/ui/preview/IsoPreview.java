@@ -10,28 +10,32 @@ import net.minecraft.client.gui.components.AbstractWidget;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * 等距体素 3D 预览：用调色板地图色把结构画成一堆等距小立方体（顶面最亮、左面次之、右面最暗，
- * 每块带深色描边），按 painter 算法从后往前逐个覆盖，得到带体积感与块感的 3D 形象。
+ * Isometric voxel 3D preview: renders a structure as a grid of isometric cubes using palette map
+ * colors (top face brightest, left face mid, right face darkest, each cube outlined in a dark
+ * edge), painted back-to-front via the painter's algorithm to produce a volumetric, blocky 3D
+ * appearance.
  *
- * <p>渲染精细度：内部以 {@value #SS}× 超采样绘制再降采样（预乘 alpha 平均）做抗锯齿，
- * 边缘平滑、不锯齿。产出 ARGB 像素图，复用 {@link StructurePreview#fromPixels} 管线。
- * 结构过大或全空时返回 null，由调用方回退俯视图/占位。
+ * <p>Render quality: internally drawn at {@value #SS}x supersampling then downsampled
+ * (premultiplied-alpha averaging) for anti-aliasing, yielding smooth, non-jagged edges. Produces
+ * an ARGB pixel image reusing the {@link StructurePreview#fromPixels} pipeline. Returns null for
+ * structures that are too large or entirely empty; callers should fall back to the top-down view
+ * or a placeholder.
  */
 public final class IsoPreview {
   private IsoPreview() {}
 
-  /** 体积上限，超过不渲染。 */
+  /** Volume limit; structures exceeding this are not rendered. */
   private static final long MAX_VOLUME = 110L * 110 * 110;
-  /** 降采样后（最终图）面积上限。 */
+  /** Pixel area limit for the final downsampled image. */
   private static final int MAX_PIXELS = 200 * 200;
-  /** 最终图目标最长边。 */
+  /** Target longest side (pixels) of the final image. */
   private static final int TARGET = 150;
-  /** 立方体最大半宽（最终像素）。 */
+  /** Maximum cube half-width in final pixels. */
   private static final int MAX_HALF = 11;
-  /** 超采样倍率。 */
+  /** Supersampling factor. */
   private static final int SS = 2;
 
-  /** 渲染等距 3D 预览；不适用时返回 null。 */
+  /** Renders the isometric 3D preview; returns null if not applicable. */
   @Nullable
   public static AbstractWidget create(NbtStructure s) {
     int sx = s.sizeX;
@@ -42,13 +46,13 @@ public final class IsoPreview {
     }
     int[] colors = StructureAnalysis.paletteMapColors(s);
 
-    // 选立方体尺寸让最终图最长边约 TARGET，再乘 SS 得到渲染分辨率。
+    // Choose cube size so the final image's longest side is approximately TARGET, then multiply by SS to get the render resolution.
     int half = Math.max(1, Math.min(MAX_HALF, TARGET / Math.max(sx + sz, (sx + sz) / 2 + sy + 1)));
     int rHalf = half * SS;
     int rQuart = Math.max(1, rHalf / 2);
     int rSh = rHalf;
 
-    // 只保留有颜色（非空气）方块，按 painter 顺序（深度 x+z、再 y、x）排序。
+    // Keep only colored (non-air) blocks, sorted in painter order (depth x+z, then y, then x).
     List<NbtStructure.BlockEntry> order = new ArrayList<>();
     for (NbtStructure.BlockEntry b : s.blocks) {
       int si = b.stateIndex();
@@ -63,7 +67,7 @@ public final class IsoPreview {
         .thenComparingInt(NbtStructure.BlockEntry::y)
         .thenComparingInt(NbtStructure.BlockEntry::x));
 
-    // 第一遍求渲染包围盒。
+    // First pass: compute the render bounding box.
     int minX = Integer.MAX_VALUE;
     int minY = Integer.MAX_VALUE;
     int maxX = Integer.MIN_VALUE;
@@ -76,7 +80,7 @@ public final class IsoPreview {
       minY = Math.min(minY, cy);
       maxY = Math.max(maxY, cy + 2 * rQuart + rSh - 1);
     }
-    // 渲染尺寸补到 SS 的整数倍，便于整块降采样。
+    // Round render dimensions up to the nearest multiple of SS for clean block downsampling.
     int rw = ceil(maxX - minX + 1, SS);
     int rh = ceil(maxY - minY + 1, SS);
     int fw = rw / SS;
@@ -98,14 +102,14 @@ public final class IsoPreview {
     return (v + unit - 1) / unit * unit;
   }
 
-  /** 画一个等距立方体：顶面菱形 + 左/右侧面，三面分别明暗，并描深色边以区分相邻方块。 */
+  /** Draws one isometric cube: diamond top face plus left/right side faces, each with distinct shading, and dark edges to distinguish adjacent blocks. */
   private static void drawCube(int[] px, int w, int h, int cx, int cy,
       int half, int quart, int sh, int color) {
     int top = shade(color, 1.0f);
     int left = shade(color, 0.70f);
     int right = shade(color, 0.46f);
     int edge = shade(color, 0.30f);
-    // 顶面菱形（边描深色）。
+    // Top diamond face (edges drawn dark).
     for (int dy = 0; dy <= 2 * quart; dy++) {
       int hw = half - half * Math.abs(dy - quart) / quart;
       for (int dx = -hw; dx <= hw; dx++) {
@@ -113,7 +117,7 @@ public final class IsoPreview {
         set(px, w, h, cx + dx, cy + dy, border ? edge : top);
       }
     }
-    // 左侧面：外缘与底边描边。
+    // Left face: outer edge and bottom edge outlined.
     for (int dx = 0; dx <= half; dx++) {
       int x = cx - half + dx;
       int yTop = cy + quart + dx * quart / half;
@@ -122,7 +126,7 @@ public final class IsoPreview {
         set(px, w, h, x, yTop + k, border ? edge : left);
       }
     }
-    // 右侧面：外缘与底边描边。
+    // Right face: outer edge and bottom edge outlined.
     for (int dx = 0; dx <= half; dx++) {
       int x = cx + dx;
       int yTop = cy + quart + (half - dx) * quart / half;
@@ -133,7 +137,7 @@ public final class IsoPreview {
     }
   }
 
-  /** SS×SS 块预乘 alpha 平均降采样（抗锯齿，边缘半透明与背景融合）。 */
+  /** Downsamples by averaging SS×SS blocks with premultiplied alpha (anti-aliasing; semi-transparent edges blend with the background). */
   private static int[] downsample(int[] src, int sw, int sh, int dw, int dh) {
     int[] out = new int[dw * dh];
     int n = SS * SS;

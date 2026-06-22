@@ -27,16 +27,16 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** 单个散文件建筑的安装与卸载。 */
+/** Installation and uninstallation of individual loose-file buildings. */
 public final class BuildingInstaller {
   private BuildingInstaller() {}
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BuildingInstaller.class);
 
   /**
-   * 安装结果。
+   * Install result.
    *
-   * @param messages 提示与警告（成功/失败原因、DataVersion 警告、改名提示等）
+   * @param messages informational messages and warnings (success/failure reason, DataVersion warnings, rename notices, etc.)
    */
   public record InstallResult(boolean ok, List<Component> messages, @Nullable Path skPath) {
 
@@ -46,11 +46,12 @@ public final class BuildingInstaller {
   }
 
   /**
-   * 把导入文件安装到 SimuKraft 建筑目录：
-   * .litematic / .schem 先转换为原版 .nbt，.nbt 直接落盘；旧版本结构经 DataFixer
-   * 升级到当前 DataVersion；随后写出 .sk 元数据。
+   * Installs an imported file into the SimuKraft building directory. .litematic/.schem files
+   * are first converted to vanilla .nbt; .nbt is written directly to disk; old-version structures
+   * are upgraded to the current DataVersion via DataFixer; a .sk metadata file is then written.
    *
-   * @param overwrite 为 true 时同名直接覆盖（先清掉旧的 .sk/.nbt/.json），否则自动改名
+   * @param overwrite if {@code true}, overwrites an existing file with the same name (deletes
+   *     the old .sk/.nbt/.json first); otherwise the name is adjusted automatically
    */
   public static InstallResult install(ImportFile file, BuildingMetadata meta, boolean overwrite) {
     List<Component> messages = new ArrayList<>();
@@ -78,7 +79,7 @@ public final class BuildingInstaller {
               : SchemReader.read(file.path());
           messages.addAll(LitematicConverter.validate(structure));
           StructureUpgrader.warnMissingBlocks(structure, messages);
-          // 以实际转换结果为准刷新尺寸（防止元数据与方块数据不一致的投影）。
+          // Refresh dimensions from the actual conversion result to guard against schematics where metadata and block data disagree.
           meta.sizeX = structure.sizeX;
           meta.sizeY = structure.sizeY;
           meta.sizeZ = structure.sizeZ;
@@ -87,7 +88,7 @@ public final class BuildingInstaller {
           StructureNbtWriter.writeTag(tag, nbtTarget);
         }
         case VANILLA_NBT -> {
-          // 原版 .nbt 在原始标签上升级，保留 entities 等本模型未建模的字段。
+          // Vanilla .nbt is upgraded on the raw tag, preserving fields such as entities that are not modeled here.
           CompoundTag root = NbtIo.readCompressed(file.path(), NbtAccounter.unlimitedHeap());
           StructureUpgrader.warnMissingBlocks(StructureNbtReader.read(root), messages);
           CompoundTag upgraded = StructureUpgrader.upgradeToCurrent(
@@ -113,14 +114,14 @@ public final class BuildingInstaller {
     }
   }
 
-  /** 覆盖安装前清掉同基础名的全部建筑文件。 */
+  /** Deletes all building files with the same base name before an overwrite install. */
   private static void deleteBuildingFiles(Path dir, String baseName) {
     for (String extension : new String[] {".sk", ".nbt", ".litematic", ".schem", ".json"}) {
       deleteQuietly(dir.resolve(baseName + extension));
     }
   }
 
-  /** 卸载一个已安装建筑：删除 .sk、结构文件与同基础名 .json。 */
+  /** Uninstalls an installed building by deleting its .sk, structure file, and same-base-name .json. */
   public static boolean uninstall(InstalledBuilding building) {
     boolean ok = true;
     ok &= deleteQuietly(building.skPath());
@@ -131,7 +132,7 @@ public final class BuildingInstaller {
     return ok;
   }
 
-  /** 把已安装建筑移动到另一个分类目录（含 .nbt/.sk/.json），并同步注册表路径。 */
+  /** Moves an installed building to another category directory (including .nbt/.sk/.json) and updates the registry paths. */
   public static boolean recategorize(
       InstalledBuilding building, BuildingCategory target, InstallRegistry registry) {
     if (building.category() == target) {
@@ -174,14 +175,14 @@ public final class BuildingInstaller {
     }
   }
 
-  /** 替换 Windows/Unix 文件名非法字符，并裁剪首尾空白与点号。 */
+  /** Replaces illegal Windows/Unix file name characters and trims leading/trailing whitespace and dots. */
   static String sanitizeFileName(String name) {
     String cleaned = name.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
     cleaned = cleaned.replaceAll("^\\.+|\\.+$", "");
     return cleaned.isBlank() ? "building" : cleaned;
   }
 
-  /** 同名冲突时追加 _2/_3…（以 .sk 或 .nbt 任一存在视为冲突）。 */
+  /** Appends _2/_3... on a name conflict (a conflict is detected when either .sk or .nbt already exists). */
   static String resolveConflict(Path dir, String baseName) {
     String candidate = baseName;
     int suffix = 2;

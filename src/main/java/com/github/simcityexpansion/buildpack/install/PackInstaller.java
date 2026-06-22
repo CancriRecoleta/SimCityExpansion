@@ -39,13 +39,13 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** zip 拓展包的整包安装与卸载（安装清单记入 {@link InstallRegistry}）。 */
+/** Full install and uninstall of a zip build pack (install manifest recorded in {@link InstallRegistry}). */
 public final class PackInstaller {
   private PackInstaller() {}
 
   private static final Logger LOGGER = LoggerFactory.getLogger(PackInstaller.class);
 
-  /** 安装整个拓展包：逐建筑转换/复制结构 + 生成或解压 .sk，并登记注册表。 */
+  /** Installs an entire build pack: converts/copies structures per building, generates or extracts .sk files, and registers the pack. */
   public static InstallResult installPack(PackArchive pack, InstallRegistry registry) {
     List<Component> messages = new ArrayList<>();
     List<String> installedFiles = new ArrayList<>();
@@ -88,7 +88,7 @@ public final class PackInstaller {
     return new InstallResult(true, messages, null);
   }
 
-  /** 更新拓展包时删除旧版本残留、且新版本不再包含的文件，返回删除数。 */
+  /** Removes files present in the old version but absent from the new version during a pack update; returns the number of files deleted. */
   private static int removeOrphans(InstallRegistry.Entry previous, List<String> newFiles) {
     if (previous == null) {
       return 0;
@@ -109,8 +109,9 @@ public final class PackInstaller {
   }
 
   /**
-   * 单独安装包内的一个建筑（不记注册表；包内自带的 .sk 会补上本模组标记，
-   * 使其在「已安装」页签可识别、可卸载）。
+   * Installs a single building from a pack without updating the registry. A .sk bundled in the
+   * pack has the mod's generated marker prepended so that it is recognizable and uninstallable
+   * on the "Installed" tab.
    */
   public static InstallResult installSingle(PackArchive pack, PackBuildingEntry building) {
     List<Component> messages = new ArrayList<>();
@@ -126,7 +127,7 @@ public final class PackInstaller {
     }
   }
 
-  /** 按注册表清单卸载整个拓展包。 */
+  /** Uninstalls an entire build pack according to the registry manifest. */
   public static boolean uninstallPack(String packId, InstallRegistry registry) {
     InstallRegistry.Entry entry = registry.find(packId).orElse(null);
     if (entry == null) {
@@ -134,7 +135,7 @@ public final class PackInstaller {
     }
     boolean ok = true;
     for (String relative : entry.files()) {
-      // 注册表内统一存 '/'，Path.resolve 在各平台都接受。
+      // The registry always stores '/', which Path.resolve accepts on all platforms.
       Path file = BuildPack.simukraftDir().resolve(relative);
       try {
         Files.deleteIfExists(file);
@@ -149,10 +150,10 @@ public final class PackInstaller {
   }
 
   /**
-   * 安装包内一个建筑，返回落盘用的最终基础名。
+   * Installs one building from a pack and returns the final base name used on disk.
    *
-   * @param installedFiles 整包模式传入清单收集器；传 {@code null} 表示单独安装
-   *     （不记注册表，复制的 .sk 额外带上生成标记）
+   * @param installedFiles manifest collector for full-pack mode; pass {@code null} for
+   *     single-building installs (no registry entry; the copied .sk gets the generated marker)
    */
   private static String installBuilding(ZipFile zip, PackBuildingEntry building,
       @Nullable List<String> installedFiles, List<Component> messages) throws IOException {
@@ -166,8 +167,8 @@ public final class PackInstaller {
     Path nbtTarget = building.category().dir().resolve(finalName + ".nbt");
     Path skTarget = building.category().dir().resolve(finalName + ".sk");
 
-    // 结构条目一次性读入内存：原版直接落盘，litematic / schem 解析并转换；
-    // 旧版本结构经 DataFixer 升级到当前 DataVersion。
+    // Read the structure entry into memory in one pass: vanilla format is written directly to disk;
+    // litematic/schem is parsed and converted; old-version structures are upgraded to the current DataVersion via DataFixer.
     byte[] structureBytes = readEntry(zip, building.structureEntry());
     CompoundTag root = NbtIo.readCompressed(
         new ByteArrayInputStream(structureBytes), NbtAccounter.unlimitedHeap());
@@ -198,15 +199,16 @@ public final class PackInstaller {
           Component.translatable("buildpack.error.unknown_format"));
     }
 
-    // SimuKraft 原生职业/交易定义原样安装。
+    // Install SimuKraft native job/trade definitions as-is.
     if (building.simukraftJsonEntry() != null) {
       Files.write(building.category().dir().resolve(finalName + ".json"),
           readEntry(zip, building.simukraftJsonEntry()));
     }
 
     if (building.skEntry() != null) {
-      // 包内自带 .sk：原样安装（视为作者已写好的元数据）。
-      // 单独安装时补一行生成标记（SimuKraft 跳过 # 注释），便于「已安装」页签识别与卸载。
+      // .sk bundled in the pack: install as-is (treated as author-authored metadata).
+      // For single-building installs, prepend the generated marker line (SimuKraft skips # comments)
+      // so the "Installed" tab can recognize and uninstall the building.
       byte[] skBytes = readEntry(zip, building.skEntry());
       if (installedFiles == null) {
         byte[] marker = ("# " + BuildPack.GENERATED_MARKER + System.lineSeparator())
@@ -242,13 +244,13 @@ public final class PackInstaller {
     return finalName;
   }
 
-  /** 解析本模组元数据 JSON（zip 条目版本）。 */
+  /** Parses this mod's building metadata JSON from a zip entry. */
   public static BuildingMetadata readJsonMeta(ZipFile zip, String entryName) throws IOException {
     ZipEntry entry = zip.getEntry(entryName);
     return entry == null ? new BuildingMetadata() : readJsonMeta(readEntry(zip, entryName));
   }
 
-  /** 解析本模组元数据 JSON（内存字节版本；供界面直接读取 zip 展示共用）。 */
+  /** Parses this mod's building metadata JSON from raw bytes (shared with UI code that reads zip entries directly). */
   public static BuildingMetadata readJsonMeta(byte[] bytes) {
     BuildingMetadata meta = new BuildingMetadata();
     try {

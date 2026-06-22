@@ -1,24 +1,24 @@
 package com.github.simcityexpansion.buildpack.model;
 
 /**
- * zip 拓展包的 {@code pack.json} 清单。
+ * The {@code pack.json} manifest of a zip build pack.
  *
- * @param format 包格式版本（当前为 1）
- * @param id 全局唯一包 id（如 {@code author.pack_name}），用于安装注册表
- * @param name 展示名
- * @param version 包版本号
- * @param author 作者
- * @param description 描述
+ * @param format pack format version (currently 1)
+ * @param id globally unique pack id (e.g. {@code author.pack_name}), used for the install registry
+ * @param name display name
+ * @param version pack version string
+ * @param author author
+ * @param description description
  */
 public record PackManifest(
     int format, String id, String name, String version, String author, String description) {
 
   /**
-   * 当前包格式版本。v2 起：{@code <名>.meta.json} 为本模组元数据，
-   * {@code <名>.json} 原样安装为 SimuKraft 的职业/交易定义。
+   * Current pack format version. From v2 onward: {@code <name>.meta.json} carries this mod's
+   * metadata, and {@code <name>.json} is installed as-is as SimuKraft's profession/trade definition.
    */
   public static final int CURRENT_FORMAT = 2;
 
-  /** 仍可读取的最旧格式版本。 */
+  /** Oldest format version that can still be read. */
   public static final int MIN_FORMAT = 1;
 }

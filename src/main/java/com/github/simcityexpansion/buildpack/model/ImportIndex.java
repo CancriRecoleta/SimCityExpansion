@@ -26,11 +26,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 导入文件的本地索引（{@code simcity_expansion/.import_index.json}）：按相对路径缓存
- * 解析摘要（名称/作者/尺寸/方块数，供搜索与排序，免去反复解析）、内容哈希（供重复检测），
- * 以及用户元数据（标签 / 备注 / 收藏）。缓存按文件 mtime+size 失效，用户元数据始终保留。
+ * Local index of import files ({@code simcity_expansion/.import_index.json}): caches
+ * parsed summaries (name/author/size/block count, for search and sort, avoiding repeated parsing),
+ * content hashes (for duplicate detection), and user metadata (tags / notes / favorites).
+ * Cache entries are invalidated by file mtime+size changes; user metadata is always preserved.
  *
- * <p>线程安全：富集（{@link #ensureEnriched}）可在后台线程调用，读写均加锁。
+ * <p>Thread safety: index enrichment ({@link #ensureEnriched}) may be called from a background
+ * thread; all reads and writes are synchronized.
  */
 public final class ImportIndex {
   private ImportIndex() {}
@@ -40,7 +42,7 @@ public final class ImportIndex {
   private static final Type MAP_TYPE = new TypeToken<Map<String, Meta>>() {}.getType();
   private static final Meta EMPTY = new Meta();
 
-  /** 一条索引记录（可变）。 */
+  /** A single (mutable) index record. */
   public static final class Meta {
     long mtime;
     long size;
@@ -92,7 +94,7 @@ public final class ImportIndex {
     }
   }
 
-  /** 持久化到磁盘。 */
+  /** Persists the index to disk. */
   public static synchronized void save() {
     Path file = indexFile();
     try {
@@ -105,7 +107,7 @@ public final class ImportIndex {
     }
   }
 
-  /** 确保摘要与内容哈希已缓存（必要时解析）；供搜索/排序/重复检测前的后台富集调用。 */
+  /** Ensures the summary and content hash are cached (parsing as needed); call from a background index-enrichment pass before search, sort, or duplicate detection. */
   public static synchronized void ensureEnriched(Path file, StructureFormat format) {
     Meta meta = meta(file);
     if (meta.hash.isEmpty()) {
@@ -130,72 +132,72 @@ public final class ImportIndex {
     }
   }
 
-  // ---- 搜索/排序只读访问（不重新 stat；调用前应已 ensureEnriched）----
+  // ---- Read-only accessors for search/sort (no re-stat; caller must have called ensureEnriched) ----
 
-  /** 内嵌名称（无则空串）。 */
+  /** Embedded name, or empty string if absent. */
   public static String name(Path file) {
     return cached(file).name;
   }
 
-  /** 作者（无则空串）。 */
+  /** Author, or empty string if absent. */
   public static String author(Path file) {
     return cached(file).author;
   }
 
-  /** 非空气方块数（未富集为 0）。 */
+  /** Non-air block count, or 0 if not yet enriched. */
   public static long blocks(Path file) {
     return cached(file).totalBlocks;
   }
 
-  /** 包围体积（未富集为 0）。 */
+  /** Bounding volume, or 0 if not yet enriched. */
   public static long volume(Path file) {
     return cached(file).totalVolume;
   }
 
-  /** 内容哈希（未富集为空串）。 */
+  /** Content hash, or empty string if not yet enriched. */
   public static String hash(Path file) {
     return cached(file).hash;
   }
 
-  // ---- 用户元数据（写入即保存）----
+  // ---- User metadata (saved immediately on write) ----
 
-  /** 标签列表（只读副本）。 */
+  /** Tag list (read-only copy). */
   public static List<String> tags(Path file) {
     return List.copyOf(cached(file).tags);
   }
 
-  /** 设置标签并保存。 */
+  /** Sets tags and saves. */
   public static synchronized void setTags(Path file, List<String> tags) {
     meta(file).tags = new ArrayList<>(tags);
     save();
   }
 
-  /** 是否收藏。 */
+  /** Returns whether this file is marked as a favorite. */
   public static boolean favorite(Path file) {
     return cached(file).favorite;
   }
 
-  /** 切换收藏并保存。 */
+  /** Toggles the favorite flag and saves. */
   public static synchronized void toggleFavorite(Path file) {
     Meta meta = meta(file);
     meta.favorite = !meta.favorite;
     save();
   }
 
-  /** 备注（无则空串）。 */
+  /** Note, or empty string if absent. */
   public static String note(Path file) {
     return cached(file).note;
   }
 
-  /** 设置备注并保存。 */
+  /** Sets the note and saves. */
   public static synchronized void setNote(Path file, String note) {
     meta(file).note = note == null ? "" : note;
     save();
   }
 
-  // ---- 重复检测 ----
+  // ---- Duplicate detection ----
 
-  /** 内容相同（哈希一致）且出现 ≥2 次的全部文件路径。 */
+  /** All file paths whose content (hash) appears two or more times. */
   public static synchronized Set<Path> duplicatePaths(List<ImportFile> files) {
     Set<Path> result = new HashSet<>();
     for (List<Path> group : groupByHash(files).values()) {
@@ -206,7 +208,7 @@ public final class ImportIndex {
     return result;
   }
 
-  /** 每组重复中除第一个外的多余文件（用于「清理重复」）。 */
+  /** The surplus duplicates in each group (all but the first), for use in "clean up duplicates". */
   public static synchronized List<Path> redundantDuplicates(List<ImportFile> files) {
     List<Path> redundant = new ArrayList<>();
     for (List<Path> group : groupByHash(files).values()) {
@@ -228,9 +230,9 @@ public final class ImportIndex {
     return byHash;
   }
 
-  // ---- 文件移动/删除时维护索引（保留用户元数据）----
+  // ---- Index maintenance on file move/delete (user metadata is preserved) ----
 
-  /** 文件被重命名/移动后迁移其索引项。 */
+  /** Migrates the index entry after a file has been renamed or moved. */
   public static synchronized void move(Path from, Path to) {
     ensureLoaded();
     Meta meta = ENTRIES.remove(keyOf(from));
@@ -240,7 +242,7 @@ public final class ImportIndex {
     }
   }
 
-  /** 文件被删除后移除其索引项。 */
+  /** Removes the index entry after a file has been deleted. */
   public static synchronized void forget(Path file) {
     ensureLoaded();
     if (ENTRIES.remove(keyOf(file)) != null) {
@@ -248,7 +250,7 @@ public final class ImportIndex {
     }
   }
 
-  // ---- 内部 ----
+  // ---- Internal ----
 
   private static synchronized Meta cached(Path file) {
     ensureLoaded();
@@ -264,7 +266,7 @@ public final class ImportIndex {
       mtime = Files.getLastModifiedTime(file).toMillis();
       size = Files.size(file);
     } catch (IOException ignored) {
-      // 取不到属性时按 0 处理；下次仍会尝试富集。
+      // Treat as 0 if attributes cannot be read; enrichment will be retried next time.
     }
     Meta meta = ENTRIES.computeIfAbsent(key, k -> new Meta());
     if (meta.mtime != mtime || meta.size != size) {

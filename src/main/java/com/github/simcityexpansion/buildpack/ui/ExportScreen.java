@@ -19,8 +19,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 导出拓展包对话框：编辑包名/版本/作者/描述、勾选是否携带 .sk 与 SimuKraft 职业/交易 JSON，
- * 把传入的建筑（界面里勾选或当前过滤）导出为 zip。
+ * Export build pack dialog: edit pack name, version, author, and description; choose whether to
+ * include .sk files and SimuKraft job/trade JSON; then export the supplied buildings (those
+ * checked in the UI or matching the current filter) to a zip file.
  */
 public final class ExportScreen extends Screen {
 
@@ -45,7 +46,7 @@ public final class ExportScreen extends Screen {
     this.buildings = buildings;
   }
 
-  /** 打开导出对话框。 */
+  /** Opens the export dialog. */
   public static void open(List<InstalledBuilding> buildings) {
     Minecraft mc = Minecraft.getInstance();
     mc.setScreen(new ExportScreen(mc.screen, buildings));
@@ -120,7 +121,7 @@ public final class ExportScreen extends Screen {
 
   @Override
   public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-    // 不做高斯模糊背景。
+    // No Gaussian-blur background.
   }
 
   @Override

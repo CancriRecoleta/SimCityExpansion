@@ -4,15 +4,15 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * 已解析的 zip 拓展包。
+ * A parsed zip build pack.
  *
- * @param zipPath zip 文件路径
- * @param manifest pack.json 清单
- * @param buildings 包内全部建筑条目
+ * @param zipPath path to the zip file
+ * @param manifest pack.json manifest
+ * @param buildings all building entries contained in the pack
  */
 public record PackArchive(Path zipPath, PackManifest manifest, List<PackBuildingEntry> buildings) {
 
-  /** zip 文件名。 */
+  /** Returns the zip file name. */
   public String fileName() {
     return zipPath.getFileName().toString();
   }

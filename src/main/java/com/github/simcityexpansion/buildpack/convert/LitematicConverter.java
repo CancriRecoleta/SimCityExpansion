@@ -7,21 +7,21 @@ import java.util.List;
 
 import net.minecraft.network.chat.Component;
 
-/** litematic → 原版 NBT 结构 的转换门面。 */
+/** Facade for litematic-to-vanilla-NBT-structure conversion. */
 public final class LitematicConverter {
   private LitematicConverter() {}
 
-  /** 体积超过该值时给出「结构过大」提醒（仍允许安装）。 */
+  /** Volume threshold above which a "structure too large" warning is shown (install is still allowed). */
   private static final long LARGE_VOLUME_WARNING = 2_000_000L;
 
-  /** 读取 .litematic 并合并全部区域为单个原版结构。 */
+  /** Reads a .litematic file and merges all regions into a single vanilla structure. */
   public static NbtStructure convert(Path litematic) throws IOException {
     return LitematicReader.readAndMerge(litematic);
   }
 
   /**
-   * 安装前校验，返回需要展示给用户的警告（可为空）。
-   * 旧版本 DataVersion 不再在这里告警——安装链路会用 {@link StructureUpgrader} 实际升级。
+   * Pre-install validation; returns warnings to display to the user (may be empty).
+   * Outdated DataVersion is no longer warned here — the install pipeline upgrades via {@link StructureUpgrader}.
    */
   public static List<Component> validate(NbtStructure structure) {
     List<Component> warnings = new ArrayList<>();

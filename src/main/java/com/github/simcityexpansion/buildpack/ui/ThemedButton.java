@@ -10,8 +10,8 @@ import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.network.chat.Component;
 
 /**
- * 与 BuildPack 暗色主题一致的扁平按钮（取代原版按钮九宫格贴图）：深色底 + 1px 边框，
- * 悬停高亮、禁用置灰，文字居中带阴影并裁剪在按钮内。
+ * A flat button consistent with the BuildPack dark theme (replacing the vanilla nine-slice button texture): dark background + 1px border,
+ * hover highlight, disabled greyed-out, text centered with shadow and clipped inside the button bounds.
  */
 public final class ThemedButton extends AbstractButton {
   private final Runnable action;

@@ -6,16 +6,17 @@ import net.minecraft.client.gui.components.AbstractWidget;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * 俯视图预览：按调色板的地图色取每一列最高的非空气方块，
- * 以相对高度做明暗（高处亮、低处暗），供没有内嵌缩略图的 .nbt / .schem 使用。
+ * Top-down preview: samples the highest non-air block in each column using palette map colors,
+ * applies height-based shading (brighter at the top, darker at the bottom), for use with .nbt /
+ * .schem files that have no embedded thumbnail.
  */
 public final class TopDownPreview {
   private TopDownPreview() {}
 
-  /** 水平截面上限，超出不渲染（返回 null 由调用方回退占位）。 */
+  /** Horizontal footprint limit; structures exceeding this are not rendered (returns null so callers can fall back to a placeholder). */
   private static final long MAX_FOOTPRINT = 512L * 512L;
 
-  /** 渲染俯视图元素；结构过大或全空时返回 null。 */
+  /** Renders the top-down preview widget; returns null if the structure is too large or entirely empty. */
   @Nullable
   public static AbstractWidget create(NbtStructure structure) {
     int sizeX = structure.sizeX;

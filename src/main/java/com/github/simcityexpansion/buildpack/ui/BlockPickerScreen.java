@@ -10,7 +10,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
-/** 方块类型选择页：分页列出结构里的所有方块类型，点选一个把它的 id 回调给调用方（用于删除/替换）。 */
+/** Block-type picker screen: paginates all block types in the structure; clicking one returns its id to the caller (used for removal or replacement). */
 public final class BlockPickerScreen extends Screen {
 
   private static final int PAD = 10;
@@ -29,7 +29,7 @@ public final class BlockPickerScreen extends Screen {
     this.onPick = onPick;
   }
 
-  /** 打开方块类型选择页；点选某行回调其方块 id（后续导航由 onPick 自行决定）。 */
+  /** Opens the block-type picker screen; selecting a row invokes the callback with the block id (further navigation is handled by {@code onPick}). */
   public static void open(NbtStructure structure, Consumer<String> onPick) {
     Minecraft mc = Minecraft.getInstance();
     mc.setScreen(new BlockPickerScreen(mc.screen, structure, onPick));
@@ -57,7 +57,7 @@ public final class BlockPickerScreen extends Screen {
 
   @Override
   public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-    // 覆盖原版：不做高斯模糊背景。
+    // Override vanilla: skip the Gaussian-blur background.
   }
 
   @Override

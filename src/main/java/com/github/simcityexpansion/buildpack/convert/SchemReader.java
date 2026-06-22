@@ -16,27 +16,28 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 
 /**
- * Sponge 原理图（WorldEdit {@code .schem}）读取器，支持 v1/v2 与 v3。
+ * Sponge schematic (WorldEdit {@code .schem}) reader, supporting v1/v2 and v3.
  *
- * <p>格式要点：
+ * <p>Format notes:
  * <ul>
- *   <li>v1/v2：根标签含 {@code Version / DataVersion / Width / Height / Length /
- *       Palette（状态串 → id 的 compound）/ BlockData（varint 字节数组）/ BlockEntities}；</li>
- *   <li>v3：包裹在根的 {@code Schematic} 子 compound 中，方块数据移入
- *       {@code Blocks{Palette, Data, BlockEntities}}，方块实体的附加数据嵌在 {@code Data} 里；</li>
- *   <li>索引顺序 YZX（x 最快）：{@code i = (y * length + z) * width + x}；</li>
- *   <li>调色板键形如 {@code minecraft:oak_stairs[facing=east,half=bottom]}。</li>
+ *   <li>v1/v2: the root tag contains {@code Version / DataVersion / Width / Height / Length /
+ *       Palette (state string to id compound) / BlockData (varint byte array) / BlockEntities};</li>
+ *   <li>v3: wrapped in a {@code Schematic} sub-compound of the root; block data moved into
+ *       {@code Blocks{Palette, Data, BlockEntities}}, with block entity extra data embedded in
+ *       {@code Data};</li>
+ *   <li>Index order is YZX (x fastest): {@code i = (y * length + z) * width + x};</li>
+ *   <li>Palette keys are of the form {@code minecraft:oak_stairs[facing=east,half=bottom]}.</li>
  * </ul>
  */
 public final class SchemReader {
   private SchemReader() {}
 
-  /** 读取 .schem 并转换为原版结构中间模型。 */
+  /** Reads a .schem file and converts it to the vanilla structure intermediate model. */
   public static NbtStructure read(Path path) throws IOException {
     return read(NbtIo.readCompressed(path, NbtAccounter.unlimitedHeap()));
   }
 
-  /** 从已读出的根标签解析。 */
+  /** Parses from an already-read root tag. */
   public static NbtStructure read(CompoundTag root) throws IOException {
     boolean v3 = root.contains("Schematic", Tag.TAG_COMPOUND);
     CompoundTag schem = v3 ? root.getCompound("Schematic") : root;
@@ -72,7 +73,7 @@ public final class SchemReader {
       throw new LocalizedIOException(Component.translatable("buildpack.error.invalid_schem"));
     }
 
-    // 调色板：状态串 → id，按 id 还原为列表（空洞补空气）。
+    // Palette: state string to id; reconstruct as a list ordered by id (gaps filled with air).
     int maxId = -1;
     Map<Integer, NbtStructure.PaletteEntry> byId = new HashMap<>();
     for (String stateString : paletteTag.getAllKeys()) {
@@ -85,7 +86,7 @@ public final class SchemReader {
       palette.add(byId.getOrDefault(id, NbtStructure.PaletteEntry.AIR));
     }
 
-    // 方块实体：Pos[x,y,z]；v3 附加数据在 Data 子标签，v1/v2 直接内联。
+    // Block entities: Pos[x,y,z]; v3 extra data is in the Data sub-tag, v1/v2 is inlined directly.
     Map<Long, CompoundTag> tileEntities = new HashMap<>();
     for (int i = 0; i < blockEntities.size(); i++) {
       CompoundTag entity = blockEntities.getCompound(i);
@@ -105,7 +106,7 @@ public final class SchemReader {
       tileEntities.put(encode(pos[0], pos[1], pos[2]), nbt);
     }
 
-    // BlockData：varint 流，YZX 顺序展开；包含空气，保证建造时清空内部空间。
+    // BlockData: varint stream, unrolled in YZX order; includes air to ensure interior space is cleared during placement.
     long total = (long) width * height * length;
     List<NbtStructure.BlockEntry> blocks = new ArrayList<>((int) total);
     int cursor = 0;
@@ -133,7 +134,7 @@ public final class SchemReader {
     return new NbtStructure(width, height, length, schem.getInt("DataVersion"), palette, blocks);
   }
 
-  /** 解析 {@code ns:name[k=v,...]} 形式的状态串。 */
+  /** Parses a state string of the form {@code ns:name[k=v,...]}. */
   private static NbtStructure.PaletteEntry parseState(String stateString) {
     int bracket = stateString.indexOf('[');
     if (bracket < 0) {

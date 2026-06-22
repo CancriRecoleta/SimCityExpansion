@@ -46,27 +46,28 @@ import org.joml.Vector4f;
 import org.lwjgl.opengl.GL11;
 
 /**
- * 真实方块模型 3D 预览，按规模分三档：
+ * 3D preview rendering real block models, with three tiers based on structure size:
  * <ul>
- *   <li><b>≤ {@value #IMMEDIATE_LIMIT}</b>：每帧逐方块即时渲染（原行为）。</li>
- *   <li><b>≤ {@value #DETAIL_LIMIT}</b>：按 Y 层烘焙真实方块模型到 VBO（邻接剔除、分帧增量、
- *       切顶仅改层数）。</li>
- *   <li><b>更大（直到 {@value #LOD_MAX}）</b>：<b>体素 LOD</b>——按 N³ 单元降采样为带调色板色的
- *       彩色立方体（取单元内最高方块的地图色，单元间邻接剔除），用 {@code POSITION_COLOR} 顶点缓冲
- *       渲染，使百万级结构也能交互式 3D 预览（只是块感更粗）。</li>
+ *   <li><b>≤ {@value #IMMEDIATE_LIMIT}</b>: immediate per-block rendering every frame (original behavior).</li>
+ *   <li><b>≤ {@value #DETAIL_LIMIT}</b>: real block models baked into VBOs by Y layer (adjacency culling,
+ *       incremental per-frame baking, slice changes only update the layer count).</li>
+ *   <li><b>Larger (up to {@value #LOD_MAX})</b>: <b>voxel LOD</b> — downsampled into colored cubes
+ *       on an N³ grid (each cell takes the map color of its highest block, with inter-cell adjacency
+ *       culling), rendered with a {@code POSITION_COLOR} vertex buffer, enabling interactive 3D
+ *       preview of million-block structures (at reduced detail).</li>
  * </ul>
  */
 public final class StructureScene extends AbstractWidget {
 
-  /** 不超过此数用逐方块即时渲染。 */
+  /** Structures at or below this count use immediate per-block rendering. */
   private static final int IMMEDIATE_LIMIT = 6000;
-  /** 不超过此数用真实方块模型烘焙 VBO；超过转体素 LOD。 */
+  /** Structures at or below this count use real-model VBO baking; larger ones use voxel LOD. */
   private static final int DETAIL_LIMIT = 200_000;
-  /** 体素 LOD 可处理的非空气方块上限（再大放弃，回退等距图）。 */
+  /** Maximum non-air block count handled by voxel LOD (beyond this the preview is skipped). */
   private static final int LOD_MAX = 20_000_000;
-  /** LOD 目标分辨率：最长边方向的体素单元数约为此值。 */
+  /** LOD target resolution: approximate number of voxel cells along the longest axis. */
   private static final int LOD_TARGET_RES = 48;
-  /** 每帧增量烘焙处理的方块数（分摊烘焙耗时）。 */
+  /** Blocks processed per frame during incremental baking (amortizes baking cost). */
   private static final int BAKE_BUDGET = 8000;
 
   private record PosState(BlockPos pos, BlockState state) {}
@@ -79,14 +80,14 @@ public final class StructureScene extends AbstractWidget {
   private final Map<Long, BlockState> grid = new HashMap<>();
   private NbtStructure structure;
 
-  // 详细 VBO（按层）。
+  // Detailed VBO (per layer).
   private boolean useVbo;
   private List<List<PosState>> layerBlocks;
   private VertexBuffer[] layerBuffers;
   private boolean baking;
   private int bakeLayer;
 
-  // 体素 LOD。
+  // Voxel LOD.
   private boolean useLod;
   private int[] lodColor;
   private int lodN;
@@ -95,7 +96,7 @@ public final class StructureScene extends AbstractWidget {
   private int lodGz;
   private VertexBuffer lodBuffer;
 
-  // 选区高亮（编辑器）。
+  // Selection highlight (editor).
   private boolean hasSelection;
   private int selX0;
   private int selY0;
@@ -105,7 +106,7 @@ public final class StructureScene extends AbstractWidget {
   private int selZ1;
   private VertexBuffer selectionBuffer;
 
-  // 单方块编辑（编辑器）。
+  // Single-block editing (editor).
   private boolean editMode;
   private Consumer<Hit> onEdit;
   private Hit hover;
@@ -134,14 +135,14 @@ public final class StructureScene extends AbstractWidget {
   private float targetCenterX;
   private float targetCenterY;
   private float targetCenterZ;
-  /** 6 面裁剪盒（含 min、不含 max）；只渲染盒内方块（多轴切片看内部）。 */
+  /** Six-sided clip box (min inclusive, max exclusive); only blocks inside are rendered (multi-axis slice for interior views). */
   private int clipMinX;
   private int clipMinY;
   private int clipMinZ;
   private int clipMaxX = Integer.MAX_VALUE;
   private int clipMaxY = Integer.MAX_VALUE;
   private int clipMaxZ = Integer.MAX_VALUE;
-  /** 当前切片目标：0=Y顶 1=Y底 2=X+ 3=X- 4=Z+ 5=Z-。 */
+  /** Current slice target: 0=Y top, 1=Y bottom, 2=X+, 3=X-, 4=Z+, 5=Z-. */
   private int sliceTarget;
   private boolean showGizmo;
   private VertexBuffer decorBuffer;
@@ -152,12 +153,12 @@ public final class StructureScene extends AbstractWidget {
     this.interactive = interactive;
   }
 
-  /** 解析结构并重置相机；返回是否可渲染（空/超限返回 false）。 */
+  /** Parses the structure and resets the camera; returns false if it is empty or exceeds the size limit. */
   public boolean setStructure(NbtStructure s) {
     return setStructure(s, true);
   }
 
-  /** 解析结构；{@code resetCamera=false} 时保留当前视角（编辑器变换后不跳视角）。 */
+  /** Parses the structure; when {@code resetCamera=false} the current view is preserved (no camera jump after editor transforms). */
   public boolean setStructure(NbtStructure s, boolean resetCamera) {
     blocks.clear();
     grid.clear();
@@ -214,7 +215,7 @@ public final class StructureScene extends AbstractWidget {
     return true;
   }
 
-  /** 解析为真实方块模型（即时/详细 VBO 路共用）。 */
+  /** Parses blocks into real block model data (shared by the immediate and detailed VBO paths). */
   private boolean buildDetailed(NbtStructure s) {
     HolderGetter<Block> lookup = BuiltInRegistries.BLOCK.asLookup();
     BlockState[] palette = new BlockState[s.palette.size()];
@@ -246,7 +247,7 @@ public final class StructureScene extends AbstractWidget {
     return !blocks.isEmpty();
   }
 
-  /** 重置视角（朝向/缩放/平移/切顶）。 */
+  /** Resets the view (rotation/zoom/pan/slice). */
   public void resetView() {
     resetCamera();
     resetClip();
@@ -317,7 +318,7 @@ public final class StructureScene extends AbstractWidget {
     targetPanY = 0.0f;
   }
 
-  /** 释放 GPU 缓冲与进行中的烘焙（替换预览/关闭界面时调用）。 */
+  /** Releases GPU buffers and any in-progress baking (call when replacing the preview or closing the screen). */
   public void close() {
     cancelBake();
     closeBuffers();
@@ -327,7 +328,7 @@ public final class StructureScene extends AbstractWidget {
     closeDecor();
   }
 
-  /** 设置高亮选区（含边界，自动归一化）。 */
+  /** Sets the highlighted selection region (inclusive bounds, automatically normalized). */
   public void setSelection(int x0, int y0, int z0, int x1, int y1, int z1) {
     selX0 = Math.min(x0, x1);
     selY0 = Math.min(y0, y1);
@@ -339,7 +340,7 @@ public final class StructureScene extends AbstractWidget {
     buildSelectionBuffer();
   }
 
-  /** 清除选区高亮。 */
+  /** Clears the selection highlight. */
   public void clearSelection() {
     hasSelection = false;
     closeSelectionBuffer();
@@ -392,7 +393,7 @@ public final class StructureScene extends AbstractWidget {
     return sb.append(']').toString();
   }
 
-  /** 若缓冲已被释放（界面切换后返回），重新烘焙。 */
+  /** Re-bakes if buffers were released (e.g., after returning from a screen switch). */
   public void ensureBaked() {
     if (useVbo && layerBuffers == null && !baking && layerBlocks != null) {
       startBake();
@@ -451,7 +452,7 @@ public final class StructureScene extends AbstractWidget {
     }
   }
 
-  // ---- 详细：按层网格烘焙（分帧增量）----
+  // ---- Detailed: per-layer mesh baking (incremental, spread across frames) ----
 
   private void groupLayers() {
     layerBlocks = new ArrayList<>(structHeight);
@@ -512,7 +513,7 @@ public final class StructureScene extends AbstractWidget {
           dispatcher.renderSingleBlock(ps.state(), pose, source,
               LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY);
         } catch (Throwable ignored) {
-          // 个别方块模型异常跳过即可。
+          // Skip individual block models that throw exceptions.
         }
         pose.popPose();
       }
@@ -565,9 +566,9 @@ public final class StructureScene extends AbstractWidget {
     }
   }
 
-  // ---- 体素 LOD（超大结构）----
+  // ---- Voxel LOD (large structures) ----
 
-  /** 按 N³ 单元降采样为彩色立方体网格；返回是否成功烘焙。 */
+  /** Downsamples the structure into a colored cube mesh on an N³ grid; returns true if baking succeeded. */
   private boolean buildLod(NbtStructure s) {
     int[] colors = StructureAnalysis.paletteMapColors(s);
     lodN = Math.max(1, (maxDim + LOD_TARGET_RES - 1) / LOD_TARGET_RES);
@@ -604,7 +605,7 @@ public final class StructureScene extends AbstractWidget {
     return lodBuffer != null;
   }
 
-  /** 把彩色立方体（单元间邻接剔除、按 clipMaxY 切顶）烘焙为 POSITION_COLOR 缓冲。 */
+  /** Bakes the colored cubes (with inter-cell adjacency culling and clipMaxY top slice) into a POSITION_COLOR buffer. */
   private void bakeLod() {
     closeLod();
     if (lodColor == null) {
@@ -794,7 +795,7 @@ public final class StructureScene extends AbstractWidget {
     }
   }
 
-  /** 选区盒（半透明、无深度，叠在结构之上）。 */
+  /** Draws the selection box (translucent, no depth test, overlaid on the structure). */
   private void drawSelectionBox(GuiGraphics g, int x, int y, int w, int h, float scale, Minecraft mc) {
     Matrix4f modelView = cameraModelView(g, x, y, w, h, scale);
     Matrix4f projection = projectionFor(x, y, w, h);
@@ -811,7 +812,7 @@ public final class StructureScene extends AbstractWidget {
       selectionBuffer.drawWithShader(modelView, projection, RenderSystem.getShader());
       VertexBuffer.unbind();
     } catch (Throwable t) {
-      // 丢弃本帧。
+      // Discard this frame.
     } finally {
       RenderSystem.disableBlend();
       RenderSystem.enableDepthTest();
@@ -821,7 +822,7 @@ public final class StructureScene extends AbstractWidget {
     }
   }
 
-  // ---- 单方块拾取（屏幕→体素射线，编辑器）----
+  // ---- Single-block picking (screen-to-voxel ray, editor) ----
 
   /** Raycast the cursor into the voxel grid; returns the first solid cell hit, or null. */
   public Hit raycast(double mouseX, double mouseY) {
@@ -1023,7 +1024,7 @@ public final class StructureScene extends AbstractWidget {
       hoverBuffer.drawWithShader(modelView, projection, RenderSystem.getShader());
       VertexBuffer.unbind();
     } catch (Throwable t) {
-      // 丢弃本帧。
+      // Discard this frame.
     } finally {
       RenderSystem.disableBlend();
       RenderSystem.enableCull();
@@ -1039,7 +1040,7 @@ public final class StructureScene extends AbstractWidget {
     }
   }
 
-  // ---- 参考装饰：坐标轴 / 包围盒 / 地面网格（编辑器）----
+  // ---- Reference decorations: axes / bounding box / ground grid (editor) ----
 
   /** Toggle the axis gizmo, bounding box and ground grid overlay. */
   public void toggleGizmo() {
@@ -1172,7 +1173,7 @@ public final class StructureScene extends AbstractWidget {
       decorBuffer.drawWithShader(modelView, projection, RenderSystem.getShader());
       VertexBuffer.unbind();
     } catch (Throwable t) {
-      // 丢弃本帧。
+      // Discard this frame.
     } finally {
       RenderSystem.disableBlend();
       RenderSystem.enableCull();
@@ -1188,7 +1189,7 @@ public final class StructureScene extends AbstractWidget {
     }
   }
 
-  // ---- 渲染 ----
+  // ---- Rendering ----
 
   @Override
   protected void renderWidget(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
@@ -1298,14 +1299,15 @@ public final class StructureScene extends AbstractWidget {
     pose.mulPose(Axis.XP.rotationDegrees(pitch));
     pose.mulPose(Axis.YP.rotationDegrees(yaw));
     pose.translate(-centerX, -centerY, -centerZ);
-    // GUI 下 RenderSystem 的 modelView 不一定是单位阵，需与界面 pose 复合，否则网格落在屏外（全空）。
+    // Under GUI rendering, RenderSystem's modelView may not be identity; it must be composed with the
+    // screen pose, otherwise the mesh renders off-screen (completely invisible).
     Matrix4f modelView = new Matrix4f(RenderSystem.getModelViewMatrix());
     modelView.mul(pose.last().pose());
     pose.popPose();
     return modelView;
   }
 
-  /** 详细：画已烘焙好的各 Y 层缓存（只画 y < clipMaxY 的层，切顶即时）。 */
+  /** Detailed: draws all baked Y-layer buffers (only layers with y < clipMaxY are drawn; slice is applied immediately). */
   private void drawBaked(GuiGraphics g, int x, int y, int w, int h, float scale, Minecraft mc) {
     Matrix4f modelView = cameraModelView(g, x, y, w, h, scale);
     Matrix4f projection = projectionFor(x, y, w, h);
@@ -1329,7 +1331,7 @@ public final class StructureScene extends AbstractWidget {
       }
       VertexBuffer.unbind();
     } catch (Throwable t) {
-      // 渲染异常丢弃本帧。
+      // Render exception: discard this frame.
     } finally {
       renderType.clearRenderState();
       mc.gameRenderer.lightTexture().turnOffLightLayer();
@@ -1340,7 +1342,7 @@ public final class StructureScene extends AbstractWidget {
     }
   }
 
-  /** 体素 LOD：画彩色立方体缓冲（POSITION_COLOR，无纹理/光照贴图）。 */
+  /** Voxel LOD: draws the colored cube buffer (POSITION_COLOR, no textures or lightmap). */
   private void drawLod(GuiGraphics g, int x, int y, int w, int h, float scale, Minecraft mc) {
     Matrix4f modelView = cameraModelView(g, x, y, w, h, scale);
     Matrix4f projection = projectionFor(x, y, w, h);
@@ -1356,7 +1358,7 @@ public final class StructureScene extends AbstractWidget {
       lodBuffer.drawWithShader(modelView, projection, RenderSystem.getShader());
       VertexBuffer.unbind();
     } catch (Throwable t) {
-      // 渲染异常丢弃本帧。
+      // Render exception: discard this frame.
     } finally {
       RenderSystem.enableCull();
       g.flush();
@@ -1364,7 +1366,7 @@ public final class StructureScene extends AbstractWidget {
     }
   }
 
-  /** 小结构：每帧逐方块即时渲染（与原行为一致）。 */
+  /** Small structures: immediate per-block rendering every frame (matches original behavior). */
   private void drawImmediate(GuiGraphics g, int x, int y, int w, int h, float scale, Minecraft mc) {
     g.flush();
     g.enableScissor(x, y, x + w, y + h);
@@ -1393,7 +1395,7 @@ public final class StructureScene extends AbstractWidget {
       }
       buffers.endBatch();
     } catch (Throwable t) {
-      // 个别方块模型异常不应让整个界面崩溃：丢弃本帧 3D 渲染即可。
+      // A block model exception must not crash the entire screen: discard this frame's 3D render.
       mc.renderBuffers().bufferSource().endBatch();
     } finally {
       pose.popPose();
@@ -1453,7 +1455,7 @@ public final class StructureScene extends AbstractWidget {
     }
   }
 
-  // ---- 交互（仅精细界面） ----
+  // ---- Interaction (interactive mode only) ----
 
   @Override
   public boolean mouseClicked(double mouseX, double mouseY, int button) {
@@ -1473,7 +1475,7 @@ public final class StructureScene extends AbstractWidget {
     if (button == 0) {
       dragged = false;
     }
-    // 左/右键：消费点击以便宿主转发后续拖拽。
+    // Left/right click: consume the event so the host can forward subsequent drag events.
     return true;
   }
 
@@ -1498,8 +1500,9 @@ public final class StructureScene extends AbstractWidget {
   }
 
   /**
-   * 应用一次拖拽增量：左键旋转、右键平移。供宿主屏幕转发非左键拖拽
-   * （原版容器默认只把左键拖拽转发给获得焦点的控件）。
+   * Applies a single drag delta: left button rotates, right button pans. Intended for the host
+   * screen to forward non-left-button drags (vanilla containers only forward left-button drags to
+   * the focused widget by default).
    */
   public void applyDrag(int button, double dragX, double dragY) {
     if (!interactive) {

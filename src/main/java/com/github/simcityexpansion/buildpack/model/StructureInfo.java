@@ -3,20 +3,20 @@ package com.github.simcityexpansion.buildpack.model;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * 结构文件的只读解析摘要，供详情面板展示与表单预填。
+ * Read-only parsed summary of a structure file, for display in the details panel and form prefill.
  *
- * @param name 结构内嵌名称（litematic 的 Metadata.Name；.nbt 无内嵌名时为 null）
- * @param author 作者（litematic 的 Metadata.Author；可为 null）
- * @param sizeX 包围尺寸 X
- * @param sizeY 包围尺寸 Y
- * @param sizeZ 包围尺寸 Z
- * @param totalBlocks 非空气方块总数
- * @param totalVolume 包围体积
- * @param regionCount 区域数（原版 .nbt 恒为 1）
- * @param dataVersion 结构保存时的 Minecraft DataVersion
- * @param timeCreated 结构创建时间（epoch 毫秒；litematic 元数据自带，其余格式为 0 表示未知）
- * @param previewArgb litematic 内嵌预览图（方形 ARGB 像素，无则为 null）
- * @param previewSize 预览图边长（无预览时为 0）
+ * @param name embedded structure name (litematic Metadata.Name; null when .nbt has no embedded name)
+ * @param author author (litematic Metadata.Author; may be null)
+ * @param sizeX bounding size X
+ * @param sizeY bounding size Y
+ * @param sizeZ bounding size Z
+ * @param totalBlocks total non-air block count
+ * @param totalVolume bounding volume
+ * @param regionCount region count (always 1 for vanilla .nbt)
+ * @param dataVersion Minecraft DataVersion at the time the structure was saved
+ * @param timeCreated structure creation time (epoch milliseconds; provided by litematic metadata, 0 for unknown in other formats)
+ * @param previewArgb litematic embedded preview image (square ARGB pixels; null if absent)
+ * @param previewSize side length of the preview image (0 if no preview)
  */
 public record StructureInfo(
     @Nullable String name,
@@ -32,7 +32,7 @@ public record StructureInfo(
     @Nullable int[] previewArgb,
     int previewSize) {
 
-  /** 尺寸展示串："X x Y x Z"。 */
+  /** Returns the size display string: "X x Y x Z". */
   public String sizeString() {
     return sizeX + " x " + sizeY + " x " + sizeZ;
   }

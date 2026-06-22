@@ -27,8 +27,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 非命令方式从世界导出结构：用键位以准星指向的方块（或脚下）设两个角点，再按键把选区导出为
- * .nbt + .litematic 到导入目录；世界里实时画出选框。客户端读已加载区块的方块状态。
+ * Non-command world structure export: uses key mappings to set two corner points at the
+ * crosshair-targeted block (or the player's feet), then exports the selection as .nbt +
+ * .litematic into the import directory. Renders a live bounding box in the world. Reads block
+ * states from already-loaded chunks on the client.
  */
 public final class WorldSelection {
   private WorldSelection() {}
@@ -39,7 +41,7 @@ public final class WorldSelection {
   private static BlockPos cornerA;
   private static BlockPos cornerB;
 
-  /** 设角点 A 为准星指向的方块（无指向则取脚下）。 */
+  /** Sets corner A to the crosshair-targeted block, or the player's foot position if nothing is targeted. */
   public static void setCornerA() {
     BlockPos pos = targetPos();
     if (pos != null) {
@@ -48,7 +50,7 @@ public final class WorldSelection {
     }
   }
 
-  /** 设角点 B。 */
+  /** Sets corner B. */
   public static void setCornerB() {
     BlockPos pos = targetPos();
     if (pos != null) {
@@ -57,15 +59,15 @@ public final class WorldSelection {
     }
   }
 
-  /** 捕获结果：展示消息 + 是否成功。 */
+  /** Capture result: the display message and a success flag. */
   public record CaptureResult(Component message, boolean ok) {}
 
-  /** 是否已设置两个角点（GUI 按钮据此决定可用状态）。 */
+  /** Returns whether both corner points have been set (used by GUI buttons to determine enabled state). */
   public static boolean hasSelection() {
     return cornerA != null && cornerB != null;
   }
 
-  /** 捕获当前选区并导出为蓝图，返回结果消息（供命令/键位/GUI 共用）。 */
+  /** Captures the current selection and exports it as a blueprint; returns a result message (shared by commands, key mappings, and GUI). */
   public static CaptureResult capture() {
     Minecraft mc = Minecraft.getInstance();
     if (mc.level == null || mc.player == null || cornerA == null || cornerB == null) {
@@ -101,7 +103,7 @@ public final class WorldSelection {
     }
   }
 
-  /** 世界渲染阶段画出选框（单角点画该方块，双角点画包围盒）。 */
+  /** Draws the selection box during the world render stage (one corner renders that single block; two corners render the bounding box). */
   public static void onRenderLevelStage(RenderLevelStageEvent event) {
     if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS
         || (cornerA == null && cornerB == null)) {

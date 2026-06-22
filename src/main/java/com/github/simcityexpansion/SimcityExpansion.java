@@ -14,10 +14,10 @@ public class SimcityExpansion {
   public static final String MODID = "simcity_expansion";
 
   public SimcityExpansion(IEventBus modEventBus, ModContainer modContainer) {
-    // /buildpack 管理命令为端中立功能（单人与专用服务器皆可用）。
+    // The /buildpack admin command is side-neutral (available in both singleplayer and on a dedicated server).
     NeoForge.EVENT_BUS.addListener(BuildPackCommands::onRegisterCommands);
 
-    // 管理界面与按键为纯客户端功能，仅在客户端环境下注册。
+    // The management screen and key mappings are client-only features, registered only in a client environment.
     if (FMLEnvironment.dist == Dist.CLIENT) {
       BuildPackClientBootstrap.register(modEventBus);
     }

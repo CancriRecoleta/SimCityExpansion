@@ -13,8 +13,11 @@ import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.network.chat.Component;
 
 /**
- * 自绘材料清单（分页）：每行「数量 × 名称」，缺失方块标红置顶（数据已按缺失优先、数量降序排好）。
- * 仅展示、可选点选；底部超过一页时显示翻页条（点按钮或滚轮翻页）。
+ * Custom-drawn material list (paginated): each row shows "count x name"; missing
+ * blocks are highlighted in red and sorted to the top (the data is already sorted
+ * by missing-first, then count descending). Display-only with optional row
+ * selection; a navigation bar appears at the bottom when there is more than one
+ * page (button click or scroll-wheel to turn pages).
  */
 public final class MaterialListView extends AbstractWidget {
 
@@ -39,13 +42,13 @@ public final class MaterialListView extends AbstractWidget {
     super(x, y, width, height, Component.empty());
   }
 
-  /** 设置材料数据并回到第一页。 */
+  /** Sets the material data and resets to the first page. */
   public void setMaterials(List<MaterialEntry> materials) {
     this.materials = materials;
     this.page = 0;
   }
 
-  /** 设为可点选（点行回调该条目，并高亮悬停行）；不设则为只读展示。 */
+  /** Enables row selection (clicking a row invokes the callback for that entry and highlights the hovered row); if not set, the widget is read-only. */
   public void setOnSelect(Consumer<MaterialEntry> onSelect) {
     this.onSelect = onSelect;
   }
@@ -118,7 +121,7 @@ public final class MaterialListView extends AbstractWidget {
     g.drawString(font, info, x + (w - font.width(info)) / 2, textY, PAGE_INFO_COLOR, true);
   }
 
-  // ---- 交互（翻页 + 可选点选） ----
+  // ---- Interaction (pagination + optional row selection) ----
 
   @Override
   public boolean mouseClicked(double mouseX, double mouseY, int button) {

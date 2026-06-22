@@ -55,11 +55,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 建筑拓展包管理器界面（原版 {@link Screen} 重写）：左栏来源页签 + 搜索 + 自绘文件树，
- * 右栏定宽信息/预览/元数据表单，底部操作与状态栏。支持把结构文件 / zip 拓展包拖进窗口导入。
+ * Build pack manager screen (vanilla {@link Screen} reimplementation): left column with source
+ * tabs, search, and a custom-drawn file tree; fixed-width right column for info/preview/metadata
+ * form; bottom action and status bar. Supports drag-and-drop of structure files and zip build
+ * packs into the window for import.
  *
- * <p>整合了原 BuildPackView 控制器与各子组件：业务逻辑（扫描/安装/卸载/删除/导出/捕获选区）
- * 不变，仅界面层改用原版控件与手工布局。
+ * <p>Integrates the original BuildPackView controller with all sub-components: business logic
+ * (scan/install/uninstall/delete/export/capture selection) is unchanged; only the UI layer is
+ * rewritten to use vanilla widgets with manual layout.
  */
 public final class BuildPackScreen extends Screen {
 
@@ -80,15 +83,15 @@ public final class BuildPackScreen extends Screen {
   private static final int DEDUPE_W = 90;
   private static final int CLOSE_W = 70;
 
-  /** 会话内记住上次停留的页签。 */
+  /** Remembers the last active tab within a session. */
   private static SourceTab lastTab = SourceTab.IMPORT;
 
-  /** 指定下次打开管理器时停留的页签（编辑器保存后用，便于看到新导入文件）。 */
+  /** Sets the tab to show the next time the manager is opened (used after an editor save, so the newly imported file is visible). */
   public static void setLastTab(SourceTab tab) {
     lastTab = tab;
   }
 
-  /** 打开建筑拓展包管理器界面。 */
+  /** Opens the build pack manager screen. */
   public static void open() {
     Minecraft.getInstance().setScreen(new BuildPackScreen());
   }
@@ -130,7 +133,7 @@ public final class BuildPackScreen extends Screen {
   private ThemedButton exportButton;
   private ThemedButton dedupeButton;
 
-  // 布局缓存（随屏幕尺寸计算，init 与 render 共用）。
+  // Layout cache (computed from screen dimensions; shared between init and render).
   private int leftX;
   private int leftW;
   private int rightX;
@@ -149,7 +152,8 @@ public final class BuildPackScreen extends Screen {
     infoPanel = new InfoPanel(form);
     refresh();
 
-    // 连接远程服务器时给出提醒：文件只会写到本机，专用服务器需要管理员在服务端安装。
+    // Warn when connected to a remote server: files are only written to the local machine;
+    // a dedicated server requires an administrator to install them server-side.
     Minecraft minecraft = Minecraft.getInstance();
     if (minecraft.level != null && minecraft.getSingleplayerServer() == null) {
       setMessage(Component.translatable("buildpack.status.remote_warning"), true);
@@ -175,7 +179,7 @@ public final class BuildPackScreen extends Screen {
     computeLayout();
     int row1Y = row2Y - ROW2_GAP - BTN_H;
 
-    // 来源页签
+    // Source tabs
     SourceTab[] tabs = SourceTab.values();
     for (int i = 0; i < tabs.length; i++) {
       SourceTab tab = tabs[i];
@@ -186,7 +190,7 @@ public final class BuildPackScreen extends Screen {
       addRenderableWidget(button);
     }
 
-    // 搜索 + 排序
+    // Search + sort
     EditBox searchBox = new EditBox(font, leftX, searchY, leftW - SORT_W - GAP, SEARCH_H,
         Component.translatable("buildpack.search.placeholder"));
     searchBox.setHint(Component.translatable("buildpack.search.placeholder"));
@@ -200,7 +204,7 @@ public final class BuildPackScreen extends Screen {
     sortButton.setTooltip(Tooltip.create(Component.translatable("buildpack.tooltip.sort")));
     addRenderableWidget(sortButton);
 
-    // 文件树
+    // File tree
     treeView = new TreeView(leftX + 2, treeY + 2, leftW - 4, bodyBottom - treeY - 4,
         this::onNodeSelected);
     treeView.setOnCheckedChanged(this::updateActionButtons);
@@ -208,10 +212,10 @@ public final class BuildPackScreen extends Screen {
     treeView.setRoot(currentRoot);
     addRenderableWidget(treeView);
 
-    // 右栏信息面板
+    // Right-column info panel
     infoPanel.rebuild(font, rightX, searchY, INFO_W, bodyBottom - searchY, this::addRenderableWidget);
 
-    // 底部操作行
+    // Bottom action row
     int actionCount = 6;
     int actionW = (width - PAD * 2 - GAP * (actionCount - 1)) / actionCount;
     int ax = PAD;
@@ -227,7 +231,7 @@ public final class BuildPackScreen extends Screen {
     ax += actionW + GAP;
     action("capture", ax, row1Y, actionW, this::runCaptureSelection);
 
-    // 底部工具行
+    // Bottom toolbar row
     action("refresh", PAD, row2Y, REFRESH_W, this::refresh);
     action("open_folder", PAD + REFRESH_W + GAP, row2Y, OPEN_W, this::openFolder);
     dedupeButton = action("dedupe",
@@ -246,11 +250,11 @@ public final class BuildPackScreen extends Screen {
     return button;
   }
 
-  // ---- 渲染 ----
+  // ---- Rendering ----
 
   @Override
   public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-    // 覆盖原版：不做高斯模糊背景；遮罩与面板由 render() 自行绘制。
+    // Override vanilla: no Gaussian-blur background; the dim overlay and panels are drawn by render().
   }
 
   @Override
@@ -280,7 +284,7 @@ public final class BuildPackScreen extends Screen {
 
     super.render(g, mouseX, mouseY, partialTick);
 
-    // 当前页签下划线（画在页签按钮之上）。
+    // Active-tab underline (drawn on top of the tab buttons).
     int activeX = leftX + currentTab.ordinal() * (tabW + GAP);
     g.fill(activeX, tabsY + TAB_H, activeX + tabW, tabsY + TAB_H + 1, 0xFFFFFFFF);
 
@@ -289,7 +293,7 @@ public final class BuildPackScreen extends Screen {
     }
   }
 
-  // ---- 页签 / 搜索 / 排序 ----
+  // ---- Tabs / search / sort ----
 
   private void switchTab(SourceTab tab) {
     currentTab = tab;
@@ -312,9 +316,9 @@ public final class BuildPackScreen extends Screen {
     rebuildTree();
   }
 
-  // ---- 数据刷新 ----
+  // ---- Data refresh ----
 
-  /** 重新扫描三种来源并刷新列表。 */
+  /** Rescans all three sources and refreshes the list. */
   private void refresh() {
     importFiles = ImportScanner.scan();
 
@@ -342,7 +346,7 @@ public final class BuildPackScreen extends Screen {
     startEnrich();
   }
 
-  /** 后台富集导入文件索引（解析摘要 + 内容哈希），完成后刷新重复标记与列表。 */
+  /** Enriches the import-file index in the background (parses summaries and content hashes), then refreshes duplicate markers and the list. */
   private void startEnrich() {
     int gen = ++enrichGen;
     List<ImportFile> snapshot = List.copyOf(importFiles);
@@ -403,7 +407,7 @@ public final class BuildPackScreen extends Screen {
     updateActionButtons();
   }
 
-  /** 树中当前勾选、且为指定类型的内容。 */
+  /** Returns all tree-checked items that are instances of the given type. */
   @SuppressWarnings("unchecked")
   private <T> List<T> checkedOfType(Class<T> type) {
     if (treeView == null) {
@@ -422,7 +426,7 @@ public final class BuildPackScreen extends Screen {
         .toList();
   }
 
-  /** 导入文件匹配：文件名/索引名/作者/标签 子串；支持 {@code fav} 与 {@code tag:} 前缀。 */
+  /** Matches an import file against the search text (substring of file name, index name, author, or tags); supports the {@code fav} and {@code tag:} prefixes. */
   private boolean matchesImport(ImportFile file) {
     if (searchText.isEmpty()) {
       return true;
@@ -449,7 +453,7 @@ public final class BuildPackScreen extends Screen {
     count = Component.translatable("buildpack.status.count", shown, installed.size());
   }
 
-  // ---- 选中 ----
+  // ---- Selection ----
 
   private void onNodeSelected(Object content) {
     selected = content;
@@ -577,7 +581,7 @@ public final class BuildPackScreen extends Screen {
     }
   }
 
-  // ---- 操作 ----
+  // ---- Actions ----
 
   private void runInstall() {
     BuildingInstaller.InstallResult result;
@@ -651,7 +655,7 @@ public final class BuildPackScreen extends Screen {
     refresh();
   }
 
-  /** 批量删除勾选的导入文件（两击确认）。 */
+  /** Batch-deletes the checked import files (requires a second click to confirm). */
   private void runBatchDelete(List<ImportFile> files) {
     if (!pendingBatchDelete) {
       pendingBatchDelete = true;
@@ -712,7 +716,7 @@ public final class BuildPackScreen extends Screen {
     }
   }
 
-  /** 「清理重复」回调（两击确认）：删除内容相同的多余副本，每组保留一个。 */
+  /** "Dedupe" callback (requires a second click to confirm): deletes redundant copies with identical content, keeping one per group. */
   private void runCleanDuplicates() {
     List<Path> redundant = ImportIndex.redundantDuplicates(importFiles);
     if (redundant.isEmpty()) {
@@ -739,7 +743,7 @@ public final class BuildPackScreen extends Screen {
     refresh();
   }
 
-  // ---- 右键上下文菜单 ----
+  // ---- Right-click context menu ----
 
   private void openContextMenu(Object content, int mouseX, int mouseY) {
     List<ContextMenu.Item> items = new ArrayList<>();
@@ -884,7 +888,7 @@ public final class BuildPackScreen extends Screen {
     this.messageError = error;
   }
 
-  // ---- 文件拖入 ----
+  // ---- File drag-and-drop ----
 
   @Override
   public void onFilesDrop(List<Path> paths) {
@@ -944,7 +948,7 @@ public final class BuildPackScreen extends Screen {
       contextMenu = null;
       return true;
     }
-    // Ctrl+V（未聚焦输入框时）：把剪贴板里的文件路径导入。
+    // Ctrl+V (when no text field is focused): import the file path from the clipboard.
     if (keyCode == 86 && Screen.hasControlDown() && !(getFocused() instanceof EditBox)) {
       importFromClipboard();
       return true;
@@ -972,7 +976,7 @@ public final class BuildPackScreen extends Screen {
     }
   }
 
-  // ---- 导入目录监听（外部放入文件自动刷新）----
+  // ---- Import directory watcher (auto-refresh when files are added externally) ----
 
   private void startWatch() {
     if (watcher != null) {
@@ -1020,7 +1024,7 @@ public final class BuildPackScreen extends Screen {
       try {
         watcher.close();
       } catch (IOException ignored) {
-        // 关闭监听失败无需处理。
+        // Failure to close the watcher requires no action.
       }
       watcher = null;
     }

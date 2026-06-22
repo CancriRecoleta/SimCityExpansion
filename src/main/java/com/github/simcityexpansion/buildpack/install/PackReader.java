@@ -26,20 +26,20 @@ import com.google.gson.JsonParser;
 import net.minecraft.network.chat.Component;
 
 /**
- * zip 拓展包读取器。包格式（format 1）：
+ * Reader for zip build packs. Pack format (format 1):
  *
  * <pre>
  * mypack.zip
- * ├── pack.json                      必需：{format,id,name,version,author,description}
- * └── buildings/&lt;分类&gt;/&lt;名&gt;.nbt|.litematic   结构（必需）
- *     buildings/&lt;分类&gt;/&lt;名&gt;.sk               可选：存在则原样安装（优先）
- *     buildings/&lt;分类&gt;/&lt;名&gt;.json             可选：JSON 元数据
+ * ├── pack.json                      required: {format,id,name,version,author,description}
+ * └── buildings/&lt;category&gt;/&lt;name&gt;.nbt|.litematic   structure (required)
+ *     buildings/&lt;category&gt;/&lt;name&gt;.sk               optional: installed as-is when present (takes priority)
+ *     buildings/&lt;category&gt;/&lt;name&gt;.json             optional: JSON metadata
  * </pre>
  */
 public final class PackReader {
   private PackReader() {}
 
-  /** 解析 zip 拓展包；清单缺失/非法时抛出 IOException。 */
+  /** Parses a zip build pack; throws {@link IOException} if the manifest is missing or invalid. */
   public static PackArchive read(Path zipPath) throws IOException {
     try (ZipFile zip = new ZipFile(zipPath.toFile())) {
       PackManifest manifest = readManifest(zip);
@@ -53,7 +53,7 @@ public final class PackReader {
         }
         String path = entry.getName().replace('\\', '/');
         String[] parts = path.split("/");
-        // buildings/<分类>/<文件名>
+        // buildings/<category>/<file name>
         if (parts.length != 3 || !"buildings".equals(parts[0])) {
           continue;
         }
@@ -131,7 +131,7 @@ public final class PackReader {
         getString(json, "description", ""));
   }
 
-  /** 读取 zip 内单个条目的全部字节（供界面直接读取包内建筑，无需解压）。 */
+  /** Reads all bytes of a single entry from a zip file (used by the UI to read buildings directly without extracting the archive). */
   public static byte[] readEntryBytes(Path zipPath, String entryName) throws IOException {
     try (ZipFile zip = new ZipFile(zipPath.toFile())) {
       ZipEntry entry = zip.getEntry(entryName);
@@ -170,9 +170,10 @@ public final class PackReader {
     }
 
     /**
-     * 归类 {@code <名>.json}：v2 包里它就是 SimuKraft 原生定义；
-     * v1 旧包把它当本模组元数据用——按内容启发式区分（含 offers/containers/job
-     * 等玩法键则视为原生定义），保证旧包不破坏。
+     * Classifies {@code <name>.json}: in v2 packs it is a SimuKraft native definition;
+     * in v1 legacy packs it was used as mod metadata — the two are distinguished
+     * heuristically by content (presence of gameplay keys such as offers/containers/job
+     * indicates a native definition), ensuring backwards compatibility with legacy packs.
      */
     void classifyPlainJson(ZipFile zip) {
       if (plainJsonEntry == null) {
@@ -191,7 +192,7 @@ public final class PackReader {
           metaJsonEntry = plainJsonEntry;
         }
       } catch (IOException | RuntimeException e) {
-        // 内容读不出来就按旧格式元数据处理，由安装链路兜底报错。
+        // If the content cannot be read, treat it as legacy-format metadata and let the install pipeline report the error.
         metaJsonEntry = plainJsonEntry;
       }
     }

@@ -8,27 +8,29 @@ import net.minecraft.nbt.CompoundTag;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * 原版 NBT 结构格式的内存中间模型，也是 litematic 转换的目标表示。
+ * In-memory intermediate model of the vanilla NBT structure format, and the target representation
+ * for litematic conversion.
  *
- * <p>与磁盘格式一一对应：size（三轴尺寸）、palette（方块状态调色板）、
- * blocks（坐标 + 调色板索引 + 可选方块实体数据）。
+ * <p>Maps one-to-one with the on-disk format: size (three-axis dimensions), palette (block-state
+ * palette), and blocks (coordinates + palette index + optional block entity data).
  */
 public final class NbtStructure {
 
   /**
-   * 调色板条目。
+   * A palette entry.
    *
-   * @param blockName 方块 id（如 {@code minecraft:oak_stairs}）
-   * @param properties 方块状态属性（键值均为字符串的 compound；无属性时为 null）
+   * @param blockName block ID (e.g., {@code minecraft:oak_stairs})
+   * @param properties block-state properties (compound with string keys and values; null when no properties)
    */
   public record PaletteEntry(String blockName, @Nullable CompoundTag properties) {
 
-    /** 空气条目。 */
+    /** Air palette entry. */
     public static final PaletteEntry AIR = new PaletteEntry("minecraft:air", null);
 
     /**
-     * 调色板去重键：{@code name[k1=v1,k2=v2]}，属性键排序保证同一状态键唯一
-     * （CompoundTag 内部为哈希表，toString 顺序不可靠）。
+     * Deduplication key for the palette: {@code name[k1=v1,k2=v2]} with property keys sorted to
+     * guarantee a unique key per state (CompoundTag is internally a hash map whose toString order
+     * is unreliable).
      */
     public String canonicalKey() {
       if (properties == null || properties.isEmpty()) {
@@ -46,16 +48,16 @@ public final class NbtStructure {
       return key.append(']').toString();
     }
 
-    /** 是否为空气。 */
+    /** Returns true if this entry represents air. */
     public boolean isAir() {
       return "minecraft:air".equals(blockName) || "air".equals(blockName);
     }
   }
 
   /**
-   * 方块条目（坐标为结构内局部坐标，自 0 起）。
+   * A block entry (coordinates are structure-local, starting at 0).
    *
-   * @param nbt 方块实体数据（不含坐标键；无则为 null）
+   * @param nbt block entity data (without coordinate keys; null if absent)
    */
   public record BlockEntry(int x, int y, int z, int stateIndex, @Nullable CompoundTag nbt) {}
 
@@ -76,12 +78,12 @@ public final class NbtStructure {
     this.blocks = blocks;
   }
 
-  /** 包围体积。 */
+  /** Returns the bounding volume. */
   public long volume() {
     return (long) sizeX * sizeY * sizeZ;
   }
 
-  /** 非空气方块数。 */
+  /** Returns the number of non-air blocks. */
   public long countNonAir() {
     List<Boolean> airIndex = new ArrayList<>(palette.size());
     for (PaletteEntry entry : palette) {

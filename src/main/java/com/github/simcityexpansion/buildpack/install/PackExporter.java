@@ -20,8 +20,9 @@ import com.google.gson.JsonObject;
 import net.minecraft.network.chat.Component;
 
 /**
- * 把已安装的建筑打包为本模组的 zip 拓展包（pack.json + buildings/&lt;分类&gt;/...），
- * 供社区分发；导出的包可直接放回导入目录再次安装。
+ * Packages installed buildings into a zip build pack (pack.json + buildings/&lt;category&gt;/...)
+ * for community distribution; the exported pack can be placed back into the import directory
+ * and installed again.
  */
 public final class PackExporter {
   private PackExporter() {}
@@ -29,20 +30,20 @@ public final class PackExporter {
   private static final DateTimeFormatter FILE_STAMP =
       DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss");
 
-  /** 导出目录：{@code <游戏目录>/simcity_expansion/export/}。 */
+  /** Export directory: {@code <game directory>/simcity_expansion/export/}. */
   public static Path exportDir() {
     return BuildPack.gameDir().resolve("simcity_expansion").resolve("export");
   }
 
   /**
-   * 把给定建筑导出为一个 zip 拓展包，返回生成的文件路径。
-   * 元数据（.sk）与结构文件均原样打包。
+   * Exports the given buildings as a zip build pack and returns the generated file path.
+   * Metadata (.sk) and structure files are packaged as-is.
    */
-  /** 导出选项：包元数据 + 是否携带 .sk / SimuKraft JSON。 */
+  /** Export options: pack metadata and flags for including .sk / SimuKraft JSON. */
   public record ExportOptions(String name, String version, String author, String description,
       boolean includeSk, boolean includeJson) {}
 
-  /** 把给定建筑按选项导出为一个 zip 拓展包，返回生成的文件路径。结构 .nbt 始终携带。 */
+  /** Exports the given buildings as a zip build pack according to the options and returns the generated file path. The structure .nbt is always included. */
   public static Path export(List<InstalledBuilding> buildings, ExportOptions options)
       throws IOException {
     if (buildings.isEmpty()) {
@@ -65,7 +66,7 @@ public final class PackExporter {
           copyFileEntry(zip, building.skPath(), dir, writtenEntries);
         }
         if (options.includeJson()) {
-          // SimuKraft 原生职业/交易定义随包携带（格式 v2 直通）。
+          // SimuKraft native job/trade definitions are bundled with the pack (format v2 pass-through).
           copyFileEntry(zip,
               building.skPath().resolveSibling(building.baseName() + ".json"),
               dir, writtenEntries);

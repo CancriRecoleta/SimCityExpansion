@@ -17,10 +17,11 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.network.chat.Component;
 
 /**
- * .sk 元数据编辑表单：分类（点击循环的 {@link ThemedButton}）+ 名称/价格/作者/描述/标签/岗位输入框
- * （{@link EditBox}）+「覆盖同名建筑」勾选框（{@link Checkbox}），双向绑定到一个
- * {@link BuildingMetadata} 模型。控件由宿主屏幕在 {@link #rebuild} 时创建并登记，
- * 标签文本由 {@link #renderLabels} 绘制。
+ * .sk metadata editing form: category (click-to-cycle {@link ThemedButton}) +
+ * name/price/author/description/tags/job-type input fields ({@link EditBox}) +
+ * "overwrite building with same name" checkbox ({@link Checkbox}), two-way bound
+ * to a {@link BuildingMetadata} model. Widgets are created and registered by the
+ * host screen in {@link #rebuild}; label text is drawn by {@link #renderLabels}.
  */
 public final class MetadataForm {
 
@@ -28,7 +29,7 @@ public final class MetadataForm {
   private static final int ROW_H = 16;
   private static final int ROW_GAP = 3;
 
-  /** 一行标签：文本 + 绘制坐标。 */
+  /** A single row label: text + draw coordinates. */
   private record FieldLabel(Component text, int x, int y) {}
 
   private BuildingMetadata model = new BuildingMetadata();
@@ -49,7 +50,7 @@ public final class MetadataForm {
   private EditBox jobTypeField;
   private Checkbox overwriteCheckbox;
 
-  /** 重建并放置全部表单控件（每次屏幕 init 调用一次），返回内容底部 y。 */
+  /** Rebuilds and positions all form widgets (called once per screen init); returns the bottom y of the content. */
   public int rebuild(Font font, int x, int y, int width, Consumer<AbstractWidget> add) {
     this.font = font;
     labels.clear();
@@ -102,7 +103,7 @@ public final class MetadataForm {
     return box;
   }
 
-  /** 绑定新模型并刷新各输入框；{@code editable} 为 false 时全部置灰只读。 */
+  /** Binds a new model and refreshes all input fields; when {@code editable} is false, all controls are grayed out and read-only. */
   public void setModel(BuildingMetadata meta, boolean editable) {
     this.model = meta;
     this.editable = editable;
@@ -142,17 +143,17 @@ public final class MetadataForm {
     categoryButton.setMessage(model.category.displayName());
   }
 
-  /** 安装时是否覆盖同名建筑。 */
+  /** Whether to overwrite an existing building with the same name on install. */
   public boolean overwrite() {
     return overwrite;
   }
 
-  /** 当前绑定的模型。 */
+  /** Returns the currently bound model. */
   public BuildingMetadata model() {
     return model;
   }
 
-  /** 绘制分组标题与各行标签（控件本身由屏幕的 widget 渲染绘出）。 */
+  /** Draws the group title and each row label (widgets themselves are drawn by the screen's widget renderer). */
   public void renderLabels(GuiGraphics g) {
     if (font == null) {
       return;

@@ -8,8 +8,10 @@ import com.github.simcityexpansion.buildpack.model.StructureFormat;
 import net.minecraft.client.gui.GuiGraphics;
 
 /**
- * 树节点图标：按内容类型自绘成区分化的小像素图标（文件夹 / 结构文件 / 建筑 / 拓展包），
- * 各有形状 + 深色描边 + 高光，取代原先扁平的纯色方块。纯程序化绘制，不依赖外部贴图。
+ * Tree node icons: procedurally drawn pixel icons differentiated by content type
+ * (folder / structure file / building / build pack). Each has a distinct shape, dark outline,
+ * and highlight, replacing the previous flat solid-color squares. Fully procedural; no external
+ * textures required.
  */
 public final class NodeIcons {
   private NodeIcons() {}
@@ -19,7 +21,7 @@ public final class NodeIcons {
   private static final int LITEMATIC = 0xFF4FC3F7;
   private static final int PACK = 0xFFBA68C8;
 
-  /** 在 (x,y) 处画 size 见方的节点图标。 */
+  /** Draws a {@code size}-square node icon at (x, y). */
   public static void draw(GuiGraphics g, int x, int y, int size, Object content,
       boolean branch, boolean expanded) {
     if (content instanceof ImportFile file) {
@@ -35,9 +37,9 @@ public final class NodeIcons {
     }
   }
 
-  // ---- 各类图标 ----
+  // ---- Icon types ----
 
-  /** 文件夹：标签页 + 主体；展开时露出一条浅色前盖。 */
+  /** Folder: tab + body; when expanded, a light-colored front flap is revealed. */
   private static void folder(GuiGraphics g, int x, int y, int s, int c, boolean open) {
     int d = shade(c, 0.55f);
     int tabW = Math.round(s * 0.55f);
@@ -55,7 +57,7 @@ public final class NodeIcons {
     }
   }
 
-  /** 结构文件：竖向纸页 + 右上折角 + 几条文本行。 */
+  /** Structure file: vertical page with a top-right dog-ear fold and a few text lines. */
   private static void file(GuiGraphics g, int x, int y, int s, int c) {
     int d = shade(c, 0.55f);
     int pw = Math.round(s * 0.74f);
@@ -63,12 +65,12 @@ public final class NodeIcons {
     int fold = Math.max(2, Math.round(s * 0.30f));
     fill(g, px, y, pw, s, d);
     fill(g, px + 1, y + 1, pw - 2, s - 2, c);
-    // 右上折角（深色阶梯）。
+    // Top-right dog-ear fold (dark stepped triangle).
     for (int i = 0; i < fold; i++) {
       fill(g, px + pw - fold + i, y, fold - i, 1, d);
     }
     fill(g, px + pw - fold, y, 1, fold, d);
-    // 文本行。
+    // Text lines.
     int lx = px + 2;
     int lw = pw - 4;
     fill(g, lx, y + Math.round(s * 0.46f), lw, 1, d);
@@ -76,7 +78,7 @@ public final class NodeIcons {
     fill(g, lx, y + Math.round(s * 0.78f), Math.max(1, lw - 2), 1, d);
   }
 
-  /** 拓展包：箱体 + 盖缝 + 中央封带。 */
+  /** Build pack: crate body with a lid seam and a central strap. */
   private static void pack(GuiGraphics g, int x, int y, int s, int c) {
     int d = shade(c, 0.55f);
     int by = y + Math.round(s * 0.08f);
@@ -88,7 +90,7 @@ public final class NodeIcons {
     fill(g, x + 1, by + 1, s - 2, 1, shade(c, 1.2f));
   }
 
-  /** 建筑：楼体 + 顶盖 + 窗格。 */
+  /** Building: main body with a roof cap and window panes. */
   private static void building(GuiGraphics g, int x, int y, int s, int c) {
     int d = shade(c, 0.5f);
     int bw = Math.round(s * 0.78f);
@@ -98,7 +100,7 @@ public final class NodeIcons {
     fill(g, bx, by, bw, bh, d);
     fill(g, bx + 1, by + 1, bw - 2, bh - 2, c);
     fill(g, bx, by, bw, Math.max(1, Math.round(s * 0.14f)), d);
-    // 窗格：2 列 × 2 行深色小窗。
+    // Window panes: 2 columns x 2 rows of small dark windows.
     int win = Math.max(1, Math.round(s * 0.16f));
     int gap = Math.max(1, Math.round(s * 0.14f));
     int startX = bx + gap;
@@ -110,7 +112,7 @@ public final class NodeIcons {
     }
   }
 
-  // ---- 工具 ----
+  // ---- Utilities ----
 
   private static void fill(GuiGraphics g, int x, int y, int w, int h, int c) {
     if (w > 0 && h > 0) {

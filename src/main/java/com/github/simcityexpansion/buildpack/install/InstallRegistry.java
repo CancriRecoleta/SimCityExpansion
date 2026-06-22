@@ -20,8 +20,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 已安装 zip 拓展包的本地注册表（{@code simcity_expansion/installed_packs.json}），
- * 记录每个包写出的文件清单，用于一键卸载与「已安装」页签溯源。
+ * Local registry of installed zip build packs ({@code simcity_expansion/installed_packs.json}).
+ * Records the manifest of files written by each pack, used for one-click uninstall and
+ * tracing ownership on the "Installed" tab.
  */
 public final class InstallRegistry {
 
@@ -29,9 +30,9 @@ public final class InstallRegistry {
   private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
   /**
-   * 一条安装记录。
+   * A single install record.
    *
-   * @param files 相对 {@code simukraftbuilding/} 的文件路径（如 {@code residential/x.nbt}）
+   * @param files file paths relative to {@code simukraftbuilding/} (e.g., {@code residential/x.nbt})
    */
   public record Entry(String id, String name, String version, long installedAt,
       List<String> files) {}
@@ -40,7 +41,7 @@ public final class InstallRegistry {
 
   private InstallRegistry() {}
 
-  /** 从磁盘加载注册表；文件缺失或损坏时返回空表。 */
+  /** Loads the registry from disk; returns an empty registry if the file is missing or corrupt. */
   public static InstallRegistry load() {
     InstallRegistry registry = new InstallRegistry();
     Path file = BuildPack.registryFile();
@@ -69,7 +70,7 @@ public final class InstallRegistry {
     return registry;
   }
 
-  /** 持久化到磁盘。 */
+  /** Persists the registry to disk. */
   public void save() {
     JsonArray packs = new JsonArray();
     for (Entry entry : entries) {
@@ -97,28 +98,28 @@ public final class InstallRegistry {
     }
   }
 
-  /** 全部安装记录（只读视图）。 */
+  /** Returns all install records (read-only view). */
   public List<Entry> entries() {
     return List.copyOf(entries);
   }
 
-  /** 按包 id 查找。 */
+  /** Looks up a record by pack id. */
   public Optional<Entry> find(String packId) {
     return entries.stream().filter(entry -> entry.id().equals(packId)).findFirst();
   }
 
-  /** 新增记录（同 id 旧记录先移除）。 */
+  /** Adds a record, removing any existing record with the same id first. */
   public void add(Entry entry) {
     entries.removeIf(existing -> existing.id().equals(entry.id()));
     entries.add(entry);
   }
 
-  /** 移除记录。 */
+  /** Removes a record. */
   public void remove(String packId) {
     entries.removeIf(entry -> entry.id().equals(packId));
   }
 
-  /** 查询某个相对路径文件归属的包 id（路径分隔符统一为 {@code /}）。 */
+  /** Returns the pack id that owns the given relative file path (path separator normalized to {@code /}). */
   public Optional<String> packOwning(String relativeFile) {
     String normalized = relativeFile.replace('\\', '/');
     for (Entry entry : entries) {
@@ -129,7 +130,7 @@ public final class InstallRegistry {
     return Optional.empty();
   }
 
-  /** 从某条记录的清单中移除一个文件；清单清空时整条记录移除。 */
+  /** Removes a file from a record's manifest; removes the entire record if the manifest becomes empty. */
   public void removeFile(String packId, String relativeFile) {
     String normalized = relativeFile.replace('\\', '/');
     find(packId).ifPresent(entry -> {
@@ -143,7 +144,7 @@ public final class InstallRegistry {
     });
   }
 
-  /** 把某条记录里的一个文件路径替换为另一个（改分类时用）。 */
+  /** Replaces one file path in a record with another (used when recategorizing a building). */
   public void replaceFile(String packId, String oldRelative, String newRelative) {
     String oldNorm = oldRelative.replace('\\', '/');
     String newNorm = newRelative.replace('\\', '/');

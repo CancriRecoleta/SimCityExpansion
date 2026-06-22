@@ -11,27 +11,28 @@ import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
 
 /**
- * 一次读盘内的完整解析结果：摘要（信息面板/元数据预填）+ 方块数据
- * （材料清单、俯视图、安装转换）。客户端界面与服务端命令共用。
+ * Complete parse result from a single disk read: summary (info panel / metadata pre-fill) plus
+ * block data (material list, top-down view, install conversion). Shared between the client UI and
+ * server commands.
  *
- * @param info 只读摘要
- * @param structure 完整中间模型
+ * @param info read-only summary
+ * @param structure complete intermediate model
  */
 public record ParsedStructure(StructureInfo info, NbtStructure structure) {
 
-  /** 按格式解析一个结构文件（gzip NBT 只读一次）。 */
+  /** Parses a structure file in the given format (gzip NBT is read only once). */
   public static ParsedStructure parse(Path path, StructureFormat format) throws IOException {
     return parse(NbtIo.readCompressed(path, NbtAccounter.unlimitedHeap()), format);
   }
 
-  /** 从内存字节解析（zip 拓展包内的条目走这里，无需落盘）。 */
+  /** Parses from in-memory bytes (used for entries inside a zip build pack, avoiding a disk write). */
   public static ParsedStructure parse(byte[] gzipBytes, StructureFormat format)
       throws IOException {
     return parse(NbtIo.readCompressed(
         new ByteArrayInputStream(gzipBytes), NbtAccounter.unlimitedHeap()), format);
   }
 
-  /** 从已读出的根标签解析。 */
+  /** Parses from an already-read root tag. */
   public static ParsedStructure parse(CompoundTag root, StructureFormat format)
       throws IOException {
     return switch (format) {

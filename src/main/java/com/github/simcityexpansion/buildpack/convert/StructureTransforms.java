@@ -16,17 +16,18 @@ import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
- * 结构整体变换：绕 Y 轴旋转 90°、镜像、裁剪空白。坐标重映射的同时，
- * 用 {@link BlockState#rotate}/{@link BlockState#mirror} 把楼梯/朝向类方块的状态一并旋转/镜像，
- * 保证变换后朝向正确。产出新的 {@link NbtStructure}（原结构不变）。
+ * Whole-structure transforms: 90° rotation around the Y axis, mirroring, and whitespace cropping.
+ * Coordinate remapping is paired with {@link BlockState#rotate}/{@link BlockState#mirror} to
+ * rotate/mirror the state of stairs and other facing/orientation blocks, ensuring correct
+ * orientation after the transform. Produces a new {@link NbtStructure}; the original is unchanged.
  */
 public final class StructureTransforms {
   private StructureTransforms() {}
 
-  /** 「填充」可处理的包围体积上限（再大放弃，避免泛洪填充耗时/占用过多内存）。 */
+  /** Maximum bounding volume for the "fill" operation; larger structures are skipped to avoid excessive flood-fill time and memory use. */
   private static final int FILL_MAX_VOLUME = 2_000_000;
 
-  /** 绕 Y 轴顺时针旋转 90°（俯视）。 */
+  /** Rotates 90° clockwise around the Y axis (top-down view). */
   public static NbtStructure rotateClockwise(NbtStructure s) {
     List<PaletteEntry> palette = mapPalette(s.palette, state -> state.rotate(Rotation.CLOCKWISE_90));
     List<BlockEntry> blocks = new ArrayList<>(s.blocks.size());
@@ -37,7 +38,7 @@ public final class StructureTransforms {
     return new NbtStructure(s.sizeZ, s.sizeY, s.sizeX, s.dataVersion, palette, blocks);
   }
 
-  /** 沿 X 轴镜像（左右翻转）。 */
+  /** Mirrors along the X axis (left-right flip). */
   public static NbtStructure mirrorX(NbtStructure s) {
     List<PaletteEntry> palette = mapPalette(s.palette, state -> state.mirror(Mirror.FRONT_BACK));
     List<BlockEntry> blocks = new ArrayList<>(s.blocks.size());
@@ -47,7 +48,7 @@ public final class StructureTransforms {
     return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, palette, blocks);
   }
 
-  /** 沿 Z 轴镜像（前后翻转）。 */
+  /** Mirrors along the Z axis (front-back flip). */
   public static NbtStructure mirrorZ(NbtStructure s) {
     List<PaletteEntry> palette = mapPalette(s.palette, state -> state.mirror(Mirror.LEFT_RIGHT));
     List<BlockEntry> blocks = new ArrayList<>(s.blocks.size());
@@ -57,7 +58,7 @@ public final class StructureTransforms {
     return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, palette, blocks);
   }
 
-  /** 绕 Y 轴逆时针旋转 90°（等价于顺时针 3 次）。 */
+  /** Rotates 90° counter-clockwise around the Y axis (equivalent to three clockwise rotations). */
   public static NbtStructure rotateCounterClockwise(NbtStructure s) {
     return rotateClockwise(rotateClockwise(rotateClockwise(s)));
   }
@@ -96,7 +97,7 @@ public final class StructureTransforms {
     return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, palette, blocks);
   }
 
-  /** 镂空：只保留至少有一面贴空气/边界的方块（去掉被完全包裹的内部方块）。 */
+  /** Hollows the structure: keeps only blocks that have at least one face adjacent to air or a boundary, removing fully interior blocks. */
   public static NbtStructure hollow(NbtStructure s) {
     boolean[] air = new boolean[s.palette.size()];
     for (int i = 0; i < air.length; i++) {
@@ -138,7 +139,7 @@ public final class StructureTransforms {
     return solid[(y * s.sizeZ + z) * s.sizeX + x];
   }
 
-  /** 删除某方块 id 的全部实例（含其所有状态变体）。 */
+  /** Removes all instances of the given block ID, including all of its state variants. */
   public static NbtStructure removeBlock(NbtStructure s, String blockId) {
     boolean[] match = new boolean[s.palette.size()];
     for (int i = 0; i < match.length; i++) {
@@ -154,7 +155,7 @@ public final class StructureTransforms {
     return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, s.palette, blocks);
   }
 
-  /** 裁掉外围全空气的边距，并丢弃空气方块，把包围盒收紧到非空气范围。 */
+  /** Crops all-air margins and discards air blocks, tightening the bounding box to the non-air extent. */
   public static NbtStructure crop(NbtStructure s) {
     boolean[] air = new boolean[s.palette.size()];
     for (int i = 0; i < air.length; i++) {
@@ -191,7 +192,7 @@ public final class StructureTransforms {
         s.dataVersion, s.palette, blocks);
   }
 
-  /** 沿 Y 轴镜像（上下翻转）。注意：原版 Mirror 无垂直镜像，朝向类方块（楼梯上下半等）状态不翻转。 */
+  /** Mirrors along the Y axis (top-bottom flip). Note: vanilla Mirror has no vertical mirror, so facing/orientation block states (e.g., stair half) are not flipped. */
   public static NbtStructure mirrorY(NbtStructure s) {
     List<BlockEntry> blocks = new ArrayList<>(s.blocks.size());
     for (BlockEntry b : s.blocks) {
@@ -200,7 +201,7 @@ public final class StructureTransforms {
     return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, s.palette, blocks);
   }
 
-  /** 绕 X 轴旋转 90°（向前翻立）。注意：原版仅支持绕 Y 轴的方块状态旋转，朝向类方块状态保持不变。 */
+  /** Rotates 90° around the X axis (tips forward). Note: vanilla block-state rotation only supports the Y axis, so facing/orientation block states remain unchanged. */
   public static NbtStructure rotateX(NbtStructure s) {
     List<BlockEntry> blocks = new ArrayList<>(s.blocks.size());
     for (BlockEntry b : s.blocks) {
@@ -209,7 +210,7 @@ public final class StructureTransforms {
     return new NbtStructure(s.sizeX, s.sizeZ, s.sizeY, s.dataVersion, s.palette, blocks);
   }
 
-  /** 绕 Z 轴旋转 90°（向侧翻立）。注意同 {@link #rotateX}。 */
+  /** Rotates 90° around the Z axis (tips sideways). Same caveat as {@link #rotateX}. */
   public static NbtStructure rotateZ(NbtStructure s) {
     List<BlockEntry> blocks = new ArrayList<>(s.blocks.size());
     for (BlockEntry b : s.blocks) {
@@ -218,7 +219,7 @@ public final class StructureTransforms {
     return new NbtStructure(s.sizeY, s.sizeX, s.sizeZ, s.dataVersion, s.palette, blocks);
   }
 
-  /** 框架：只保留包围盒棱上的方块（至少两个坐标处于边界）。 */
+  /** Frame: keeps only blocks on the edges of the bounding box (at least two coordinates on a boundary). */
   public static NbtStructure frame(NbtStructure s) {
     boolean[] air = airFlags(s);
     List<BlockEntry> blocks = new ArrayList<>();
@@ -243,7 +244,7 @@ public final class StructureTransforms {
     return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, s.palette, blocks);
   }
 
-  /** 填充：把被完全包围（外部空气无法到达）的内部空腔填成结构里最常见的实心方块。 */
+  /** Fill: fills interior cavities unreachable from outside air with the most common solid block in the structure. */
   public static NbtStructure fill(NbtStructure s) {
     long volume = s.volume();
     if (volume <= 0 || volume > FILL_MAX_VOLUME) {
@@ -331,7 +332,7 @@ public final class StructureTransforms {
     return sp;
   }
 
-  /** 扩边：包围盒四周各加一层空气（尺寸 +2，内容整体平移 +1）。 */
+  /** Expand: adds one layer of air on every side of the bounding box (size +2, content shifted +1). */
   public static NbtStructure expand(NbtStructure s) {
     List<BlockEntry> blocks = new ArrayList<>(s.blocks.size());
     for (BlockEntry b : s.blocks) {
@@ -340,7 +341,7 @@ public final class StructureTransforms {
     return new NbtStructure(s.sizeX + 2, s.sizeY + 2, s.sizeZ + 2, s.dataVersion, s.palette, blocks);
   }
 
-  /** 删除选区（含边界，坐标自动归一化）内的全部方块。 */
+  /** Deletes all blocks inside the region (inclusive, coordinates auto-normalized). */
   public static NbtStructure deleteRegion(NbtStructure s,
       int x0, int y0, int z0, int x1, int y1, int z1) {
     int ax0 = Math.min(x0, x1);
@@ -358,7 +359,7 @@ public final class StructureTransforms {
     return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, s.palette, blocks);
   }
 
-  /** 裁剪到选区（含边界，自动归一化并夹取到结构范围），内容平移到原点。 */
+  /** Crops to the region (inclusive, auto-normalized and clamped to structure bounds), translating content to the origin. */
   public static NbtStructure cropToRegion(NbtStructure s,
       int x0, int y0, int z0, int x1, int y1, int z1) {
     int ax0 = clamp(Math.min(x0, x1), 0, s.sizeX - 1);
@@ -378,7 +379,7 @@ public final class StructureTransforms {
         s.dataVersion, s.palette, blocks);
   }
 
-  /** 用指定方块填满选区（自动归一化并夹取；{@code blockId} 不在调色板则追加）。 */
+  /** Fills the region with the specified block (auto-normalized and clamped; {@code blockId} is appended to the palette if absent). */
   public static NbtStructure fillRegion(NbtStructure s,
       int x0, int y0, int z0, int x1, int y1, int z1, String blockId) {
     int ax0 = clamp(Math.min(x0, x1), 0, s.sizeX - 1);
@@ -516,7 +517,7 @@ public final class StructureTransforms {
     return b.stateIndex() < 0 || b.stateIndex() >= air.length || air[b.stateIndex()];
   }
 
-  /** 对调色板每个非空气项解析为 BlockState、应用变换、再序列化回 name+properties。 */
+  /** Parses each non-air palette entry into a BlockState, applies the transform, and serializes it back to name+properties. */
   private static List<PaletteEntry> mapPalette(List<PaletteEntry> palette, UnaryOperator<BlockState> op) {
     HolderGetter<Block> lookup = BuiltInRegistries.BLOCK.asLookup();
     List<PaletteEntry> out = new ArrayList<>(palette.size());

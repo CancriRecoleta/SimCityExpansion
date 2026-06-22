@@ -9,22 +9,23 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 导入目录内的文件组织操作：重命名、移动到子目录（自动新建）。所有操作维护 {@link ImportIndex}
- * 的索引项迁移，并对非法文件名字符与重名冲突做处理。
+ * File organization operations within the import directory: rename and move to a subdirectory
+ * (created automatically). All operations maintain {@link ImportIndex} entry migration and handle
+ * illegal file name characters and name conflicts.
  */
 public final class FileOps {
   private FileOps() {}
 
   private static final Logger LOGGER = LoggerFactory.getLogger(FileOps.class);
 
-  /** 重命名（保留扩展名）；目标重名自动追加 _2/_3…。成功返回新路径，失败返回 {@code null}。 */
+  /** Renames the file (preserving the extension); appends _2/_3... automatically on name conflict. Returns the new path on success, or {@code null} on failure. */
   public static Path rename(Path file, String newBaseName) {
     String name = file.getFileName().toString();
     Path target = unique(file.getParent(), sanitize(newBaseName), extension(name));
     return moveTo(file, target);
   }
 
-  /** 移动到导入根下的相对子目录（如 {@code city/houses}）；目录自动创建。成功返回新路径。 */
+  /** Moves the file to a relative subdirectory under the import root (e.g. {@code city/houses}); the directory is created automatically. Returns the new path on success. */
   public static Path moveToFolder(Path file, String relativeFolder) {
     Path dir = resolveFolder(relativeFolder);
     if (dir == null) {
@@ -34,7 +35,7 @@ public final class FileOps {
     return moveTo(file, unique(dir, baseName(name), extension(name)));
   }
 
-  /** 在导入根下新建子目录；成功返回目录路径。 */
+  /** Creates a subdirectory under the import root; returns the directory path on success. */
   public static Path createFolder(String relativeFolder) {
     return resolveFolder(relativeFolder);
   }

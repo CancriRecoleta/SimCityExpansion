@@ -4,11 +4,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 轻量泛型树节点（替代原先 ldlib2 的 TreeNode）：分支节点 content 为 {@code null}，
- * 叶子 content 为对应数据对象。纯数据结构，不依赖任何 UI 框架。
+ * Lightweight generic tree node (replaces the original ldlib2 TreeNode): branch
+ * nodes have {@code null} content; leaf nodes carry the corresponding data object.
+ * Pure data structure with no dependency on any UI framework.
  *
- * @param <K> 节点键（显示用字符串）
- * @param <V> 节点内容类型
+ * @param <K> node key (display string)
+ * @param <V> node content type
  */
 public final class TreeNode<K, V> {
   private final K key;
@@ -20,32 +21,32 @@ public final class TreeNode<K, V> {
     this.content = content;
   }
 
-  /** 节点键（显示文本）。 */
+  /** Returns the node key (display text). */
   public K getKey() {
     return key;
   }
 
-  /** 节点内容（分支为 {@code null}，叶子为数据对象）。 */
+  /** Returns the node content ({@code null} for branches, a data object for leaves). */
   public V getContent() {
     return content;
   }
 
-  /** 设置节点内容（用于给分支挂载可选数据，如整包对象）。 */
+  /** Sets the node content (used to attach optional data to a branch, such as a pack object). */
   public void setContent(V content) {
     this.content = content;
   }
 
-  /** 子节点列表（可变）。 */
+  /** Returns the mutable child node list. */
   public List<TreeNode<K, V>> getChildren() {
     return children;
   }
 
-  /** 追加一个子节点。 */
+  /** Appends a child node. */
   public void addChild(TreeNode<K, V> child) {
     children.add(child);
   }
 
-  /** 按键查找直接子节点；不存在返回 {@code null}。 */
+  /** Finds a direct child node by key; returns {@code null} if not found. */
   public TreeNode<K, V> findChild(K childKey) {
     for (TreeNode<K, V> child : children) {
       if (child.key.equals(childKey)) {

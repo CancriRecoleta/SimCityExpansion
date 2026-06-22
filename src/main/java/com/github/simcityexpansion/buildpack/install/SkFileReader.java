@@ -4,11 +4,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** .sk 元数据的轻量解析（与 {@link SkFileWriter} 互逆），供直接读取 zip 内条目使用。 */
+/** Lightweight parser for .sk metadata (the inverse of {@link SkFileWriter}), used when reading entries directly from a zip. */
 public final class SkFileReader {
   private SkFileReader() {}
 
-  /** 解析 UTF-8 的 .sk 内容为键值对；跳过空行、{@code #} 注释与 BOM。 */
+  /** Parses UTF-8 .sk content into key-value pairs, skipping blank lines, {@code #} comments, and the BOM. */
   public static Map<String, String> parseFields(byte[] utf8Bytes) {
     Map<String, String> fields = new LinkedHashMap<>();
     for (String rawLine : new String(utf8Bytes, StandardCharsets.UTF_8).split("\\R")) {

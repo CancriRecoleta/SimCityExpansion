@@ -9,8 +9,8 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
 /**
- * 通用文本输入对话框（模态，覆盖在上一界面之上）：标题/提示 + 输入框 + 确定/取消。
- * 用于重命名、移动到文件夹、编辑标签/备注、导出包名等。回车=确定，Esc=取消。
+ * General-purpose modal text-input dialog (overlaid on the previous screen): title/prompt + input field + confirm/cancel.
+ * Used for renaming, moving to a folder, editing tags/notes, exporting a pack name, etc. Enter = confirm, Esc = cancel.
  */
 public final class TextPromptScreen extends Screen {
 
@@ -32,7 +32,7 @@ public final class TextPromptScreen extends Screen {
     this.onConfirm = onConfirm;
   }
 
-  /** 打开输入对话框；确定时回调输入文本（已 trim 且非空），取消则不回调。 */
+  /** Opens the input dialog; on confirm, calls back with the trimmed, non-empty input text; on cancel, no callback is made. */
   public static void open(
       Component title, Component prompt, String initial, Consumer<String> onConfirm) {
     Minecraft mc = Minecraft.getInstance();
@@ -82,7 +82,7 @@ public final class TextPromptScreen extends Screen {
 
   @Override
   public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-    // 覆盖原版：不做高斯模糊背景。
+    // Override vanilla: skip the Gaussian-blur background.
   }
 
   @Override
