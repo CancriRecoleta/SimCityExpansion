@@ -26,6 +26,7 @@ import com.github.simcityexpansion.buildpack.model.ImportScanner;
 import com.github.simcityexpansion.buildpack.model.PackArchive;
 import com.github.simcityexpansion.buildpack.model.StructureFormat;
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
@@ -70,7 +71,7 @@ public final class BuildPackCommands {
   private static final int MAX_LINES = 30;
 
   /** Maximum volume (in blocks) for capturing a structure from the world. */
-  private static final long MAX_CAPTURE_VOLUME = 2_000_000L;
+  private static final long MAX_CAPTURE_VOLUME = WorldCapture.MAX_CAPTURE_VOLUME;
 
   /** Subscribed to the NeoForge bus; fired when the logical server builds the command tree (works in both singleplayer and dedicated server). */
   public static void onRegisterCommands(RegisterCommandsEvent event) {
@@ -119,19 +120,26 @@ public final class BuildPackCommands {
             .then(Commands.argument("to", BlockPosArgument.blockPos())
                 .executes(context -> capture(context.getSource(),
                     BlockPosArgument.getLoadedBlockPos(context, "from"),
-                    BlockPosArgument.getLoadedBlockPos(context, "to"), null, "both"))
+                    BlockPosArgument.getLoadedBlockPos(context, "to"), null, "both", true))
                 .then(Commands.argument("name", StringArgumentType.word())
                     .executes(context -> capture(context.getSource(),
                         BlockPosArgument.getLoadedBlockPos(context, "from"),
                         BlockPosArgument.getLoadedBlockPos(context, "to"),
-                        StringArgumentType.getString(context, "name"), "both"))
+                        StringArgumentType.getString(context, "name"), "both", true))
                     .then(Commands.argument("format", StringArgumentType.word())
                         .suggests(BuildPackCommands::suggestFormats)
                         .executes(context -> capture(context.getSource(),
                             BlockPosArgument.getLoadedBlockPos(context, "from"),
                             BlockPosArgument.getLoadedBlockPos(context, "to"),
                             StringArgumentType.getString(context, "name"),
-                            StringArgumentType.getString(context, "format")))))));
+                            StringArgumentType.getString(context, "format"), true))
+                        .then(Commands.argument("contents", BoolArgumentType.bool())
+                            .executes(context -> capture(context.getSource(),
+                                BlockPosArgument.getLoadedBlockPos(context, "from"),
+                                BlockPosArgument.getLoadedBlockPos(context, "to"),
+                                StringArgumentType.getString(context, "name"),
+                                StringArgumentType.getString(context, "format"),
+                                BoolArgumentType.getBool(context, "contents"))))))));
   }
 
   // ---- Subcommand implementations ----
@@ -253,7 +261,7 @@ public final class BuildPackCommands {
 
   /** Captures the [from, to] region as a structure and exports it to the import directory in the given format (nbt/litematic/both). */
   private static int capture(CommandSourceStack source, BlockPos a, BlockPos b,
-      @Nullable String name, String format) {
+      @Nullable String name, String format, boolean includeBlockEntities) {
     BlockPos min = new BlockPos(Math.min(a.getX(), b.getX()),
         Math.min(a.getY(), b.getY()), Math.min(a.getZ(), b.getZ()));
     BlockPos max = new BlockPos(Math.max(a.getX(), b.getX()),
@@ -267,8 +275,12 @@ public final class BuildPackCommands {
           "buildpack.cmd.capture.too_big", volume, MAX_CAPTURE_VOLUME));
       return 0;
     }
+    if (!WorldCapture.regionLoaded(source.getLevel(), min, max)) {
+      source.sendFailure(Component.translatable("buildpack.cmd.capture.unloaded"));
+      return 0;
+    }
     try {
-      NbtStructure structure = WorldCapture.capture(source.getLevel(), min, max);
+      NbtStructure structure = WorldCapture.capture(source.getLevel(), min, max, includeBlockEntities);
       String base = sanitizeName(name != null && !name.isBlank() ? name
           : "capture_" + min.getX() + "_" + min.getY() + "_" + min.getZ());
       Path dir = ImportScanner.ensureImportDir();

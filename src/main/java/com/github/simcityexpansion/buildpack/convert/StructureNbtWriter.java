@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.DoubleTag;
 import net.minecraft.nbt.IntTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtIo;
@@ -63,7 +64,23 @@ public final class StructureNbtWriter {
     }
     root.put("blocks", blocks);
 
-    root.put("entities", new ListTag());
+    ListTag entities = new ListTag();
+    for (NbtStructure.EntityEntry entry : structure.entities) {
+      CompoundTag entity = new CompoundTag();
+      ListTag pos = new ListTag();
+      pos.add(DoubleTag.valueOf(entry.x()));
+      pos.add(DoubleTag.valueOf(entry.y()));
+      pos.add(DoubleTag.valueOf(entry.z()));
+      entity.put("pos", pos);
+      ListTag blockPos = new ListTag();
+      blockPos.add(IntTag.valueOf((int) Math.floor(entry.x())));
+      blockPos.add(IntTag.valueOf((int) Math.floor(entry.y())));
+      blockPos.add(IntTag.valueOf((int) Math.floor(entry.z())));
+      entity.put("blockPos", blockPos);
+      entity.put("nbt", entry.nbt().copy());
+      entities.add(entity);
+    }
+    root.put("entities", entities);
     root.putInt("DataVersion", structure.dataVersion);
     return root;
   }

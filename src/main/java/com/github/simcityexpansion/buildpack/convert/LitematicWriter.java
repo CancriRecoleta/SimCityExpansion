@@ -95,8 +95,26 @@ public final class LitematicWriter {
     region.put("Size", xyz(sizeX, sizeY, sizeZ));
     region.put("BlockStatePalette", paletteTag);
     region.putLongArray("BlockStates", longs);
-    region.put("TileEntities", new ListTag());
-    region.put("Entities", new ListTag());
+
+    ListTag tileEntities = new ListTag();
+    for (BlockEntry b : s.blocks) {
+      if (b.nbt() == null || b.nbt().isEmpty()
+          || b.x() < 0 || b.x() >= sizeX || b.y() < 0 || b.y() >= sizeY
+          || b.z() < 0 || b.z() >= sizeZ) {
+        continue;
+      }
+      CompoundTag te = b.nbt().copy();
+      te.putInt("x", b.x());
+      te.putInt("y", b.y());
+      te.putInt("z", b.z());
+      tileEntities.add(te);
+    }
+    region.put("TileEntities", tileEntities);
+    ListTag litEntities = new ListTag();
+    for (NbtStructure.EntityEntry entry : s.entities) {
+      litEntities.add(entry.nbt().copy());
+    }
+    region.put("Entities", litEntities);
     region.put("PendingBlockTicks", new ListTag());
     region.put("PendingFluidTicks", new ListTag());
 

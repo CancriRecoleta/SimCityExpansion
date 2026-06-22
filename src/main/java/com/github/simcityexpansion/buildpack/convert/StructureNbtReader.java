@@ -66,7 +66,20 @@ public final class StructureNbtReader {
           pos.getInt(0), pos.getInt(1), pos.getInt(2), block.getInt("state"), nbt));
     }
 
-    return new NbtStructure(sizeX, sizeY, sizeZ, root.getInt("DataVersion"), palette, blocks);
+    ListTag entitiesTag = root.getList("entities", Tag.TAG_COMPOUND);
+    List<NbtStructure.EntityEntry> entities = new ArrayList<>(entitiesTag.size());
+    for (int i = 0; i < entitiesTag.size(); i++) {
+      CompoundTag entity = entitiesTag.getCompound(i);
+      ListTag pos = entity.getList("pos", Tag.TAG_DOUBLE);
+      if (pos.size() < 3 || !entity.contains("nbt", Tag.TAG_COMPOUND)) {
+        continue;
+      }
+      entities.add(new NbtStructure.EntityEntry(
+          pos.getDouble(0), pos.getDouble(1), pos.getDouble(2), entity.getCompound("nbt")));
+    }
+
+    return new NbtStructure(sizeX, sizeY, sizeZ, root.getInt("DataVersion"),
+        palette, blocks, entities);
   }
 
   /** Generates a read-only summary (vanilla .nbt / .schem files have no embedded name, author, creation time, or preview). */

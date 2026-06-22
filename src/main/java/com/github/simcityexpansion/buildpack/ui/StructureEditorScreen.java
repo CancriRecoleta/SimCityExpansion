@@ -7,6 +7,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.function.UnaryOperator;
 
 import com.github.simcityexpansion.buildpack.I18nLog;
 import com.github.simcityexpansion.buildpack.LocalizedIOException;
@@ -72,7 +73,7 @@ public final class StructureEditorScreen extends Screen {
   private final int[] selMax = {0, 0, 0};
   private boolean selectionShown;
 
-  private enum EditTool { NONE, PLACE, BREAK, PICK, REPLACE }
+  private enum EditTool { NONE, PLACE, BREAK, PICK, REPLACE, SELECT }
 
   private EditTool tool = EditTool.NONE;
   private String paintBlock = "minecraft:stone";
@@ -135,7 +136,9 @@ public final class StructureEditorScreen extends Screen {
     addRenderableWidget(scene);
     scene.ensureBaked();
     scene.setEditCallback(this::onEdit);
-    scene.setEditMode(tool != EditTool.NONE);
+    scene.setSelectCallback(this::onSelectCorners);
+    scene.setEditMode(tool != EditTool.NONE && tool != EditTool.SELECT);
+    scene.setSelectMode(tool == EditTool.SELECT);
 
     int x = toolX() + 4;
     int y = bodyY() + 4;
@@ -178,13 +181,22 @@ public final class StructureEditorScreen extends Screen {
     y = row1(x, y, "buildpack.editor.paint", () -> openPaint());
 
     y = section("buildpack.editor.group.region", x, y);
-    y = row2(x, y,
+    addRenderableWidget(new ThemedButton(x, y, TOOL_INNER, BTN_H,
+        Component.translatable("buildpack.editor.region_select"), () -> setTool(EditTool.SELECT))
+        .selected(() -> tool == EditTool.SELECT));
+    y += ROW_H;
+    y = row3(x, y,
         "buildpack.editor.region_all", () -> selectAll(),
-        "buildpack.editor.region_set", () -> openSelection());
+        "buildpack.editor.region_set", () -> openSelection(),
+        "buildpack.editor.region_clear", () -> clearSelection());
     y = row3(x, y,
         "buildpack.editor.region_delete", () -> regionDelete(),
         "buildpack.editor.region_crop", () -> regionCrop(),
         "buildpack.editor.region_fill", () -> regionFill());
+    y = row3(x, y,
+        "buildpack.editor.region_replace", () -> regionReplace(),
+        "buildpack.editor.region_hollow", () -> regionHollow(),
+        "buildpack.editor.region_frame", () -> regionFrame());
 
     y = section("buildpack.editor.group.history", x, y);
     y = row3(x, y,
@@ -321,6 +333,56 @@ public final class StructureEditorScreen extends Screen {
     scene.setSelection(selMin[0], selMin[1], selMin[2], selMax[0], selMax[1], selMax[2]);
   }
 
+  /** Callback from the 3D view's box-select tool: store the two picked corner cells. */
+  private void onSelectCorners(BlockPos a, BlockPos b) {
+    selMin[0] = Math.min(a.getX(), b.getX());
+    selMin[1] = Math.min(a.getY(), b.getY());
+    selMin[2] = Math.min(a.getZ(), b.getZ());
+    selMax[0] = Math.max(a.getX(), b.getX());
+    selMax[1] = Math.max(a.getY(), b.getY());
+    selMax[2] = Math.max(a.getZ(), b.getZ());
+    pushSelection();
+  }
+
+  /** Move (or, with Shift, resize the max corner of) the selection by one cell along an axis. */
+  private void nudgeSelection(int dx, int dy, int dz, boolean grow) {
+    if (!selectionShown) {
+      return;
+    }
+    if (grow) {
+      selMax[0] = clampInt(selMax[0] + dx, selMin[0], work.sizeX - 1);
+      selMax[1] = clampInt(selMax[1] + dy, selMin[1], work.sizeY - 1);
+      selMax[2] = clampInt(selMax[2] + dz, selMin[2], work.sizeZ - 1);
+    } else {
+      moveAxis(0, dx, work.sizeX);
+      moveAxis(1, dy, work.sizeY);
+      moveAxis(2, dz, work.sizeZ);
+    }
+    pushSelection();
+  }
+
+  private void moveAxis(int axis, int delta, int size) {
+    if (delta == 0) {
+      return;
+    }
+    int span = selMax[axis] - selMin[axis];
+    int newMin = clampInt(selMin[axis] + delta, 0, size - 1 - span);
+    selMin[axis] = newMin;
+    selMax[axis] = newMin + span;
+  }
+
+  private static int clampInt(int v, int lo, int hi) {
+    return Math.max(lo, Math.min(v, hi));
+  }
+
+  /** Clears the current selection (and cancels any in-progress box-select). */
+  private void clearSelection() {
+    resetSelectionState();
+    scene.clearSelection();
+    statusError = false;
+    status = Component.translatable("buildpack.editor.region_cleared");
+  }
+
   private void regionDelete() {
     if (requireSelection()) {
       apply(StructureTransforms.deleteRegion(work,
@@ -345,6 +407,41 @@ public final class StructureEditorScreen extends Screen {
       apply(StructureTransforms.fillRegion(work, mn[0], mn[1], mn[2], mx[0], mx[1], mx[2], id));
       minecraft.setScreen(this);
     });
+  }
+
+  /** Apply a same-dimension transform to just the selected region (crop → transform → paste back). */
+  private void regionTransform(UnaryOperator<NbtStructure> op) {
+    if (!requireSelection()) {
+      return;
+    }
+    NbtStructure clip = StructureTransforms.cropToRegion(work,
+        selMin[0], selMin[1], selMin[2], selMax[0], selMax[1], selMax[2]);
+    apply(StructureTransforms.pasteRegion(work, op.apply(clip),
+        selMin[0], selMin[1], selMin[2]));
+  }
+
+  private void regionHollow() {
+    regionTransform(StructureTransforms::hollow);
+  }
+
+  private void regionFrame() {
+    regionTransform(StructureTransforms::frame);
+  }
+
+  private void regionReplace() {
+    if (!requireSelection()) {
+      return;
+    }
+    int[] mn = selMin.clone();
+    int[] mx = selMax.clone();
+    BlockPickerScreen.open(work, from ->
+        BlockPaletteScreen.open(to -> {
+          NbtStructure clip = StructureTransforms.cropToRegion(work,
+              mn[0], mn[1], mn[2], mx[0], mx[1], mx[2]);
+          apply(StructureTransforms.pasteRegion(work,
+              StructureTransforms.replaceBlock(clip, from, to), mn[0], mn[1], mn[2]));
+          minecraft.setScreen(this);
+        }));
   }
 
   private boolean requireSelection() {
@@ -385,15 +482,28 @@ public final class StructureEditorScreen extends Screen {
 
   private void setTool(EditTool selected) {
     tool = tool == selected ? EditTool.NONE : selected;
-    scene.setEditMode(tool != EditTool.NONE);
+    boolean selecting = tool == EditTool.SELECT;
+    scene.setEditMode(tool != EditTool.NONE && !selecting);
+    scene.setSelectMode(selecting);
+    if (!selecting) {
+      if (selectionShown) {
+        scene.setSelection(selMin[0], selMin[1], selMin[2], selMax[0], selMax[1], selMax[2]);
+      } else {
+        scene.clearSelection();
+      }
+    }
     setEditStatus();
   }
 
   private void setEditStatus() {
     statusError = false;
-    status = tool == EditTool.NONE
-        ? Component.empty()
-        : Component.translatable("buildpack.editor.editing", paintBlock, brushRadius * 2 + 1);
+    if (tool == EditTool.NONE) {
+      status = Component.empty();
+    } else if (tool == EditTool.SELECT) {
+      status = Component.translatable("buildpack.editor.select_hint");
+    } else {
+      status = Component.translatable("buildpack.editor.editing", paintBlock, brushRadius * 2 + 1);
+    }
   }
 
   private void openPaint() {
@@ -494,6 +604,10 @@ public final class StructureEditorScreen extends Screen {
   }
 
   private void pasteClipboard() {
+    pasteClipboard(false);
+  }
+
+  private void pasteClipboard(boolean merge) {
     if (clipboard == null) {
       status = Component.translatable("buildpack.editor.clipboard_empty");
       statusError = true;
@@ -502,9 +616,10 @@ public final class StructureEditorScreen extends Screen {
     int ax = selectionShown ? selMin[0] : 0;
     int ay = selectionShown ? selMin[1] : 0;
     int az = selectionShown ? selMin[2] : 0;
-    apply(StructureTransforms.pasteRegion(work, clipboard, ax, ay, az));
+    apply(StructureTransforms.pasteRegion(work, clipboard, ax, ay, az, merge));
     statusError = false;
-    status = Component.translatable("buildpack.editor.pasted");
+    status = Component.translatable(merge
+        ? "buildpack.editor.pasted_merge" : "buildpack.editor.pasted");
   }
 
   /** Fit the view to the selection (if any) or the whole structure. */
@@ -741,13 +856,44 @@ public final class StructureEditorScreen extends Screen {
       return true;
     }
     if (ctrl && keyCode == GLFW.GLFW_KEY_V) {
-      pasteClipboard();
+      pasteClipboard(shift);
       return true;
     }
     if (!ctrl && keyCode == GLFW.GLFW_KEY_R) {
       apply(shift ? StructureTransforms.rotateCounterClockwise(work)
           : StructureTransforms.rotateClockwise(work));
       return true;
+    }
+    if (!ctrl && selectionShown) {
+      switch (keyCode) {
+        case GLFW.GLFW_KEY_LEFT -> {
+          nudgeSelection(-1, 0, 0, shift);
+          return true;
+        }
+        case GLFW.GLFW_KEY_RIGHT -> {
+          nudgeSelection(1, 0, 0, shift);
+          return true;
+        }
+        case GLFW.GLFW_KEY_UP -> {
+          nudgeSelection(0, 0, -1, shift);
+          return true;
+        }
+        case GLFW.GLFW_KEY_DOWN -> {
+          nudgeSelection(0, 0, 1, shift);
+          return true;
+        }
+        case GLFW.GLFW_KEY_PAGE_UP -> {
+          nudgeSelection(0, 1, 0, shift);
+          return true;
+        }
+        case GLFW.GLFW_KEY_PAGE_DOWN -> {
+          nudgeSelection(0, -1, 0, shift);
+          return true;
+        }
+        default -> {
+          // not a nudge key
+        }
+      }
     }
     if (!ctrl) {
       switch (keyCode) {

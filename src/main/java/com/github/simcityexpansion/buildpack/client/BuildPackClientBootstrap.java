@@ -5,6 +5,7 @@ import net.minecraft.client.Minecraft;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
+import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.common.NeoForge;
 
 /**
@@ -24,6 +25,7 @@ public final class BuildPackClientBootstrap {
     modEventBus.addListener(BuildPackClientBootstrap::onRegisterKeyMappings);
     NeoForge.EVENT_BUS.addListener(BuildPackClientBootstrap::onClientTick);
     NeoForge.EVENT_BUS.addListener(WorldSelection::onRenderLevelStage);
+    NeoForge.EVENT_BUS.addListener(BuildPackClientBootstrap::onRenderGui);
   }
 
   private static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
@@ -31,6 +33,8 @@ public final class BuildPackClientBootstrap {
     event.register(BuildPackKeyMappings.SET_CORNER_A);
     event.register(BuildPackKeyMappings.SET_CORNER_B);
     event.register(BuildPackKeyMappings.CAPTURE_SELECTION);
+    event.register(BuildPackKeyMappings.TOGGLE_CONTENTS);
+    event.register(BuildPackKeyMappings.CLEAR_SELECTION);
   }
 
   private static void onClientTick(ClientTickEvent.Post event) {
@@ -50,5 +54,16 @@ public final class BuildPackClientBootstrap {
     while (BuildPackKeyMappings.CAPTURE_SELECTION.consumeClick()) {
       minecraft.player.displayClientMessage(WorldSelection.capture().message(), false);
     }
+    while (BuildPackKeyMappings.TOGGLE_CONTENTS.consumeClick()) {
+      WorldSelection.toggleBlockEntities();
+    }
+    while (BuildPackKeyMappings.CLEAR_SELECTION.consumeClick()) {
+      WorldSelection.clearSelection();
+    }
+    WorldSelection.tickCapture();
+  }
+
+  private static void onRenderGui(RenderGuiEvent.Post event) {
+    WorldSelection.renderHud(event.getGuiGraphics());
   }
 }

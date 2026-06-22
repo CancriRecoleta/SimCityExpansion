@@ -5,6 +5,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 import com.github.simcityexpansion.buildpack.convert.NbtStructure;
@@ -112,6 +113,12 @@ public final class StructureScene extends AbstractWidget {
   private Hit hover;
   private VertexBuffer hoverBuffer;
   private boolean dragged;
+
+  // Region selection picking (editor): click two corner cells to set the selection.
+  private boolean selectMode;
+  private BlockPos selAnchor;
+  private BlockPos selPreviewEnd;
+  private BiConsumer<BlockPos, BlockPos> onSelect;
 
   private float centerX;
   private float centerY;
@@ -340,9 +347,11 @@ public final class StructureScene extends AbstractWidget {
     buildSelectionBuffer();
   }
 
-  /** Clears the selection highlight. */
+  /** Clears the selection highlight and cancels any in-progress box-select. */
   public void clearSelection() {
     hasSelection = false;
+    selAnchor = null;
+    selPreviewEnd = null;
     closeSelectionBuffer();
   }
 
@@ -358,6 +367,22 @@ public final class StructureScene extends AbstractWidget {
   /** Set the callback invoked with the hit cell on a left-click (no drag) while in edit mode. */
   public void setEditCallback(Consumer<Hit> callback) {
     onEdit = callback;
+  }
+
+  /** Enable region-selection mode: click two cells in the 3D view to set the selection corners. */
+  public void setSelectMode(boolean on) {
+    selectMode = on;
+    selAnchor = null;
+    selPreviewEnd = null;
+    if (!on) {
+      hover = null;
+      closeHoverBuffer();
+    }
+  }
+
+  /** Set the callback invoked with the two corner cells when a box selection is completed. */
+  public void setSelectCallback(BiConsumer<BlockPos, BlockPos> callback) {
+    onSelect = callback;
   }
 
   /** Registry id of the block at a cell, or null if empty (eyedropper support). */
@@ -1240,8 +1265,14 @@ public final class StructureScene extends AbstractWidget {
     if (hasSelection && selectionBuffer != null) {
       drawSelectionBox(g, x, y, w, h, scale, mc);
     }
-    if (editMode) {
+    if (editMode || selectMode) {
       updateHover(mouseX, mouseY);
+      if (selectMode && selAnchor != null && hover != null
+          && !hover.pos().equals(selPreviewEnd)) {
+        selPreviewEnd = hover.pos();
+        setSelection(selAnchor.getX(), selAnchor.getY(), selAnchor.getZ(),
+            selPreviewEnd.getX(), selPreviewEnd.getY(), selPreviewEnd.getZ());
+      }
       if (hoverBuffer != null) {
         drawHover(g, x, y, w, h, scale, mc);
       }
@@ -1445,6 +1476,14 @@ public final class StructureScene extends AbstractWidget {
     String slice = Component.translatable("buildpack.preview.slice", sliceTargetName()).getString();
     g.drawString(font, slice, x + 3, y + 3 + font.lineHeight + 1,
         sliced ? 0xFFFFFF55 : 0xC0FFFFFF, true);
+    if (hasSelection) {
+      int selW = selX1 - selX0 + 1;
+      int selH = selY1 - selY0 + 1;
+      int selD = selZ1 - selZ0 + 1;
+      String sel = Component.translatable("buildpack.preview.sel",
+          selW + "×" + selH + "×" + selD, (long) selW * selH * selD).getString();
+      g.drawString(font, sel, x + 3, y + 3 + (font.lineHeight + 1) * 2, 0xFF8AD8FF, true);
+    }
     if (editMode && hover != null) {
       String info = hover.pos().getX() + "," + hover.pos().getY() + "," + hover.pos().getZ();
       String id = blockIdAt(hover.pos());
@@ -1538,6 +1577,23 @@ public final class StructureScene extends AbstractWidget {
       Hit hit = raycast(mouseX, mouseY);
       if (hit != null) {
         onEdit.accept(hit);
+      }
+    }
+    if (interactive && selectMode && button == 0 && !dragged && isMouseOver(mouseX, mouseY)) {
+      Hit hit = raycast(mouseX, mouseY);
+      if (hit != null) {
+        if (selAnchor == null) {
+          selAnchor = hit.pos();
+          selPreviewEnd = hit.pos();
+          setSelection(selAnchor.getX(), selAnchor.getY(), selAnchor.getZ(),
+              selAnchor.getX(), selAnchor.getY(), selAnchor.getZ());
+        } else {
+          if (onSelect != null) {
+            onSelect.accept(selAnchor, hit.pos());
+          }
+          selAnchor = null;
+          selPreviewEnd = null;
+        }
       }
     }
     dragged = false;

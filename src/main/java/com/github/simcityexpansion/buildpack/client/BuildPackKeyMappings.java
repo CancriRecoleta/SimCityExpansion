@@ -26,4 +26,12 @@ public final class BuildPackKeyMappings {
   /** Key mapping to capture the selection and export it as a blueprint (default: {@code '}). */
   public static final KeyMapping CAPTURE_SELECTION = new KeyMapping(
       "key." + SimcityExpansion.MODID + ".capture", GLFW.GLFW_KEY_APOSTROPHE, CATEGORY);
+
+  /** Key mapping to toggle whether captures include block-entity contents (default: unbound). */
+  public static final KeyMapping TOGGLE_CONTENTS = new KeyMapping(
+      "key." + SimcityExpansion.MODID + ".toggle_contents", GLFW.GLFW_KEY_UNKNOWN, CATEGORY);
+
+  /** Key mapping to clear the world selection corners (default: unbound). */
+  public static final KeyMapping CLEAR_SELECTION = new KeyMapping(
+      "key." + SimcityExpansion.MODID + ".clear_selection", GLFW.GLFW_KEY_UNKNOWN, CATEGORY);
 }

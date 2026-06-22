@@ -146,7 +146,30 @@ public final class SelectionScreen extends Screen {
     rowLabel(g, "Y", y);
     y += 22;
     rowLabel(g, "Z", y);
+    drawDims(g);
     super.render(g, mouseX, mouseY, partialTick);
+  }
+
+  /** Live readout of the resulting selection size and volume; turns red on invalid input. */
+  private void drawDims(GuiGraphics g) {
+    int dx = Math.abs(parse(maxX, sizeX) - parse(minX, sizeX)) + 1;
+    int dy = Math.abs(parse(maxY, sizeY) - parse(minY, sizeY)) + 1;
+    int dz = Math.abs(parse(maxZ, sizeZ) - parse(minZ, sizeZ)) + 1;
+    boolean valid = isValid(minX) && isValid(minY) && isValid(minZ)
+        && isValid(maxX) && isValid(maxY) && isValid(maxZ);
+    String text = Component.translatable("buildpack.preview.sel",
+        dx + "×" + dy + "×" + dz, (long) dx * dy * dz).getString();
+    g.drawString(font, text, left() + 10, top() + H - 40,
+        valid ? BuildPackTheme.VALUE : BuildPackTheme.MESSAGE_ERROR, true);
+  }
+
+  private boolean isValid(EditBox box) {
+    try {
+      Integer.parseInt(box.getValue().trim());
+      return true;
+    } catch (NumberFormatException e) {
+      return false;
+    }
   }
 
   private void rowLabel(GuiGraphics g, String axis, int y) {

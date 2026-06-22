@@ -61,21 +61,35 @@ public final class NbtStructure {
    */
   public record BlockEntry(int x, int y, int z, int stateIndex, @Nullable CompoundTag nbt) {}
 
+  /**
+   * An entity entry (position relative to the structure origin).
+   *
+   * @param nbt entity data including its id; "Pos" holds the relative position
+   */
+  public record EntityEntry(double x, double y, double z, CompoundTag nbt) {}
+
   public final int sizeX;
   public final int sizeY;
   public final int sizeZ;
   public final int dataVersion;
   public final List<PaletteEntry> palette;
   public final List<BlockEntry> blocks;
+  public final List<EntityEntry> entities;
 
   public NbtStructure(int sizeX, int sizeY, int sizeZ, int dataVersion,
       List<PaletteEntry> palette, List<BlockEntry> blocks) {
+    this(sizeX, sizeY, sizeZ, dataVersion, palette, blocks, List.of());
+  }
+
+  public NbtStructure(int sizeX, int sizeY, int sizeZ, int dataVersion,
+      List<PaletteEntry> palette, List<BlockEntry> blocks, List<EntityEntry> entities) {
     this.sizeX = sizeX;
     this.sizeY = sizeY;
     this.sizeZ = sizeZ;
     this.dataVersion = dataVersion;
     this.palette = palette;
     this.blocks = blocks;
+    this.entities = entities;
   }
 
   /** Returns the bounding volume. */

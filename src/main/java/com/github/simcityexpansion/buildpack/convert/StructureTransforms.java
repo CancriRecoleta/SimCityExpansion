@@ -1,7 +1,9 @@
 package com.github.simcityexpansion.buildpack.convert;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.UnaryOperator;
 
 import com.github.simcityexpansion.buildpack.convert.NbtStructure.BlockEntry;
@@ -434,6 +436,17 @@ public final class StructureTransforms {
    * dropped.
    */
   public static NbtStructure pasteRegion(NbtStructure s, NbtStructure clip, int atX, int atY, int atZ) {
+    return pasteRegion(s, clip, atX, atY, atZ, false);
+  }
+
+  /**
+   * Paste {@code clip} into {@code s} at (atX, atY, atZ). When {@code merge} is false the entire clip
+   * footprint is overwritten; when true only the cells the clip actually fills are replaced, leaving
+   * existing blocks in the gaps. {@code clip}'s palette is merged into {@code s}'s; cells landing
+   * outside {@code s} are dropped.
+   */
+  public static NbtStructure pasteRegion(NbtStructure s, NbtStructure clip,
+      int atX, int atY, int atZ, boolean merge) {
     List<PaletteEntry> palette = new ArrayList<>(s.palette);
     int[] map = new int[clip.palette.size()];
     for (int i = 0; i < clip.palette.size(); i++) {
@@ -454,9 +467,24 @@ public final class StructureTransforms {
     int ex = atX + clip.sizeX - 1;
     int ey = atY + clip.sizeY - 1;
     int ez = atZ + clip.sizeZ - 1;
+    Set<Long> clipCells = null;
+    if (merge) {
+      clipCells = new HashSet<>();
+      for (BlockEntry b : clip.blocks) {
+        int nx = atX + b.x();
+        int ny = atY + b.y();
+        int nz = atZ + b.z();
+        if (nx >= 0 && nx < s.sizeX && ny >= 0 && ny < s.sizeY && nz >= 0 && nz < s.sizeZ) {
+          clipCells.add(cellKey(nx, ny, nz));
+        }
+      }
+    }
     List<BlockEntry> blocks = new ArrayList<>();
     for (BlockEntry b : s.blocks) {
-      if (!inRegion(b, atX, atY, atZ, ex, ey, ez)) {
+      boolean covered = merge
+          ? clipCells.contains(cellKey(b.x(), b.y(), b.z()))
+          : inRegion(b, atX, atY, atZ, ex, ey, ez);
+      if (!covered) {
         blocks.add(b);
       }
     }
@@ -499,6 +527,10 @@ public final class StructureTransforms {
 
   private static int clamp(int v, int lo, int hi) {
     return v < lo ? lo : Math.min(v, hi);
+  }
+
+  private static long cellKey(int x, int y, int z) {
+    return ((long) (x & 0x1FFFFF) << 42) | ((long) (y & 0x1FFFFF) << 21) | (z & 0x1FFFFF);
   }
 
   private static boolean[] airFlags(NbtStructure s) {
