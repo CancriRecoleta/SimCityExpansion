@@ -119,6 +119,9 @@ public final class StructureScene extends AbstractWidget {
   private BlockPos selAnchor;
   private BlockPos selPreviewEnd;
   private BiConsumer<BlockPos, BlockPos> onSelect;
+  private Direction.Axis selPlaneAxis = Direction.Axis.Y;
+  private int selPlaneCoord;
+  private int dragFace = -1;
 
   private float centerX;
   private float centerY;
@@ -352,6 +355,7 @@ public final class StructureScene extends AbstractWidget {
     hasSelection = false;
     selAnchor = null;
     selPreviewEnd = null;
+    dragFace = -1;
     closeSelectionBuffer();
   }
 
@@ -374,6 +378,7 @@ public final class StructureScene extends AbstractWidget {
     selectMode = on;
     selAnchor = null;
     selPreviewEnd = null;
+    dragFace = -1;
     if (!on) {
       hover = null;
       closeHoverBuffer();
@@ -854,13 +859,27 @@ public final class StructureScene extends AbstractWidget {
     if (grid.isEmpty()) {
       return null;
     }
+    float[] ray = cursorRay(mouseX, mouseY);
+    if (ray == null) {
+      return null;
+    }
+    float len = (float) Math.sqrt(ray[3] * ray[3] + ray[4] * ray[4] + ray[5] * ray[5]);
+    if (len < 1.0e-6f) {
+      return null;
+    }
+    int steps = Math.min(8192, (int) Math.ceil(len) + maxDim + 8);
+    return ddaPick(ray[0], ray[1], ray[2], ray[3] / len, ray[4] / len, ray[5] / len, steps);
+  }
+
+  /** Cursor pick ray in block space as {ox, oy, oz, dx, dy, dz} (raw, front-to-back), or null. */
+  private float[] cursorRay(double mouseX, double mouseY) {
     int w = getWidth();
     int h = getHeight();
     if (w <= 0 || h <= 0) {
       return null;
     }
     if (perspective) {
-      return raycastPerspective(mouseX, mouseY, w, h);
+      return cursorRayPerspective(mouseX, mouseY, w, h);
     }
     float scale = Math.min(w, h) * 0.85f / maxDim * zoom;
     PoseStack pose = new PoseStack();
@@ -874,28 +893,14 @@ public final class StructureScene extends AbstractWidget {
       return null;
     }
     inv.invert();
-    // Higher GUI z is toward the viewer, so start the ray camera-side (+z) and march inward
-    // to hit the frontmost block first.
+    // Higher GUI z is toward the viewer, so the ray runs from camera-side (+z) inward.
     Vector4f front = inv.transform(new Vector4f((float) mouseX, (float) mouseY, 1000.0f, 1.0f));
     Vector4f back = inv.transform(new Vector4f((float) mouseX, (float) mouseY, -1000.0f, 1.0f));
-    float ox = front.x();
-    float oy = front.y();
-    float oz = front.z();
-    float dx = back.x() - ox;
-    float dy = back.y() - oy;
-    float dz = back.z() - oz;
-    float len = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
-    if (len < 1.0e-6f) {
-      return null;
-    }
-    // The ray starts well outside the box (GUI z = ±1000), so bound the march by its full
-    // length in block space rather than by the box size.
-    int steps = Math.min(4096, (int) Math.ceil(len) + maxDim + 8);
-    return ddaPick(ox, oy, oz, dx / len, dy / len, dz / len, steps);
+    return new float[] {front.x(), front.y(), front.z(),
+        back.x() - front.x(), back.y() - front.y(), back.z() - front.z()};
   }
 
-  /** Perspective unprojection: cast a diverging ray from the camera through the cursor. */
-  private Hit raycastPerspective(double mouseX, double mouseY, int w, int h) {
+  private float[] cursorRayPerspective(double mouseX, double mouseY, int w, int h) {
     Matrix4f inv = new Matrix4f(projectionFor(getX(), getY(), w, h)).mul(perspectiveModelView());
     if (inv.determinant() == 0.0f) {
       return null;
@@ -914,15 +919,171 @@ public final class StructureScene extends AbstractWidget {
     float ox = near.x() / near.w();
     float oy = near.y() / near.w();
     float oz = near.z() / near.w();
-    float dx = far.x() / far.w() - ox;
-    float dy = far.y() / far.w() - oy;
-    float dz = far.z() / far.w() - oz;
-    float len = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
-    if (len < 1.0e-6f) {
+    float fx = far.x() / far.w();
+    float fy = far.y() / far.w();
+    float fz = far.z() / far.w();
+    return new float[] {ox, oy, oz, fx - ox, fy - oy, fz - oz};
+  }
+
+  /** Cell under the cursor: the solid block hit, or a cell on the anchor's plane (for empty space). */
+  private BlockPos selectCell(double mouseX, double mouseY) {
+    Hit hit = raycast(mouseX, mouseY);
+    if (hit != null) {
+      return hit.pos();
+    }
+    return projectToPlane(mouseX, mouseY, selPlaneAxis, selPlaneCoord);
+  }
+
+  /** Intersects the cursor ray with the axis-aligned plane {axis = coord}; returns the cell, or null. */
+  private BlockPos projectToPlane(double mouseX, double mouseY, Direction.Axis axis, int coord) {
+    if (structure == null) {
       return null;
     }
-    int steps = Math.min(8192, (int) Math.ceil(len) + maxDim + 8);
-    return ddaPick(ox, oy, oz, dx / len, dy / len, dz / len, steps);
+    float[] ray = cursorRay(mouseX, mouseY);
+    if (ray == null) {
+      return null;
+    }
+    int ai = axis == Direction.Axis.X ? 0 : axis == Direction.Axis.Y ? 1 : 2;
+    float d = ray[3 + ai];
+    if (Math.abs(d) < 1.0e-6f) {
+      return null;
+    }
+    float t = (coord + 0.5f - ray[ai]) / d;
+    if (t < 0.0f) {
+      return null;
+    }
+    int cx = axis == Direction.Axis.X ? coord
+        : clampCell((int) Math.floor(ray[0] + ray[3] * t), structure.sizeX);
+    int cy = axis == Direction.Axis.Y ? coord
+        : clampCell((int) Math.floor(ray[1] + ray[4] * t), structure.sizeY);
+    int cz = axis == Direction.Axis.Z ? coord
+        : clampCell((int) Math.floor(ray[2] + ray[5] * t), structure.sizeZ);
+    return new BlockPos(cx, cy, cz);
+  }
+
+  private static int axisCoord(BlockPos pos, Direction.Axis axis) {
+    return axis == Direction.Axis.X ? pos.getX() : axis == Direction.Axis.Y ? pos.getY() : pos.getZ();
+  }
+
+  private static int clampCell(int value, int size) {
+    return Math.max(0, Math.min(value, size - 1));
+  }
+
+  /** Ray-vs-selection-box test; returns the entry face index (axis*2 + maxSide), or -1 on a miss. */
+  private int pickBoxFace(double mouseX, double mouseY) {
+    if (!hasSelection) {
+      return -1;
+    }
+    float[] ray = cursorRay(mouseX, mouseY);
+    if (ray == null) {
+      return -1;
+    }
+    float[] o = {ray[0], ray[1], ray[2]};
+    float[] d = {ray[3], ray[4], ray[5]};
+    float[] bmin = {selX0, selY0, selZ0};
+    float[] bmax = {selX1 + 1, selY1 + 1, selZ1 + 1};
+    float tmin = Float.NEGATIVE_INFINITY;
+    float tmax = Float.POSITIVE_INFINITY;
+    int enterAxis = -1;
+    boolean enterMaxSide = false;
+    for (int a = 0; a < 3; a++) {
+      if (Math.abs(d[a]) < 1.0e-8f) {
+        if (o[a] < bmin[a] || o[a] > bmax[a]) {
+          return -1;
+        }
+        continue;
+      }
+      float inv = 1.0f / d[a];
+      float t1 = (bmin[a] - o[a]) * inv;
+      float t2 = (bmax[a] - o[a]) * inv;
+      float tNear;
+      float tFar;
+      boolean nearIsMax;
+      if (t1 <= t2) {
+        tNear = t1;
+        tFar = t2;
+        nearIsMax = false;
+      } else {
+        tNear = t2;
+        tFar = t1;
+        nearIsMax = true;
+      }
+      if (tNear > tmin) {
+        tmin = tNear;
+        enterAxis = a;
+        enterMaxSide = nearIsMax;
+      }
+      if (tFar < tmax) {
+        tmax = tFar;
+      }
+      if (tmin > tmax) {
+        return -1;
+      }
+    }
+    if (enterAxis < 0 || tmax < 0.0f) {
+      return -1;
+    }
+    return enterAxis * 2 + (enterMaxSide ? 1 : 0);
+  }
+
+  /** Moves the grabbed selection face to follow the cursor (projected onto a stable helper plane). */
+  private void dragFaceTo(double mouseX, double mouseY) {
+    if (dragFace < 0 || structure == null) {
+      return;
+    }
+    float[] ray = cursorRay(mouseX, mouseY);
+    if (ray == null) {
+      return;
+    }
+    int axis = dragFace / 2;
+    boolean maxSide = (dragFace % 2) == 1;
+    int h1 = (axis + 1) % 3;
+    int h2 = (axis + 2) % 3;
+    int helper = Math.abs(ray[3 + h1]) >= Math.abs(ray[3 + h2]) ? h1 : h2;
+    float[] bmin = {selX0, selY0, selZ0};
+    float[] bmax = {selX1 + 1, selY1 + 1, selZ1 + 1};
+    float planeVal = (bmin[helper] + bmax[helper]) / 2.0f;
+    float d = ray[3 + helper];
+    if (Math.abs(d) < 1.0e-6f) {
+      return;
+    }
+    float t = (planeVal - ray[helper]) / d;
+    if (t < 0.0f) {
+      return;
+    }
+    float p = ray[axis] + ray[3 + axis] * t;
+    int size = axis == 0 ? structure.sizeX : axis == 1 ? structure.sizeY : structure.sizeZ;
+    int v = clampCell((int) Math.floor(p), size);
+    int nx0 = selX0;
+    int ny0 = selY0;
+    int nz0 = selZ0;
+    int nx1 = selX1;
+    int ny1 = selY1;
+    int nz1 = selZ1;
+    switch (axis) {
+      case 0 -> {
+        if (maxSide) {
+          nx1 = v;
+        } else {
+          nx0 = v;
+        }
+      }
+      case 1 -> {
+        if (maxSide) {
+          ny1 = v;
+        } else {
+          ny0 = v;
+        }
+      }
+      default -> {
+        if (maxSide) {
+          nz1 = v;
+        } else {
+          nz0 = v;
+        }
+      }
+    }
+    setSelection(nx0, ny0, nz0, nx1, ny1, nz1);
   }
 
   /** Amanatides-Woo voxel traversal: walk cells along the ray until a solid one is found. */
@@ -1267,11 +1428,13 @@ public final class StructureScene extends AbstractWidget {
     }
     if (editMode || selectMode) {
       updateHover(mouseX, mouseY);
-      if (selectMode && selAnchor != null && hover != null
-          && !hover.pos().equals(selPreviewEnd)) {
-        selPreviewEnd = hover.pos();
-        setSelection(selAnchor.getX(), selAnchor.getY(), selAnchor.getZ(),
-            selPreviewEnd.getX(), selPreviewEnd.getY(), selPreviewEnd.getZ());
+      if (selectMode && selAnchor != null) {
+        BlockPos end = selectCell(mouseX, mouseY);
+        if (end != null && !end.equals(selPreviewEnd)) {
+          selPreviewEnd = end;
+          setSelection(selAnchor.getX(), selAnchor.getY(), selAnchor.getZ(),
+              end.getX(), end.getY(), end.getZ());
+        }
       }
       if (hoverBuffer != null) {
         drawHover(g, x, y, w, h, scale, mc);
@@ -1513,6 +1676,8 @@ public final class StructureScene extends AbstractWidget {
     }
     if (button == 0) {
       dragged = false;
+      dragFace = (selectMode && hasSelection && selAnchor == null)
+          ? pickBoxFace(mouseX, mouseY) : -1;
     }
     // Left/right click: consume the event so the host can forward subsequent drag events.
     return true;
@@ -1522,6 +1687,11 @@ public final class StructureScene extends AbstractWidget {
   public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
     if (!interactive) {
       return false;
+    }
+    if (selectMode && dragFace >= 0 && button == 0) {
+      dragged = true;
+      dragFaceTo(mouseX, mouseY);
+      return true;
     }
     if (editMode && button == 0 && Screen.hasControlDown() && onEdit != null) {
       dragged = true;
@@ -1579,17 +1749,36 @@ public final class StructureScene extends AbstractWidget {
         onEdit.accept(hit);
       }
     }
-    if (interactive && selectMode && button == 0 && !dragged && isMouseOver(mouseX, mouseY)) {
-      Hit hit = raycast(mouseX, mouseY);
-      if (hit != null) {
+    if (interactive && selectMode && button == 0) {
+      int face = dragFace;
+      dragFace = -1;
+      if (face >= 0) {
+        if (dragged && onSelect != null) {
+          onSelect.accept(new BlockPos(selX0, selY0, selZ0), new BlockPos(selX1, selY1, selZ1));
+        }
+      } else if (!dragged && isMouseOver(mouseX, mouseY)) {
         if (selAnchor == null) {
-          selAnchor = hit.pos();
-          selPreviewEnd = hit.pos();
-          setSelection(selAnchor.getX(), selAnchor.getY(), selAnchor.getZ(),
-              selAnchor.getX(), selAnchor.getY(), selAnchor.getZ());
+          Hit hit = raycast(mouseX, mouseY);
+          BlockPos cell;
+          if (hit != null) {
+            cell = hit.pos();
+            selPlaneAxis = hit.face().getAxis();
+            selPlaneCoord = axisCoord(cell, selPlaneAxis);
+          } else {
+            selPlaneAxis = Direction.Axis.Y;
+            selPlaneCoord = 0;
+            cell = projectToPlane(mouseX, mouseY, selPlaneAxis, selPlaneCoord);
+          }
+          if (cell != null) {
+            selAnchor = cell;
+            selPreviewEnd = cell;
+            setSelection(cell.getX(), cell.getY(), cell.getZ(),
+                cell.getX(), cell.getY(), cell.getZ());
+          }
         } else {
-          if (onSelect != null) {
-            onSelect.accept(selAnchor, hit.pos());
+          BlockPos cell = selectCell(mouseX, mouseY);
+          if (cell != null && onSelect != null) {
+            onSelect.accept(selAnchor, cell);
           }
           selAnchor = null;
           selPreviewEnd = null;

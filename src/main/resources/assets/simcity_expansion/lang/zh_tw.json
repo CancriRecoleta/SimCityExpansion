@@ -141,7 +141,7 @@
   "buildpack.editor.pasted_merge": "已合併貼上",
   "buildpack.editor.region_need": "請先設定選區（全選 / 設定…）",
   "buildpack.editor.region_select": "框選",
-  "buildpack.editor.select_hint": "點擊兩個方塊設定選區兩角",
+  "buildpack.editor.select_hint": "點擊兩個方塊設兩角，或拖曳選區的面來縮放",
   "buildpack.preview.sel": "選區 %1$s（%2$s）",
   "buildpack.selection.title": "選區",
   "buildpack.selection.min": "最小",

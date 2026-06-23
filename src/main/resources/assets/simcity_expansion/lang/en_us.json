@@ -141,7 +141,7 @@
   "buildpack.editor.pasted_merge": "Merged",
   "buildpack.editor.region_need": "Set a selection first (Select All / Set…)",
   "buildpack.editor.region_select": "Box Select",
-  "buildpack.editor.select_hint": "Click two cells to set the selection corners",
+  "buildpack.editor.select_hint": "Click two cells to set corners, or drag a box face to resize",
   "buildpack.preview.sel": "Sel %1$s (%2$s)",
   "buildpack.selection.title": "Selection",
   "buildpack.selection.min": "Min",
