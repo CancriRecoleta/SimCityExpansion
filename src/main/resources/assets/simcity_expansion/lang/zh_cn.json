@@ -346,5 +346,10 @@
   "buildpack.info.pack_active": "状态：已激活（虚拟，未安装）",
   "buildpack.msg.replaced_install": "已移除安装文件（改为激活）",
   "buildpack.cmd.active.empty": "没有激活的拓展包",
-  "buildpack.cmd.active.header": "激活的拓展包（%s 个）："
+  "buildpack.cmd.active.header": "激活的拓展包（%s 个）：",
+  "buildpack.action.activate": "激活",
+  "buildpack.action.deactivate": "停用",
+  "buildpack.tooltip.activate": "把选中的包直接供给 SimuKraft 而不安装（开关）；需要 SimuKraft",
+  "buildpack.msg.activate_remote": "服务器上请用 /buildpack activate 激活（本地激活不会同步到服务器）",
+  "buildpack.tree.active_mark": "✔"
 }

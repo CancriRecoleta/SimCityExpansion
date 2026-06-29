@@ -137,6 +137,7 @@ public final class BuildPackScreen extends Screen {
   private ThemedButton uninstallButton;
   private ThemedButton deleteButton;
   private ThemedButton exportButton;
+  private ThemedButton activateButton;
   private ThemedButton dedupeButton;
 
   // Layout cache (computed from screen dimensions; shared between init and render).
@@ -222,7 +223,7 @@ public final class BuildPackScreen extends Screen {
     infoPanel.rebuild(font, rightX, searchY, INFO_W, bodyBottom - searchY, this::addRenderableWidget);
 
     // Bottom action row
-    int actionCount = 6;
+    int actionCount = 7;
     int actionW = (width - PAD * 2 - GAP * (actionCount - 1)) / actionCount;
     int ax = PAD;
     installButton = action("install", ax, row1Y, actionW, this::runInstall);
@@ -230,6 +231,8 @@ public final class BuildPackScreen extends Screen {
     batchButton = action("batch", ax, row1Y, actionW, this::runBatchInstall);
     ax += actionW + GAP;
     uninstallButton = action("uninstall", ax, row1Y, actionW, this::runUninstall);
+    ax += actionW + GAP;
+    activateButton = action("activate", ax, row1Y, actionW, this::runActivateToggle);
     ax += actionW + GAP;
     deleteButton = action("delete", ax, row1Y, actionW, this::runDelete);
     ax += actionW + GAP;
@@ -581,6 +584,13 @@ public final class BuildPackScreen extends Screen {
         && installed.stream().anyMatch(building -> matches(building.name())));
     setActive(batchButton, !busy && currentTab == SourceTab.IMPORT
         && importFiles.stream().anyMatch(file -> matches(file.fileName())));
+    setActive(activateButton, selected instanceof PackArchive && !busy);
+    if (activateButton != null) {
+      boolean active = selected instanceof PackArchive pack
+          && ActivePackProvider.isActive(pack.manifest().id());
+      activateButton.setMessage(Component.translatable(
+          active ? "buildpack.action.deactivate" : "buildpack.action.activate"));
+    }
   }
 
   private static void setActive(AbstractWidget widget, boolean active) {
@@ -785,9 +795,27 @@ public final class BuildPackScreen extends Screen {
     ExportScreen.open(toExport);
   }
 
+  /** Toggles activation of the selected pack (main action button). */
+  private void runActivateToggle() {
+    if (selected instanceof PackArchive pack) {
+      if (ActivePackProvider.isActive(pack.manifest().id())) {
+        deactivatePack(pack);
+      } else {
+        activatePack(pack);
+      }
+    }
+  }
+
   /** Activates a pack (convert into cache + serve to SimuKraft virtually) off the render thread. */
   private void activatePack(PackArchive pack) {
     if (busy) {
+      return;
+    }
+    // Activating only makes sense where this game instance runs the world; on a remote server the
+    // admin must use /buildpack activate (the local conversion would not reach the server).
+    if (Minecraft.getInstance().level != null
+        && Minecraft.getInstance().getSingleplayerServer() == null) {
+      setMessage(Component.translatable("buildpack.msg.activate_remote"), true);
       return;
     }
     busy = true;

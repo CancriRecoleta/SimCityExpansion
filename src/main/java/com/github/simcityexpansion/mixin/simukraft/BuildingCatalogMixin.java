@@ -39,6 +39,11 @@ abstract class BuildingCatalogMixin {
     }
     List<BuildingDefinition> merged = new ArrayList<>(original);
     for (ActiveBuilding building : active) {
+      // Skip remote (server-pushed) entries that carry no local file: they are display-only on the
+      // client and would not be loadable here. The server's own entries always have a cache path.
+      if (building.structurePath() == null) {
+        continue;
+      }
       // Disk buildings stay authoritative on a name clash; our names are pack-namespaced anyway.
       boolean clash = original.stream()
           .anyMatch(definition -> definition.metaFileName().equalsIgnoreCase(building.metaFileName()));

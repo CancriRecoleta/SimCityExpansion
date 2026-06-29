@@ -29,6 +29,13 @@ public final class ActivePackProvider {
   /** Immutable snapshot keyed by normalized category, rebuilt on every activation change. */
   private static volatile Map<String, List<ActiveBuilding>> byCategory = Map.of();
 
+  /**
+   * Buildings pushed from a remote (dedicated) server for display only — they carry no local file
+   * path (preview/build resolve server-side). Kept separate from {@link #BY_PACK} so a host client
+   * never mixes them with its own locally-activated packs.
+   */
+  private static volatile Map<String, List<ActiveBuilding>> remoteByCategory = Map.of();
+
   /** Activates (or replaces) a pack's buildings. */
   public static void activate(String packId, List<ActiveBuilding> buildings) {
     BY_PACK.put(packId, List.copyOf(buildings));
@@ -51,9 +58,38 @@ public final class ActivePackProvider {
     return Set.copyOf(BY_PACK.keySet());
   }
 
-  /** All active buildings in a category (case-insensitive), or an empty list. */
+  /** All locally-activated buildings across packs (used by the server to sync clients). */
+  public static List<ActiveBuilding> allActive() {
+    List<ActiveBuilding> all = new ArrayList<>();
+    BY_PACK.values().forEach(all::addAll);
+    return all;
+  }
+
+  /** Replaces the remote (server-pushed) building set on a connected client. */
+  public static void replaceRemote(List<ActiveBuilding> buildings) {
+    Map<String, List<ActiveBuilding>> grouped = new HashMap<>();
+    for (ActiveBuilding building : buildings) {
+      grouped.computeIfAbsent(normalize(building.category()), key -> new ArrayList<>()).add(building);
+    }
+    Map<String, List<ActiveBuilding>> snapshot = new HashMap<>();
+    grouped.forEach((category, list) -> snapshot.put(category, List.copyOf(list)));
+    remoteByCategory = Map.copyOf(snapshot);
+  }
+
+  /** All active buildings in a category (case-insensitive): local activations plus remote ones. */
   public static List<ActiveBuilding> forCategory(String category) {
-    return byCategory.getOrDefault(normalize(category), List.of());
+    String key = normalize(category);
+    List<ActiveBuilding> local = byCategory.getOrDefault(key, List.of());
+    List<ActiveBuilding> remote = remoteByCategory.getOrDefault(key, List.of());
+    if (remote.isEmpty()) {
+      return local;
+    }
+    if (local.isEmpty()) {
+      return remote;
+    }
+    List<ActiveBuilding> merged = new ArrayList<>(local);
+    merged.addAll(remote);
+    return merged;
   }
 
   /** Finds an active building in a category by structure file name (extension-insensitive). */

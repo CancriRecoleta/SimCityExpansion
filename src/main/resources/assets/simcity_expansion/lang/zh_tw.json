@@ -346,5 +346,10 @@
   "buildpack.info.pack_active": "狀態：已啟用（虛擬，未安裝）",
   "buildpack.msg.replaced_install": "已移除安裝檔案（改為啟用）",
   "buildpack.cmd.active.empty": "沒有啟用的擴充包",
-  "buildpack.cmd.active.header": "啟用的擴充包（%s 個）："
+  "buildpack.cmd.active.header": "啟用的擴充包（%s 個）：",
+  "buildpack.action.activate": "啟用",
+  "buildpack.action.deactivate": "停用",
+  "buildpack.tooltip.activate": "把選中的包直接供給 SimuKraft 而不安裝（開關）；需要 SimuKraft",
+  "buildpack.msg.activate_remote": "伺服器上請用 /buildpack activate 啟用（本機啟用不會同步到伺服器）",
+  "buildpack.tree.active_mark": "✔"
 }

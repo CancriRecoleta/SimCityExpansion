@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
+import com.github.simcityexpansion.buildpack.integration.ActivePackProvider;
 import com.github.simcityexpansion.buildpack.model.BuildingCategory;
 import com.github.simcityexpansion.buildpack.model.ImportFile;
 import com.github.simcityexpansion.buildpack.model.ImportIndex;
@@ -66,7 +67,11 @@ public final class DirectoryTree {
   public static TreeNode<String, Object> buildPacks(List<PackArchive> packs) {
     TreeBuilder<String, Object> builder = TreeBuilder.start(ROOT_KEY);
     for (PackArchive pack : packs) {
-      builder.startBranch(pack.manifest().name() + " (" + pack.fileName() + ")");
+      String label = pack.manifest().name() + " (" + pack.fileName() + ")";
+      if (ActivePackProvider.isActive(pack.manifest().id())) {
+        label = Component.translatable("buildpack.tree.active_mark").getString() + " " + label;
+      }
+      builder.startBranch(label);
       builder.content(pack);
       for (BuildingCategory category : BuildingCategory.values()) {
         List<PackBuildingEntry> inCategory = pack.buildings().stream()

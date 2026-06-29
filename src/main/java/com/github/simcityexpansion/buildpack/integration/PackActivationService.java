@@ -26,6 +26,7 @@ import com.github.simcityexpansion.buildpack.model.FileNames;
 import com.github.simcityexpansion.buildpack.model.ImportScanner;
 import com.github.simcityexpansion.buildpack.model.PackArchive;
 import com.github.simcityexpansion.buildpack.model.PackBuildingEntry;
+import com.github.simcityexpansion.buildpack.network.BuildPackNetwork;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -85,12 +86,14 @@ public final class PackActivationService {
 
     ActivePackProvider.activate(packId, buildings);
     addActiveId(packId);
+    BuildPackNetwork.broadcast();
   }
 
   /** Deactivates a pack (its buildings vanish from SimuKraft); the converted cache is kept for fast re-activation. */
   public static synchronized void deactivate(String packId) {
     ActivePackProvider.deactivate(packId);
     removeActiveId(packId);
+    BuildPackNetwork.broadcast();
   }
 
   /** Re-applies every persisted active pack by locating its zip in the import directory. */

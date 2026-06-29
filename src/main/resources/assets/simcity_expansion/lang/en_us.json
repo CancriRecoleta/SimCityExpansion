@@ -346,5 +346,10 @@
   "buildpack.info.pack_active": "Status: Activated (virtual, no install)",
   "buildpack.msg.replaced_install": "Removed the file install (replaced by activation)",
   "buildpack.cmd.active.empty": "No active packs",
-  "buildpack.cmd.active.header": "Active packs (%s):"
+  "buildpack.cmd.active.header": "Active packs (%s):",
+  "buildpack.action.activate": "Activate",
+  "buildpack.action.deactivate": "Deactivate",
+  "buildpack.tooltip.activate": "Serve the selected pack to SimuKraft without installing it (toggle); requires SimuKraft",
+  "buildpack.msg.activate_remote": "On a server, activate with /buildpack activate (local activation does not reach the server)",
+  "buildpack.tree.active_mark": "✔"
 }

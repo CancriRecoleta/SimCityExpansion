@@ -3,6 +3,7 @@ package com.github.simcityexpansion;
 import com.github.simcityexpansion.buildpack.client.BuildPackClientBootstrap;
 import com.github.simcityexpansion.buildpack.command.BuildPackCommands;
 import com.github.simcityexpansion.buildpack.integration.PackActivationService;
+import com.github.simcityexpansion.buildpack.network.BuildPackNetwork;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
@@ -21,6 +22,10 @@ public class SimcityExpansion {
     // Re-apply persisted active build packs when the server (integrated or dedicated) starts, so
     // they are served to SimuKraft without being installed into its building directory.
     NeoForge.EVENT_BUS.addListener(PackActivationService::onServerStarting);
+
+    // Sync the active building set to players (so dedicated-server clients see and can build them).
+    modEventBus.addListener(BuildPackNetwork::register);
+    NeoForge.EVENT_BUS.addListener(BuildPackNetwork::onPlayerJoin);
 
     // The management screen and key mappings are client-only features, registered only in a client environment.
     if (FMLEnvironment.dist == Dist.CLIENT) {
