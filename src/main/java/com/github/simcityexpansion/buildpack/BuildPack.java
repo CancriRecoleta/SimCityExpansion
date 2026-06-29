@@ -59,6 +59,20 @@ public final class BuildPack {
     return gameDir().resolve("simcity_expansion").resolve("installed_packs.json");
   }
 
+  /**
+   * Cache root for <b>activated</b> packs: converted structures live here (per pack, per category)
+   * and are served to SimuKraft virtually via mixins, so activation writes nothing into
+   * {@link #simukraftDir()}.
+   */
+  public static Path cacheDir() {
+    return gameDir().resolve("simcity_expansion").resolve("cache");
+  }
+
+  /** Persisted set of currently active pack ids (JSON), re-applied on startup. */
+  public static Path activePacksFile() {
+    return gameDir().resolve("simcity_expansion").resolve("active_packs.json");
+  }
+
   /** SimuKraft's building root directory, scanned at runtime by its BuildingCatalog. */
   public static Path simukraftDir() {
     return gameDir().resolve("simukraftbuilding");

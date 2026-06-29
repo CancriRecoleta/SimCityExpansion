@@ -332,5 +332,15 @@
   "buildpack.log.index_write_failed": "Failed to write import index: %s",
   "buildpack.log.index_parse_failed": "Failed to index structure: %s",
   "buildpack.log.index_hash_failed": "Failed to hash file: %s",
-  "buildpack.log.index_verify_failed": "Failed to read pack index for verification"
+  "buildpack.log.index_verify_failed": "Failed to read pack index for verification",
+  "buildpack.menu.activate": "Activate (no install)",
+  "buildpack.menu.deactivate": "Deactivate",
+  "buildpack.status.activating": "Activating…",
+  "buildpack.msg.pack_activated": "Activated: %s",
+  "buildpack.msg.pack_deactivated": "Deactivated: %s",
+  "buildpack.log.activate_failed": "Failed to activate pack: %s",
+  "buildpack.log.activate_building_failed": "Failed to convert pack building: %s",
+  "buildpack.log.activate_pack_missing": "Active pack not found in import directory: %s",
+  "buildpack.log.active_read_failed": "Failed to read active-packs file: %s",
+  "buildpack.log.active_write_failed": "Failed to write active-packs file: %s"
 }

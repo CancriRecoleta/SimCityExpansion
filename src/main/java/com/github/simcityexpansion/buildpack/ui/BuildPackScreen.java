@@ -28,6 +28,8 @@ import com.github.simcityexpansion.buildpack.install.InstallRegistry;
 import com.github.simcityexpansion.buildpack.install.PackInstaller;
 import com.github.simcityexpansion.buildpack.install.PackReader;
 import com.github.simcityexpansion.buildpack.install.SkFileReader;
+import com.github.simcityexpansion.buildpack.integration.ActivePackProvider;
+import com.github.simcityexpansion.buildpack.integration.PackActivationService;
 import com.github.simcityexpansion.buildpack.model.BuildingCategory;
 import com.github.simcityexpansion.buildpack.model.BuildingMetadata;
 import com.github.simcityexpansion.buildpack.model.FileNames;
@@ -779,6 +781,48 @@ public final class BuildPackScreen extends Screen {
     ExportScreen.open(toExport);
   }
 
+  /** Activates a pack (convert into cache + serve to SimuKraft virtually) off the render thread. */
+  private void activatePack(PackArchive pack) {
+    if (busy) {
+      return;
+    }
+    busy = true;
+    updateActionButtons();
+    setMessage(Component.translatable("buildpack.status.activating"), false);
+    CompletableFuture.supplyAsync(() -> {
+      List<Component> messages = new ArrayList<>();
+      try {
+        PackActivationService.activate(pack, messages);
+      } catch (IOException | RuntimeException e) {
+        I18nLog.warn(LOGGER, e, "buildpack.log.activate_failed", pack.manifest().id());
+        messages.add(Component.translatable(
+            "buildpack.msg.parse_failed", LocalizedIOException.messageOf(e)));
+      }
+      return messages;
+    }).whenComplete((messages, error) -> Minecraft.getInstance().execute(() -> {
+      busy = false;
+      if (Minecraft.getInstance().screen != this) {
+        return;
+      }
+      if (error != null) {
+        Throwable cause = error.getCause() != null ? error.getCause() : error;
+        setMessage(Component.translatable(
+            "buildpack.msg.parse_failed", LocalizedIOException.messageOf(cause)), true);
+      } else {
+        messages.add(0,
+            Component.translatable("buildpack.msg.pack_activated", pack.manifest().name()));
+        showResult(messages, false);
+      }
+      refresh();
+    }));
+  }
+
+  private void deactivatePack(PackArchive pack) {
+    PackActivationService.deactivate(pack.manifest().id());
+    setMessage(Component.translatable("buildpack.msg.pack_deactivated", pack.manifest().name()), false);
+    refresh();
+  }
+
   private void runCaptureSelection() {
     WorldSelection.CaptureResult result = WorldSelection.capture();
     setMessage(result.message(), !result.ok());
@@ -850,6 +894,17 @@ public final class BuildPackScreen extends Screen {
           runUninstall();
         }));
       }
+    } else if (content instanceof PackArchive pack) {
+      boolean active = ActivePackProvider.isActive(pack.manifest().id());
+      items.add(new ContextMenu.Item(
+          Component.translatable(active ? "buildpack.menu.deactivate" : "buildpack.menu.activate"),
+          () -> {
+            if (active) {
+              deactivatePack(pack);
+            } else {
+              activatePack(pack);
+            }
+          }));
     }
     contextMenu = items.isEmpty() ? null : new ContextMenu(mouseX, mouseY, items);
   }

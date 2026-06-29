@@ -332,5 +332,15 @@
   "buildpack.log.index_write_failed": "寫入匯入索引失敗：%s",
   "buildpack.log.index_parse_failed": "索引結構解析失敗：%s",
   "buildpack.log.index_hash_failed": "檔案雜湊計算失敗：%s",
-  "buildpack.log.index_verify_failed": "讀取擴充包索引用於校驗時失敗"
+  "buildpack.log.index_verify_failed": "讀取擴充包索引用於校驗時失敗",
+  "buildpack.menu.activate": "啟用（不安裝）",
+  "buildpack.menu.deactivate": "停用",
+  "buildpack.status.activating": "正在啟用……",
+  "buildpack.msg.pack_activated": "已啟用：%s",
+  "buildpack.msg.pack_deactivated": "已停用：%s",
+  "buildpack.log.activate_failed": "啟用擴充包失敗：%s",
+  "buildpack.log.activate_building_failed": "轉換包內建築失敗：%s",
+  "buildpack.log.activate_pack_missing": "匯入目錄中找不到已啟用的擴充包：%s",
+  "buildpack.log.active_read_failed": "讀取啟用清單失敗：%s",
+  "buildpack.log.active_write_failed": "寫入啟用清單失敗：%s"
 }

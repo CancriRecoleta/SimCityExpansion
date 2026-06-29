@@ -332,5 +332,15 @@
   "buildpack.log.index_write_failed": "写入导入索引失败：%s",
   "buildpack.log.index_parse_failed": "索引结构解析失败：%s",
   "buildpack.log.index_hash_failed": "文件哈希计算失败：%s",
-  "buildpack.log.index_verify_failed": "读取拓展包索引用于校验时失败"
+  "buildpack.log.index_verify_failed": "读取拓展包索引用于校验时失败",
+  "buildpack.menu.activate": "激活（不安装）",
+  "buildpack.menu.deactivate": "停用",
+  "buildpack.status.activating": "正在激活……",
+  "buildpack.msg.pack_activated": "已激活：%s",
+  "buildpack.msg.pack_deactivated": "已停用：%s",
+  "buildpack.log.activate_failed": "激活拓展包失败：%s",
+  "buildpack.log.activate_building_failed": "转换包内建筑失败：%s",
+  "buildpack.log.activate_pack_missing": "导入目录中未找到激活的拓展包：%s",
+  "buildpack.log.active_read_failed": "读取激活清单失败：%s",
+  "buildpack.log.active_write_failed": "写入激活清单失败：%s"
 }
