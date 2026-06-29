@@ -19,6 +19,15 @@ public final class TopDownPreview {
   /** Renders the top-down preview widget; returns null if the structure is too large or entirely empty. */
   @Nullable
   public static AbstractWidget create(NbtStructure structure) {
+    PixelImage image = pixels(structure);
+    return image == null
+        ? null
+        : StructurePreview.fromPixels(image.argb(), image.width(), image.height());
+  }
+
+  /** Computes the top-down ARGB pixel image; returns null if the structure is too large or entirely empty. */
+  @Nullable
+  public static PixelImage pixels(NbtStructure structure) {
     int sizeX = structure.sizeX;
     int sizeZ = structure.sizeZ;
     if (sizeX <= 0 || sizeZ <= 0 || (long) sizeX * sizeZ > MAX_FOOTPRINT) {
@@ -57,7 +66,7 @@ public final class TopDownPreview {
       }
       pixels[i] = shade(topColor[i], 0.55f + 0.45f * topY[i] / maxY);
     }
-    return StructurePreview.fromPixels(pixels, sizeX, sizeZ);
+    return new PixelImage(pixels, sizeX, sizeZ);
   }
 
   private static int shade(int argb, float factor) {

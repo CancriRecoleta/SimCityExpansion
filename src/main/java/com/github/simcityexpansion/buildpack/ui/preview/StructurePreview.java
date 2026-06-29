@@ -1,5 +1,6 @@
 package com.github.simcityexpansion.buildpack.ui.preview;
 
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -24,8 +25,9 @@ import org.slf4j.LoggerFactory;
 /**
  * Structure preview: registers a litematic's embedded PreviewImageData (square ARGB pixels) as a
  * dynamic texture and renders it; arbitrary ARGB pixel arrays (e.g., top-down or isometric views)
- * use the same pipeline. The returned {@link AbstractWidget} draws the image centered and
- * proportionally scaled within the given area (longest side 120px).
+ * use the same pipeline. Encoded PNG bytes (pack icons) are decoded through {@link #fromPng}. The
+ * returned {@link AbstractWidget} draws the image centered and proportionally scaled within the
+ * given area (longest side 120px).
  */
 public final class StructurePreview {
   private StructurePreview() {}
@@ -35,6 +37,12 @@ public final class StructurePreview {
 
   /** Cache of registered dynamic textures: pixel-data + size hash -> texture location, to avoid duplicate registrations. */
   private static final Map<Long, ResourceLocation> TEXTURE_CACHE = new HashMap<>();
+
+  /** Cache of textures decoded from PNG bytes: byte hash -> texture + decoded size. */
+  private static final Map<Long, Registered> PNG_CACHE = new HashMap<>();
+
+  /** A registered PNG texture together with its decoded dimensions. */
+  private record Registered(ResourceLocation texture, int width, int height) {}
 
   /** Returns a preview widget from the litematic's embedded thumbnail; returns {@code null} if no embedded image exists (caller decides the fallback). */
   @Nullable
@@ -51,6 +59,29 @@ public final class StructurePreview {
       ResourceLocation texture = registerTexture(argb, width, height);
       return new PreviewImage(texture, width, height);
     } catch (RuntimeException e) {
+      I18nLog.warn(LOGGER, e, "buildpack.log.preview_failed");
+      return placeholder();
+    }
+  }
+
+  /** Decodes PNG bytes (e.g. a pack icon) into a display widget; returns a placeholder if the bytes are empty or cannot be decoded. */
+  public static AbstractWidget fromPng(@Nullable byte[] pngBytes) {
+    if (pngBytes == null || pngBytes.length == 0) {
+      return placeholder();
+    }
+    try {
+      long key = (long) Arrays.hashCode(pngBytes) * 31L + pngBytes.length;
+      Registered registered = PNG_CACHE.get(key);
+      if (registered == null) {
+        NativeImage image = NativeImage.read(pngBytes);
+        ResourceLocation location =
+            BuildPack.id("buildpack/icon_" + Long.toHexString(key & 0x7FFFFFFFFFFFFFFFL));
+        Minecraft.getInstance().getTextureManager().register(location, new DynamicTexture(image));
+        registered = new Registered(location, image.getWidth(), image.getHeight());
+        PNG_CACHE.put(key, registered);
+      }
+      return new PreviewImage(registered.texture(), registered.width(), registered.height());
+    } catch (IOException | RuntimeException e) {
       I18nLog.warn(LOGGER, e, "buildpack.log.preview_failed");
       return placeholder();
     }

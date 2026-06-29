@@ -26,15 +26,20 @@ import com.google.gson.JsonParser;
 import net.minecraft.network.chat.Component;
 
 /**
- * Reader for zip build packs. Pack format (format 1):
+ * Reader for zip build packs. Layout:
  *
  * <pre>
  * mypack.zip
- * ├── pack.json                      required: {format,id,name,version,author,description}
+ * ├── pack.json                      required: {format,id,name,version,author,description,icon?}
+ * ├── icon.png                       optional: pack icon (referenced by pack.json "icon")
+ * ├── index.json                     optional: file manifest written on export; ignored on read
  * └── buildings/&lt;category&gt;/&lt;name&gt;.nbt|.litematic   structure (required)
  *     buildings/&lt;category&gt;/&lt;name&gt;.sk               optional: installed as-is when present (takes priority)
  *     buildings/&lt;category&gt;/&lt;name&gt;.json             optional: JSON metadata
  * </pre>
+ *
+ * <p>Root-level {@code icon.png} and {@code index.json} are not building files and are skipped by
+ * the building scan; only {@code pack.json} and {@code buildings/<category>/...} are interpreted.
  */
 public final class PackReader {
   private PackReader() {}
@@ -124,11 +129,13 @@ public final class PackReader {
     if (id.isBlank()) {
       throw new LocalizedIOException(Component.translatable("buildpack.error.pack_no_id"));
     }
+    String icon = getString(json, "icon", "");
     return new PackManifest(format, id,
         getString(json, "name", id),
         getString(json, "version", ""),
         getString(json, "author", ""),
-        getString(json, "description", ""));
+        getString(json, "description", ""),
+        icon.isBlank() ? null : icon);
   }
 
   /** Reads all bytes of a single entry from a zip file (used by the UI to read buildings directly without extracting the archive). */

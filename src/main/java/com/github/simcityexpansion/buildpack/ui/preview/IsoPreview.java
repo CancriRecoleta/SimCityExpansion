@@ -38,6 +38,15 @@ public final class IsoPreview {
   /** Renders the isometric 3D preview; returns null if not applicable. */
   @Nullable
   public static AbstractWidget create(NbtStructure s) {
+    PixelImage image = pixels(s);
+    return image == null
+        ? null
+        : StructurePreview.fromPixels(image.argb(), image.width(), image.height());
+  }
+
+  /** Computes the isometric ARGB pixel image; returns null if not applicable. */
+  @Nullable
+  public static PixelImage pixels(NbtStructure s) {
     int sx = s.sizeX;
     int sy = s.sizeY;
     int sz = s.sizeZ;
@@ -95,7 +104,7 @@ public final class IsoPreview {
       int cy = (b.x() + b.z()) * rQuart - b.y() * rSh - minY;
       drawCube(px, rw, rh, cx, cy, rHalf, rQuart, rSh, colors[b.stateIndex()]);
     }
-    return StructurePreview.fromPixels(downsample(px, rw, rh, fw, fh), fw, fh);
+    return new PixelImage(downsample(px, rw, rh, fw, fh), fw, fh);
   }
 
   private static int ceil(int v, int unit) {

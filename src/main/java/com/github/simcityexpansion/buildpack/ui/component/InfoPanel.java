@@ -1,12 +1,15 @@
 package com.github.simcityexpansion.buildpack.ui.component;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
+import com.github.simcityexpansion.buildpack.I18nLog;
 import com.github.simcityexpansion.buildpack.convert.NbtStructure;
 import com.github.simcityexpansion.buildpack.convert.StructureAnalysis;
 import com.github.simcityexpansion.buildpack.convert.StructureAnalysis.MaterialEntry;
+import com.github.simcityexpansion.buildpack.install.PackReader;
 import com.github.simcityexpansion.buildpack.model.BuildingMetadata;
 import com.github.simcityexpansion.buildpack.model.ImportFile;
 import com.github.simcityexpansion.buildpack.model.InstalledBuilding;
@@ -28,6 +31,8 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.network.chat.Component;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Fixed-width info panel on the right side (analogous to Litematica's
@@ -42,6 +47,7 @@ import net.minecraft.network.chat.Component;
  */
 public final class InfoPanel {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(InfoPanel.class);
   private static final int PAD = 4;
   private static final int INFO_ROW_H = 10;
   private static final int INFO_ROWS = 9;
@@ -176,12 +182,27 @@ public final class InfoPanel {
             ? Component.translatable("buildpack.info.pack_installed")
             : Component.translatable("buildpack.info.pack_not_installed"));
     clearExtras();
+    showPackIcon(pack);
 
     BuildingMetadata meta = new BuildingMetadata();
     meta.name = pack.manifest().name();
     meta.author = pack.manifest().author();
     meta.description = pack.manifest().description();
     form.setModel(meta, false);
+  }
+
+  /** Shows the pack's bundled icon ({@code pack.json} "icon") in the preview slot when present. */
+  private void showPackIcon(PackArchive pack) {
+    String icon = pack.manifest().icon();
+    if (icon == null || icon.isBlank() || previewSlot == null) {
+      return;
+    }
+    try {
+      byte[] bytes = PackReader.readEntryBytes(pack.zipPath(), icon);
+      previewSlot.setChild(StructurePreview.fromPng(bytes));
+    } catch (IOException | RuntimeException e) {
+      I18nLog.warn(LOGGER, e, "buildpack.log.icon_failed");
+    }
   }
 
   /** Installed building: .sk fields displayed read-only + preview and material list (if the structure can be parsed). */
