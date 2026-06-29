@@ -342,5 +342,9 @@
   "buildpack.log.activate_building_failed": "轉換包內建築失敗：%s",
   "buildpack.log.activate_pack_missing": "匯入目錄中找不到已啟用的擴充包：%s",
   "buildpack.log.active_read_failed": "讀取啟用清單失敗：%s",
-  "buildpack.log.active_write_failed": "寫入啟用清單失敗：%s"
+  "buildpack.log.active_write_failed": "寫入啟用清單失敗：%s",
+  "buildpack.info.pack_active": "狀態：已啟用（虛擬，未安裝）",
+  "buildpack.msg.replaced_install": "已移除安裝檔案（改為啟用）",
+  "buildpack.cmd.active.empty": "沒有啟用的擴充包",
+  "buildpack.cmd.active.header": "啟用的擴充包（%s 個）："
 }

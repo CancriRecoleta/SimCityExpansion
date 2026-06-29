@@ -218,6 +218,9 @@ tab-completion.
 | `/buildpack install <file> [category] [name]` | Install a loose structure file |
 | `/buildpack installpack <zip>` | Install a whole zip pack |
 | `/buildpack uninstallpack <id>` | Uninstall a pack by its id |
+| `/buildpack activate <zip>` | Serve a pack to SimuKraft virtually (no install) — requires SimuKraft |
+| `/buildpack deactivate <id>` | Stop serving an activated pack |
+| `/buildpack active` | List currently active packs |
 | `/buildpack capture <from> <to> [name] [format]` | Capture a region into a blueprint |
 
 ## Documentation

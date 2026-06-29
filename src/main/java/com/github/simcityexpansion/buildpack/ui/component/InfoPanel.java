@@ -10,6 +10,7 @@ import com.github.simcityexpansion.buildpack.convert.NbtStructure;
 import com.github.simcityexpansion.buildpack.convert.StructureAnalysis;
 import com.github.simcityexpansion.buildpack.convert.StructureAnalysis.MaterialEntry;
 import com.github.simcityexpansion.buildpack.install.PackReader;
+import com.github.simcityexpansion.buildpack.integration.ActivePackProvider;
 import com.github.simcityexpansion.buildpack.model.BuildingMetadata;
 import com.github.simcityexpansion.buildpack.model.ImportFile;
 import com.github.simcityexpansion.buildpack.model.InstalledBuilding;
@@ -178,9 +179,11 @@ public final class InfoPanel {
         row("buildpack.info.version",
             pack.manifest().version().isBlank() ? "-" : pack.manifest().version()),
         row("buildpack.info.buildings", pack.buildings().size()),
-        installed
-            ? Component.translatable("buildpack.info.pack_installed")
-            : Component.translatable("buildpack.info.pack_not_installed"));
+        ActivePackProvider.isActive(pack.manifest().id())
+            ? Component.translatable("buildpack.info.pack_active")
+            : installed
+                ? Component.translatable("buildpack.info.pack_installed")
+                : Component.translatable("buildpack.info.pack_not_installed"));
     clearExtras();
     showPackIcon(pack);
 

@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -43,6 +44,11 @@ public final class ActivePackProvider {
 
   public static boolean isActive(String packId) {
     return BY_PACK.containsKey(packId);
+  }
+
+  /** Ids of all currently active packs (immutable snapshot). */
+  public static Set<String> activePackIds() {
+    return Set.copyOf(BY_PACK.keySet());
   }
 
   /** All active buildings in a category (case-insensitive), or an empty list. */

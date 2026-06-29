@@ -20,6 +20,8 @@ import com.github.simcityexpansion.buildpack.install.BuildingInstaller;
 import com.github.simcityexpansion.buildpack.install.InstallRegistry;
 import com.github.simcityexpansion.buildpack.install.PackInstaller;
 import com.github.simcityexpansion.buildpack.install.PackReader;
+import com.github.simcityexpansion.buildpack.integration.ActivePackProvider;
+import com.github.simcityexpansion.buildpack.integration.PackActivationService;
 import com.github.simcityexpansion.buildpack.model.BuildingCategory;
 import com.github.simcityexpansion.buildpack.model.BuildingMetadata;
 import com.github.simcityexpansion.buildpack.model.FileNames;
@@ -60,6 +62,9 @@ import org.slf4j.LoggerFactory;
  * /buildpack installpack &lt;zip&gt;                 Install a zip build pack
  * /buildpack packs                             List installed build packs
  * /buildpack uninstallpack &lt;packId&gt;            Uninstall a build pack by registry ID
+ * /buildpack activate &lt;zip&gt;                    Serve a pack to SimuKraft virtually (no install)
+ * /buildpack deactivate &lt;packId&gt;               Stop serving an activated pack
+ * /buildpack active                            List currently active packs
  * </pre>
  *
  * <p>Messages use translation components: they are rendered in the player's language when sent to
@@ -114,6 +119,18 @@ public final class BuildPackCommands {
                 .suggests(BuildPackCommands::suggestPackIds)
                 .executes(context -> uninstallPack(context.getSource(),
                     StringArgumentType.getString(context, "id")))))
+        .then(Commands.literal("activate")
+            .then(Commands.argument("zip", StringArgumentType.string())
+                .suggests(BuildPackCommands::suggestZips)
+                .executes(context -> activate(context.getSource(),
+                    StringArgumentType.getString(context, "zip")))))
+        .then(Commands.literal("deactivate")
+            .then(Commands.argument("id", StringArgumentType.string())
+                .suggests(BuildPackCommands::suggestActiveIds)
+                .executes(context -> deactivate(context.getSource(),
+                    StringArgumentType.getString(context, "id")))))
+        .then(Commands.literal("active")
+            .executes(context -> activeList(context.getSource())))
         .then(captureNode()));
   }
 
@@ -295,6 +312,53 @@ public final class BuildPackCommands {
     return 1;
   }
 
+  /** Activates a pack (converted into the cache and served to SimuKraft virtually, not installed). */
+  private static int activate(CommandSourceStack source, String relative) {
+    Path zip = resolveImportFile(relative);
+    if (zip == null) {
+      source.sendFailure(Component.translatable("buildpack.cmd.file_not_found", relative));
+      return 0;
+    }
+    runOffThread(source, () -> {
+      try {
+        PackArchive pack = PackReader.read(zip);
+        List<Component> messages = new ArrayList<>();
+        PackActivationService.activate(pack, messages);
+        messages.add(0,
+            Component.translatable("buildpack.msg.pack_activated", pack.manifest().name()));
+        return new CmdOutcome(true, messages);
+      } catch (IOException | RuntimeException e) {
+        I18nLog.warn(LOGGER, e, "buildpack.log.activate_failed", zip);
+        return CmdOutcome.failure(Component.translatable(
+            "buildpack.msg.invalid_pack", LocalizedIOException.messageOf(e)));
+      }
+    });
+    return 1;
+  }
+
+  private static int deactivate(CommandSourceStack source, String packId) {
+    if (!PackActivationService.isActive(packId)) {
+      source.sendFailure(Component.translatable("buildpack.cmd.pack_not_found", packId));
+      return 0;
+    }
+    PackActivationService.deactivate(packId);
+    source.sendSuccess(
+        () -> Component.translatable("buildpack.msg.pack_deactivated", packId), true);
+    return 1;
+  }
+
+  private static int activeList(CommandSourceStack source) {
+    List<String> ids = new ArrayList<>(ActivePackProvider.activePackIds());
+    if (ids.isEmpty()) {
+      source.sendSuccess(() -> Component.translatable("buildpack.cmd.active.empty"), false);
+      return 0;
+    }
+    ids.sort(String::compareToIgnoreCase);
+    source.sendSuccess(() -> Component.translatable("buildpack.cmd.active.header", ids.size()), false);
+    sendLines(source, ids);
+    return ids.size();
+  }
+
   /** Captures the [from, to] region as a structure and exports it to the import directory in the given format (nbt/litematic/both). */
   private static int capture(CommandSourceStack source, BlockPos a, BlockPos b,
       @Nullable String name, String format, boolean includeBlockEntities) {
@@ -431,6 +495,15 @@ public final class BuildPackCommands {
       SuggestionsBuilder builder) {
     List<String> ids = InstallRegistry.load().entries().stream()
         .map(entry -> quoteIfNeeded(entry.id()))
+        .toList();
+    return SharedSuggestionProvider.suggest(ids, builder);
+  }
+
+  private static CompletableFuture<Suggestions> suggestActiveIds(
+      CommandContext<CommandSourceStack> context,
+      SuggestionsBuilder builder) {
+    List<String> ids = ActivePackProvider.activePackIds().stream()
+        .map(BuildPackCommands::quoteIfNeeded)
         .toList();
     return SharedSuggestionProvider.suggest(ids, builder);
   }

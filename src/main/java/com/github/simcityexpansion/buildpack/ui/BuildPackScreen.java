@@ -602,6 +602,10 @@ public final class BuildPackScreen extends Screen {
       boolean overwrite = form.overwrite();
       runAsyncInstall(() -> BuildingInstaller.install(file, meta, overwrite));
     } else if (selected instanceof PackArchive pack) {
+      // Install and activate are mutually exclusive; switching to file-install drops the virtual one.
+      if (ActivePackProvider.isActive(pack.manifest().id())) {
+        PackActivationService.deactivate(pack.manifest().id());
+      }
       registry.reload();
       runAsyncInstall(() -> PackInstaller.installPack(pack, registry));
     } else if (selected instanceof PackBuildingSelection selection) {
@@ -792,6 +796,12 @@ public final class BuildPackScreen extends Screen {
     CompletableFuture.supplyAsync(() -> {
       List<Component> messages = new ArrayList<>();
       try {
+        // Mutually exclusive with file-install: drop an existing install so buildings don't double up.
+        registry.reload();
+        if (registry.find(pack.manifest().id()).isPresent()
+            && PackInstaller.uninstallPack(pack.manifest().id(), registry)) {
+          messages.add(Component.translatable("buildpack.msg.replaced_install"));
+        }
         PackActivationService.activate(pack, messages);
       } catch (IOException | RuntimeException e) {
         I18nLog.warn(LOGGER, e, "buildpack.log.activate_failed", pack.manifest().id());

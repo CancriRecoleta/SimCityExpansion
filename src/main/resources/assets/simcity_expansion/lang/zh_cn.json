@@ -342,5 +342,9 @@
   "buildpack.log.activate_building_failed": "转换包内建筑失败：%s",
   "buildpack.log.activate_pack_missing": "导入目录中未找到激活的拓展包：%s",
   "buildpack.log.active_read_failed": "读取激活清单失败：%s",
-  "buildpack.log.active_write_failed": "写入激活清单失败：%s"
+  "buildpack.log.active_write_failed": "写入激活清单失败：%s",
+  "buildpack.info.pack_active": "状态：已激活（虚拟，未安装）",
+  "buildpack.msg.replaced_install": "已移除安装文件（改为激活）",
+  "buildpack.cmd.active.empty": "没有激活的拓展包",
+  "buildpack.cmd.active.header": "激活的拓展包（%s 个）："
 }

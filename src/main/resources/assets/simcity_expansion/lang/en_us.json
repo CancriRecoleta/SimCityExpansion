@@ -342,5 +342,9 @@
   "buildpack.log.activate_building_failed": "Failed to convert pack building: %s",
   "buildpack.log.activate_pack_missing": "Active pack not found in import directory: %s",
   "buildpack.log.active_read_failed": "Failed to read active-packs file: %s",
-  "buildpack.log.active_write_failed": "Failed to write active-packs file: %s"
+  "buildpack.log.active_write_failed": "Failed to write active-packs file: %s",
+  "buildpack.info.pack_active": "Status: Activated (virtual, no install)",
+  "buildpack.msg.replaced_install": "Removed the file install (replaced by activation)",
+  "buildpack.cmd.active.empty": "No active packs",
+  "buildpack.cmd.active.header": "Active packs (%s):"
 }
