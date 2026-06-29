@@ -22,6 +22,7 @@ import com.github.simcityexpansion.buildpack.ui.PackBuildingSelection;
 import com.github.simcityexpansion.buildpack.ui.StructureEditorScreen;
 import com.github.simcityexpansion.buildpack.ui.ThemedButton;
 import com.github.simcityexpansion.buildpack.ui.UiFormats;
+import com.github.simcityexpansion.buildpack.ui.UiScale;
 import com.github.simcityexpansion.buildpack.ui.preview.IsoPreview;
 import com.github.simcityexpansion.buildpack.ui.preview.PreviewSlot;
 import com.github.simcityexpansion.buildpack.ui.preview.StructurePreview;
@@ -53,7 +54,7 @@ public final class InfoPanel {
   private static final int INFO_ROW_H = 10;
   private static final int INFO_ROWS = 9;
   private static final int INFO_REGION_H = INFO_ROWS * INFO_ROW_H;
-  private static final int PREVIEW_H = 110;
+  private static final int PREVIEW_H = 132;
   private static final int BUTTON_H = 16;
   private static final int BUTTON_GAP = 2;
 
@@ -290,7 +291,7 @@ public final class InfoPanel {
     if (font == null) {
       return;
     }
-    g.enableScissor(infoX, infoY, infoX + infoW, infoY + INFO_REGION_H);
+    UiScale.enableScissor(g, infoX, infoY, infoX + infoW, infoY + INFO_REGION_H);
     int rowY = infoY;
     for (Component row : rows) {
       g.drawString(font, row, infoX, rowY, BuildPackTheme.LABEL, true);

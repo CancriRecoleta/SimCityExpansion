@@ -11,6 +11,7 @@ import java.util.function.Consumer;
 import com.github.simcityexpansion.buildpack.convert.NbtStructure;
 import com.github.simcityexpansion.buildpack.convert.StructureAnalysis;
 import com.github.simcityexpansion.buildpack.ui.StructurePreviewScreen;
+import com.github.simcityexpansion.buildpack.ui.UiScale;
 import com.mojang.blaze3d.platform.Lighting;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
@@ -830,7 +831,7 @@ public final class StructureScene extends AbstractWidget {
     Matrix4f modelView = cameraModelView(g, x, y, w, h, scale);
     Matrix4f projection = projectionFor(x, y, w, h);
     g.flush();
-    g.enableScissor(x, y, x + w, y + h);
+    UiScale.enableScissor(g, x, y, x + w, y + h);
     RenderSystem.disableDepthTest();
     RenderSystem.enableBlend();
     RenderSystem.defaultBlendFunc();
@@ -1198,7 +1199,7 @@ public final class StructureScene extends AbstractWidget {
     Matrix4f modelView = cameraModelView(g, x, y, w, h, scale);
     Matrix4f projection = projectionFor(x, y, w, h);
     g.flush();
-    g.enableScissor(x, y, x + w, y + h);
+    UiScale.enableScissor(g, x, y, x + w, y + h);
     RenderSystem.enableDepthTest();
     RenderSystem.enableBlend();
     RenderSystem.defaultBlendFunc();
@@ -1347,7 +1348,7 @@ public final class StructureScene extends AbstractWidget {
     Matrix4f modelView = cameraModelView(g, x, y, w, h, scale);
     Matrix4f projection = projectionFor(x, y, w, h);
     g.flush();
-    g.enableScissor(x, y, x + w, y + h);
+    UiScale.enableScissor(g, x, y, x + w, y + h);
     RenderSystem.enableDepthTest();
     RenderSystem.enableBlend();
     RenderSystem.defaultBlendFunc();
@@ -1394,7 +1395,7 @@ public final class StructureScene extends AbstractWidget {
     float scale = Math.min(w, h) * 0.85f / maxDim * zoom;
     if (perspective) {
       g.flush();
-      g.enableScissor(x, y, x + w, y + h);
+      UiScale.enableScissor(g, x, y, x + w, y + h);
       RenderSystem.clear(GL11.GL_DEPTH_BUFFER_BIT, false);
       g.disableScissor();
     }
@@ -1506,7 +1507,7 @@ public final class StructureScene extends AbstractWidget {
     Matrix4f modelView = cameraModelView(g, x, y, w, h, scale);
     Matrix4f projection = projectionFor(x, y, w, h);
     g.flush();
-    g.enableScissor(x, y, x + w, y + h);
+    UiScale.enableScissor(g, x, y, x + w, y + h);
     RenderSystem.enableDepthTest();
     RenderSystem.disableCull();
     RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
@@ -1541,7 +1542,7 @@ public final class StructureScene extends AbstractWidget {
     Matrix4f modelView = cameraModelView(g, x, y, w, h, scale);
     Matrix4f projection = projectionFor(x, y, w, h);
     g.flush();
-    g.enableScissor(x, y, x + w, y + h);
+    UiScale.enableScissor(g, x, y, x + w, y + h);
     RenderSystem.enableDepthTest();
     RenderSystem.disableCull();
     RenderSystem.disableBlend();
@@ -1563,7 +1564,7 @@ public final class StructureScene extends AbstractWidget {
   /** Small structures: immediate per-block rendering every frame (matches original behavior). */
   private void drawImmediate(GuiGraphics g, int x, int y, int w, int h, float scale, Minecraft mc) {
     g.flush();
-    g.enableScissor(x, y, x + w, y + h);
+    UiScale.enableScissor(g, x, y, x + w, y + h);
     PoseStack pose = g.pose();
     pose.pushPose();
     try {

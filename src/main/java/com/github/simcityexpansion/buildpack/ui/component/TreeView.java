@@ -7,6 +7,7 @@ import java.util.Set;
 import java.util.function.Consumer;
 
 import com.github.simcityexpansion.buildpack.ui.NodeIcons;
+import com.github.simcityexpansion.buildpack.ui.UiScale;
 import com.github.simcityexpansion.buildpack.ui.tree.TreeNode;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -153,7 +154,7 @@ public final class TreeView extends AbstractWidget {
     int start = page * perPage;
     int end = Math.min(rows.size(), start + perPage);
 
-    g.enableScissor(x, y, x + w, y + listH);
+    UiScale.enableScissor(g, x, y, x + w, y + listH);
     for (int i = start; i < end; i++) {
       int rowY = y + (i - start) * ROW_HEIGHT;
       Row row = rows.get(i);

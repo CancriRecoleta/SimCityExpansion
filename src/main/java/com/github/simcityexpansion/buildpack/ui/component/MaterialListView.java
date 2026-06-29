@@ -5,6 +5,7 @@ import java.util.function.Consumer;
 
 import com.github.simcityexpansion.buildpack.convert.StructureAnalysis.MaterialEntry;
 import com.github.simcityexpansion.buildpack.ui.UiFormats;
+import com.github.simcityexpansion.buildpack.ui.UiScale;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -84,7 +85,7 @@ public final class MaterialListView extends AbstractWidget {
     int start = page * perPage;
     int end = Math.min(materials.size(), start + perPage);
 
-    g.enableScissor(x, y, x + w, y + listH);
+    UiScale.enableScissor(g, x, y, x + w, y + listH);
     for (int i = start; i < end; i++) {
       MaterialEntry m = materials.get(i);
       int rowY = y + (i - start) * ROW_HEIGHT;

@@ -245,9 +245,9 @@ The built jar is written to `build/libs/`.
 
 ## License
 
-All Rights Reserved. Copyright (c) xinian. This source is published for reference; it is
-not licensed for redistribution or derivative works without permission.
-
+All Rights Reserved. Copyright © 2026 xinian.
+This source is published for reference; it is not licensed for redistribution or derivative works without permission.
+When using in a modpack, you must link back to the original link.
 ## Acknowledgements
 
 - [New-Simukraft-1.21.1](https://github.com/New-Sim-U-Kraft/New-Simukraft-1.21.1) — the

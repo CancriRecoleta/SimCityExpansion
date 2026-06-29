@@ -12,13 +12,13 @@
   "buildpack.action.refresh": "重新整理",
   "buildpack.action.open_folder": "開啟目錄",
   "buildpack.action.close": "關閉",
-  "buildpack.action.install": "安裝到 SimuKraft",
+  "buildpack.action.install": "安裝",
   "buildpack.action.uninstall": "解除安裝",
   "buildpack.action.export": "匯出為擴充包",
   "buildpack.action.batch": "全部安裝",
   "buildpack.action.delete": "刪除檔案",
   "buildpack.action.back": "返回",
-  "buildpack.action.capture": "捕獲選區",
+  "buildpack.action.capture": "捕獲",
 
   "buildpack.tooltip.install": "轉換選中的結構並安裝到 simukraftbuilding 目錄",
   "buildpack.tooltip.batch": "把清單中全部檔案按目前表單選擇的分類批次安裝",
@@ -351,5 +351,12 @@
   "buildpack.action.deactivate": "停用",
   "buildpack.tooltip.activate": "把選中的包直接供給 SimuKraft 而不安裝（開關）；需要 SimuKraft",
   "buildpack.msg.activate_remote": "伺服器上請用 /buildpack activate 啟用（本機啟用不會同步到伺服器）",
-  "buildpack.tree.active_mark": "✔"
+  "buildpack.tree.active_mark": "✔",
+  "buildpack.action.scale_down": "-",
+  "buildpack.action.scale_up": "+",
+  "buildpack.tooltip.scale_down": "縮小管理器介面（Ctrl + 滾輪）",
+  "buildpack.tooltip.scale_up": "放大管理器介面（Ctrl + 滾輪）",
+  "buildpack.msg.ui_scale": "介面縮放：%s%%",
+  "buildpack.log.ui_read_failed": "讀取介面設定失敗：%s",
+  "buildpack.log.ui_write_failed": "寫入介面設定失敗：%s"
 }

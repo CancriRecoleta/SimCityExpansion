@@ -23,6 +23,8 @@ public final class BuildPackTheme {
   /** 1 px border color for panels and preview boxes. */
   public static final int BORDER = 0xFF999999;
 
+  /** Accent color (active tab underline, highlights). */
+  public static final int ACCENT = 0xFF4A90D9;
   /** Title text color. */
   public static final int TITLE = 0xFFFFFFFF;
   /** Info-row and form label grey. */

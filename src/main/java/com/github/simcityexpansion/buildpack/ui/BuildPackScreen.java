@@ -81,11 +81,12 @@ public final class BuildPackScreen extends Screen {
   private static final int SORT_W = 64;
   private static final int BTN_H = 20;
   private static final int ROW2_GAP = 2;
-  private static final int INFO_W = 170;
+  private static final int INFO_W = 200;
   private static final int REFRESH_W = 70;
   private static final int OPEN_W = 90;
   private static final int DEDUPE_W = 90;
   private static final int CLOSE_W = 70;
+  private static final int SCALE_W = 18;
 
   /** Remembers the last active tab within a session. */
   private static SourceTab lastTab = SourceTab.IMPORT;
@@ -105,6 +106,8 @@ public final class BuildPackScreen extends Screen {
   private final InfoPanel infoPanel;
 
   private SourceTab currentTab = lastTab;
+  /** User-chosen manager UI scale; the whole screen is rendered through a matching pose transform. */
+  private float uiScale = UiScale.preference();
   private SortMode sortMode = SortMode.NAME;
   private String searchText = "";
   private List<ImportFile> importFiles = List.of();
@@ -167,15 +170,25 @@ public final class BuildPackScreen extends Screen {
     }
   }
 
+  /** Logical (pre-scale) width the layout is computed in; rendered through a {@code uiScale} pose transform to fill the screen. */
+  private int viewW() {
+    return Math.round(width / uiScale);
+  }
+
+  /** Logical (pre-scale) height the layout is computed in. */
+  private int viewH() {
+    return Math.round(height / uiScale);
+  }
+
   private void computeLayout() {
-    rightX = width - PAD - INFO_W;
+    rightX = viewW() - PAD - INFO_W;
     leftX = PAD;
     leftW = rightX - GAP - leftX;
     tabsY = PAD + TITLE_H + GAP;
     tabW = Math.min(TAB_W, (leftW - GAP * 2) / 3);
     searchY = tabsY + TAB_H + GAP;
     treeY = searchY + SEARCH_H + GAP;
-    row2Y = height - PAD - BTN_H;
+    row2Y = viewH() - PAD - BTN_H;
     int row1Y = row2Y - ROW2_GAP - BTN_H;
     bodyBottom = row1Y - GAP;
     statusX = PAD + REFRESH_W + GAP + OPEN_W + GAP + DEDUPE_W + GAP;
@@ -224,7 +237,7 @@ public final class BuildPackScreen extends Screen {
 
     // Bottom action row
     int actionCount = 7;
-    int actionW = (width - PAD * 2 - GAP * (actionCount - 1)) / actionCount;
+    int actionW = (viewW() - PAD * 2 - GAP * (actionCount - 1)) / actionCount;
     int ax = PAD;
     installButton = action("install", ax, row1Y, actionW, this::runInstall);
     ax += actionW + GAP;
@@ -245,7 +258,12 @@ public final class BuildPackScreen extends Screen {
     action("open_folder", PAD + REFRESH_W + GAP, row2Y, OPEN_W, this::openFolder);
     dedupeButton = action("dedupe",
         PAD + REFRESH_W + GAP + OPEN_W + GAP, row2Y, DEDUPE_W, this::runCleanDuplicates);
-    action("close", width - PAD - CLOSE_W, row2Y, CLOSE_W, this::onClose);
+    int closeX = viewW() - PAD - CLOSE_W;
+    int scaleUpX = closeX - GAP - SCALE_W;
+    int scaleDownX = scaleUpX - GAP - SCALE_W;
+    action("scale_down", scaleDownX, row2Y, SCALE_W, () -> changeScale(-UiScale.STEP));
+    action("scale_up", scaleUpX, row2Y, SCALE_W, () -> changeScale(UiScale.STEP));
+    action("close", closeX, row2Y, CLOSE_W, this::onClose);
 
     updateActionButtons();
     startWatch();
@@ -268,37 +286,50 @@ public final class BuildPackScreen extends Screen {
 
   @Override
   public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-    computeLayout();
-    g.fill(0, 0, width, height, BuildPackTheme.ROOT_BG);
-    BuildPackTheme.panel(g, leftX, treeY, leftW, bodyBottom - treeY);
-    BuildPackTheme.panel(g, rightX, searchY, INFO_W, bodyBottom - searchY);
-    g.drawString(font, Component.translatable("buildpack.title"), leftX + 2, PAD,
-        BuildPackTheme.TITLE, true);
+    // Render the whole manager through a uiScale pose transform; convert the real cursor position to
+    // the matching logical space so widget hover/click line up. UiScale.current lets scissor-using
+    // components correct their clip rects (enableScissor ignores the pose matrix).
+    int lmx = Math.round(mouseX / uiScale);
+    int lmy = Math.round(mouseY / uiScale);
+    UiScale.set(uiScale);
+    g.pose().pushPose();
+    g.pose().scale(uiScale, uiScale, 1.0f);
+    try {
+      computeLayout();
+      g.fill(0, 0, viewW() + 2, viewH() + 2, BuildPackTheme.ROOT_BG);
+      BuildPackTheme.panel(g, leftX, treeY, leftW, bodyBottom - treeY);
+      BuildPackTheme.panel(g, rightX, searchY, INFO_W, bodyBottom - searchY);
+      g.drawString(font, Component.translatable("buildpack.title"), leftX + 2, PAD,
+          BuildPackTheme.TITLE, true);
 
-    infoPanel.renderText(g);
+      infoPanel.renderText(g);
 
-    int statusY = row2Y + (BTN_H - font.lineHeight) / 2;
-    int textX = statusX;
-    g.drawString(font, count, textX, statusY, BuildPackTheme.COUNT, true);
-    textX += font.width(count.getString()) + 8;
-    if (scanning) {
-      Component scan = Component.translatable("buildpack.status.scanning");
-      g.drawString(font, scan, textX, statusY, BuildPackTheme.HINT, true);
-      textX += font.width(scan.getString()) + 8;
-    }
-    if (!message.getString().isEmpty()) {
-      g.drawString(font, message, textX, statusY,
-          messageError ? BuildPackTheme.MESSAGE_ERROR : BuildPackTheme.MESSAGE_OK, true);
-    }
+      int statusY = row2Y + (BTN_H - font.lineHeight) / 2;
+      int textX = statusX;
+      g.drawString(font, count, textX, statusY, BuildPackTheme.COUNT, true);
+      textX += font.width(count.getString()) + 8;
+      if (scanning) {
+        Component scan = Component.translatable("buildpack.status.scanning");
+        g.drawString(font, scan, textX, statusY, BuildPackTheme.HINT, true);
+        textX += font.width(scan.getString()) + 8;
+      }
+      if (!message.getString().isEmpty()) {
+        g.drawString(font, message, textX, statusY,
+            messageError ? BuildPackTheme.MESSAGE_ERROR : BuildPackTheme.MESSAGE_OK, true);
+      }
 
-    super.render(g, mouseX, mouseY, partialTick);
+      super.render(g, lmx, lmy, partialTick);
 
-    // Active-tab underline (drawn on top of the tab buttons).
-    int activeX = leftX + currentTab.ordinal() * (tabW + GAP);
-    g.fill(activeX, tabsY + TAB_H, activeX + tabW, tabsY + TAB_H + 1, 0xFFFFFFFF);
+      // Active-tab underline (drawn on top of the tab buttons).
+      int activeX = leftX + currentTab.ordinal() * (tabW + GAP);
+      g.fill(activeX, tabsY + TAB_H, activeX + tabW, tabsY + TAB_H + 1, BuildPackTheme.ACCENT);
 
-    if (contextMenu != null) {
-      contextMenu.render(g, mouseX, mouseY);
+      if (contextMenu != null) {
+        contextMenu.render(g, lmx, lmy);
+      }
+    } finally {
+      g.pose().popPose();
+      UiScale.set(1.0f);
     }
   }
 
@@ -1085,15 +1116,56 @@ public final class BuildPackScreen extends Screen {
     return FileNames.unique(dir, FileNames.baseName(fileName), FileNames.extension(fileName));
   }
 
+  // ---- Input (coordinates are converted from real pixels to the uiScale logical space) ----
+
   @Override
   public boolean mouseClicked(double mouseX, double mouseY, int button) {
+    double lx = mouseX / uiScale;
+    double ly = mouseY / uiScale;
     if (contextMenu != null) {
       ContextMenu menu = contextMenu;
       contextMenu = null;
-      menu.click(mouseX, mouseY);
+      menu.click(lx, ly);
       return true;
     }
-    return super.mouseClicked(mouseX, mouseY, button);
+    return super.mouseClicked(lx, ly, button);
+  }
+
+  @Override
+  public boolean mouseReleased(double mouseX, double mouseY, int button) {
+    return super.mouseReleased(mouseX / uiScale, mouseY / uiScale, button);
+  }
+
+  @Override
+  public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+    return super.mouseDragged(
+        mouseX / uiScale, mouseY / uiScale, button, dragX / uiScale, dragY / uiScale);
+  }
+
+  @Override
+  public void mouseMoved(double mouseX, double mouseY) {
+    super.mouseMoved(mouseX / uiScale, mouseY / uiScale);
+  }
+
+  @Override
+  public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+    // Ctrl + wheel zooms the manager; otherwise forward in logical space (e.g. tree scrolling).
+    if (hasControlDown()) {
+      changeScale(scrollY > 0 ? UiScale.STEP : -UiScale.STEP);
+      return true;
+    }
+    return super.mouseScrolled(mouseX / uiScale, mouseY / uiScale, scrollX, scrollY);
+  }
+
+  /** Adjusts and persists the UI scale, then re-lays out all widgets for the new scale. */
+  private void changeScale(float delta) {
+    float applied = UiScale.setPreference(uiScale + delta);
+    if (applied != uiScale) {
+      uiScale = applied;
+      rebuildWidgets();
+      setMessage(Component.translatable(
+          "buildpack.msg.ui_scale", Math.round(applied * 100)), false);
+    }
   }
 
   @Override

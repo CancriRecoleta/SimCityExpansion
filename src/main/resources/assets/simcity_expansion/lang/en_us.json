@@ -12,13 +12,13 @@
   "buildpack.action.refresh": "Refresh",
   "buildpack.action.open_folder": "Open Folder",
   "buildpack.action.close": "Close",
-  "buildpack.action.install": "Install to SimuKraft",
+  "buildpack.action.install": "Install",
   "buildpack.action.uninstall": "Uninstall",
   "buildpack.action.export": "Export as Pack",
   "buildpack.action.batch": "Install All",
   "buildpack.action.delete": "Delete File",
   "buildpack.action.back": "Back",
-  "buildpack.action.capture": "Capture Selection",
+  "buildpack.action.capture": "Capture",
 
   "buildpack.tooltip.install": "Convert the selected structure and install it into the simukraftbuilding directory",
   "buildpack.tooltip.batch": "Install every listed file into the category currently selected in the form",
@@ -351,5 +351,12 @@
   "buildpack.action.deactivate": "Deactivate",
   "buildpack.tooltip.activate": "Serve the selected pack to SimuKraft without installing it (toggle); requires SimuKraft",
   "buildpack.msg.activate_remote": "On a server, activate with /buildpack activate (local activation does not reach the server)",
-  "buildpack.tree.active_mark": "✔"
+  "buildpack.tree.active_mark": "✔",
+  "buildpack.action.scale_down": "-",
+  "buildpack.action.scale_up": "+",
+  "buildpack.tooltip.scale_down": "Shrink the manager UI (Ctrl + mouse wheel)",
+  "buildpack.tooltip.scale_up": "Enlarge the manager UI (Ctrl + mouse wheel)",
+  "buildpack.msg.ui_scale": "UI scale: %s%%",
+  "buildpack.log.ui_read_failed": "Failed to read UI settings: %s",
+  "buildpack.log.ui_write_failed": "Failed to write UI settings: %s"
 }

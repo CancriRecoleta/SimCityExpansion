@@ -12,13 +12,13 @@
   "buildpack.action.refresh": "刷新",
   "buildpack.action.open_folder": "打开目录",
   "buildpack.action.close": "关闭",
-  "buildpack.action.install": "安装到 SimuKraft",
+  "buildpack.action.install": "安装",
   "buildpack.action.uninstall": "卸载",
   "buildpack.action.export": "导出为拓展包",
   "buildpack.action.batch": "全部安装",
   "buildpack.action.delete": "删除文件",
   "buildpack.action.back": "返回",
-  "buildpack.action.capture": "捕获选区",
+  "buildpack.action.capture": "捕获",
 
   "buildpack.tooltip.install": "转换选中的结构并安装到 simukraftbuilding 目录",
   "buildpack.tooltip.batch": "把列表中全部文件按当前表单选择的分类批量安装",
@@ -351,5 +351,12 @@
   "buildpack.action.deactivate": "停用",
   "buildpack.tooltip.activate": "把选中的包直接供给 SimuKraft 而不安装（开关）；需要 SimuKraft",
   "buildpack.msg.activate_remote": "服务器上请用 /buildpack activate 激活（本地激活不会同步到服务器）",
-  "buildpack.tree.active_mark": "✔"
+  "buildpack.tree.active_mark": "✔",
+  "buildpack.action.scale_down": "-",
+  "buildpack.action.scale_up": "+",
+  "buildpack.tooltip.scale_down": "缩小管理器界面（Ctrl + 滚轮）",
+  "buildpack.tooltip.scale_up": "放大管理器界面（Ctrl + 滚轮）",
+  "buildpack.msg.ui_scale": "界面缩放：%s%%",
+  "buildpack.log.ui_read_failed": "读取界面设置失败：%s",
+  "buildpack.log.ui_write_failed": "写入界面设置失败：%s"
 }
