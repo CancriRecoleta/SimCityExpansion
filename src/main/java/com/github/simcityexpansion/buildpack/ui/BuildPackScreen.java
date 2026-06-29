@@ -15,6 +15,7 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 
 import com.github.simcityexpansion.buildpack.BuildPack;
 import com.github.simcityexpansion.buildpack.I18nLog;
@@ -29,6 +30,7 @@ import com.github.simcityexpansion.buildpack.install.PackReader;
 import com.github.simcityexpansion.buildpack.install.SkFileReader;
 import com.github.simcityexpansion.buildpack.model.BuildingCategory;
 import com.github.simcityexpansion.buildpack.model.BuildingMetadata;
+import com.github.simcityexpansion.buildpack.model.FileNames;
 import com.github.simcityexpansion.buildpack.model.FileOps;
 import com.github.simcityexpansion.buildpack.model.ImportFile;
 import com.github.simcityexpansion.buildpack.model.ImportIndex;
@@ -115,6 +117,8 @@ public final class BuildPackScreen extends Screen {
   private Set<Path> duplicates = Set.of();
   private volatile boolean scanning;
   private volatile int enrichGen;
+  /** True while a background install/convert is running; gates the action buttons against re-entry. */
+  private volatile boolean busy;
   private WatchService watcher;
   private final AtomicBoolean refreshPending = new AtomicBoolean();
 
@@ -320,6 +324,8 @@ public final class BuildPackScreen extends Screen {
 
   /** Rescans all three sources and refreshes the list. */
   private void refresh() {
+    // Pick up registry changes made elsewhere (e.g. the dedicated-server command) before scanning.
+    registry.reload();
     importFiles = ImportScanner.scan();
 
     List<PackArchive> parsed = new ArrayList<>();
@@ -565,13 +571,13 @@ public final class BuildPackScreen extends Screen {
     boolean canUninstall =
         (selected instanceof InstalledBuilding b && b.managed())
         || (selected instanceof PackArchive p && registry.find(p.manifest().id()).isPresent());
-    setActive(installButton, canInstall);
-    setActive(uninstallButton, canUninstall);
-    setActive(deleteButton,
-        selected instanceof ImportFile || !checkedOfType(ImportFile.class).isEmpty());
-    setActive(exportButton, currentTab == SourceTab.INSTALLED
+    setActive(installButton, canInstall && !busy);
+    setActive(uninstallButton, canUninstall && !busy);
+    setActive(deleteButton, !busy
+        && (selected instanceof ImportFile || !checkedOfType(ImportFile.class).isEmpty()));
+    setActive(exportButton, !busy && currentTab == SourceTab.INSTALLED
         && installed.stream().anyMatch(building -> matches(building.name())));
-    setActive(batchButton, currentTab == SourceTab.IMPORT
+    setActive(batchButton, !busy && currentTab == SourceTab.IMPORT
         && importFiles.stream().anyMatch(file -> matches(file.fileName())));
   }
 
@@ -584,36 +590,97 @@ public final class BuildPackScreen extends Screen {
   // ---- Actions ----
 
   private void runInstall() {
-    BuildingInstaller.InstallResult result;
-    if (selected instanceof ImportFile file) {
-      result = BuildingInstaller.install(file, form.model(), form.overwrite());
-    } else if (selected instanceof PackArchive pack) {
-      result = PackInstaller.installPack(pack, registry);
-    } else if (selected instanceof PackBuildingSelection selection) {
-      result = PackInstaller.installSingle(selection.pack(), selection.entry());
-    } else {
+    if (busy) {
       return;
     }
-    showResult(result.messages(), !result.ok());
-    refresh();
+    if (selected instanceof ImportFile file) {
+      // Snapshot the live form model: the installer writes the computed size back into it, and the
+      // user may keep editing the fields while the background thread runs.
+      BuildingMetadata meta = form.model().copy();
+      boolean overwrite = form.overwrite();
+      runAsyncInstall(() -> BuildingInstaller.install(file, meta, overwrite));
+    } else if (selected instanceof PackArchive pack) {
+      registry.reload();
+      runAsyncInstall(() -> PackInstaller.installPack(pack, registry));
+    } else if (selected instanceof PackBuildingSelection selection) {
+      runAsyncInstall(() -> PackInstaller.installSingle(selection.pack(), selection.entry()));
+    }
+  }
+
+  /**
+   * Runs a heavy convert/install off the render thread (DataFixer upgrades and large-structure
+   * conversion would otherwise freeze the game), then applies the result and refreshes back on the
+   * main thread. Re-entry is blocked by {@link #busy}, which also disables the action buttons.
+   */
+  private void runAsyncInstall(Supplier<BuildingInstaller.InstallResult> work) {
+    busy = true;
+    updateActionButtons();
+    setMessage(Component.translatable("buildpack.status.installing"), false);
+    CompletableFuture.supplyAsync(work).whenComplete((result, error) ->
+        Minecraft.getInstance().execute(() -> {
+          busy = false;
+          if (Minecraft.getInstance().screen != this) {
+            return;
+          }
+          if (error != null) {
+            Throwable cause = error.getCause() != null ? error.getCause() : error;
+            I18nLog.warn(LOGGER, cause, "buildpack.log.install_failed", "");
+            setMessage(Component.translatable(
+                "buildpack.msg.parse_failed", LocalizedIOException.messageOf(cause)), true);
+          } else {
+            showResult(result.messages(), !result.ok());
+          }
+          refresh();
+        }));
   }
 
   private void runBatchInstall() {
-    List<ImportFile> files = checkedOfType(ImportFile.class);
-    if (files.isEmpty()) {
-      files = filteredImportFiles();
+    if (busy) {
+      return;
     }
+    List<ImportFile> checked = checkedOfType(ImportFile.class);
+    List<ImportFile> files = checked.isEmpty() ? filteredImportFiles() : checked;
     if (files.isEmpty()) {
       return;
     }
+    List<ImportFile> snapshot = List.copyOf(files);
     BuildingCategory category = form.model().category;
+    // Resolve the author on the main thread; the background thread must not touch Minecraft.player.
+    String author = Minecraft.getInstance().player != null
+        ? Minecraft.getInstance().player.getGameProfile().getName() : "";
+    busy = true;
+    updateActionButtons();
+    setMessage(Component.translatable("buildpack.status.installing"), false);
+    CompletableFuture.supplyAsync(() -> batchInstall(snapshot, category, author))
+        .whenComplete((counts, error) -> Minecraft.getInstance().execute(() -> {
+          busy = false;
+          if (Minecraft.getInstance().screen != this) {
+            return;
+          }
+          if (error != null) {
+            Throwable cause = error.getCause() != null ? error.getCause() : error;
+            I18nLog.warn(LOGGER, cause, "buildpack.log.batch_failed", "");
+            setMessage(Component.translatable(
+                "buildpack.msg.parse_failed", LocalizedIOException.messageOf(cause)), true);
+          } else {
+            setMessage(Component.translatable(
+                "buildpack.msg.batch_done", counts[0], counts[1]), counts[1] > 0);
+          }
+          refresh();
+        }));
+  }
+
+  /** Installs every file into {@code category} on a background thread; returns {@code {succeeded, failed}}. */
+  private static int[] batchInstall(List<ImportFile> files, BuildingCategory category, String author) {
     int ok = 0;
     int failed = 0;
     for (ImportFile file : files) {
       try {
         BuildingMetadata meta = new BuildingMetadata();
         meta.prefill(ParsedStructure.parse(file.path(), file.format()).info(), file.baseName());
-        prefillAuthor(meta);
+        if (meta.author.isBlank()) {
+          meta.author = author;
+        }
         meta.category = category;
         if (BuildingInstaller.install(file, meta, false).ok()) {
           ok++;
@@ -625,8 +692,7 @@ public final class BuildPackScreen extends Screen {
         failed++;
       }
     }
-    setMessage(Component.translatable("buildpack.msg.batch_done", ok, failed), failed > 0);
-    refresh();
+    return new int[] {ok, failed};
   }
 
   private void runDelete() {
@@ -678,7 +744,11 @@ public final class BuildPackScreen extends Screen {
   }
 
   private void runUninstall() {
+    if (busy) {
+      return;
+    }
     if (selected instanceof InstalledBuilding building && building.managed()) {
+      registry.reload();
       BuildingInstaller.uninstall(building);
       if (building.packId() != null) {
         String prefix = building.category().dirName() + "/";
@@ -689,6 +759,7 @@ public final class BuildPackScreen extends Screen {
       setMessage(Component.translatable("buildpack.msg.uninstalled", building.name()), false);
       refresh();
     } else if (selected instanceof PackArchive pack) {
+      registry.reload();
       if (PackInstaller.uninstallPack(pack.manifest().id(), registry)) {
         setMessage(Component.translatable("buildpack.msg.uninstalled", pack.manifest().name()), false);
       }
@@ -787,6 +858,7 @@ public final class BuildPackScreen extends Screen {
     List<ContextMenu.Item> items = new ArrayList<>();
     for (BuildingCategory category : BuildingCategory.values()) {
       items.add(new ContextMenu.Item(category.displayName(), () -> {
+        registry.reload();
         BuildingInstaller.recategorize(building, category, registry);
         refresh();
       }));
@@ -917,18 +989,7 @@ public final class BuildPackScreen extends Screen {
   }
 
   private static Path uniqueTarget(Path dir, String fileName) {
-    Path target = dir.resolve(fileName);
-    if (!Files.exists(target)) {
-      return target;
-    }
-    int dot = fileName.lastIndexOf('.');
-    String base = dot > 0 ? fileName.substring(0, dot) : fileName;
-    String extension = dot > 0 ? fileName.substring(dot) : "";
-    int suffix = 2;
-    while (Files.exists(target)) {
-      target = dir.resolve(base + "_" + suffix++ + extension);
-    }
-    return target;
+    return FileNames.unique(dir, FileNames.baseName(fileName), FileNames.extension(fileName));
   }
 
   @Override

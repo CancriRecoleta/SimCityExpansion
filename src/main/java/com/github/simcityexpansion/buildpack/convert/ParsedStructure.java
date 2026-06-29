@@ -4,6 +4,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.file.Path;
 
+import com.github.simcityexpansion.buildpack.BuildPack;
 import com.github.simcityexpansion.buildpack.model.StructureFormat;
 import com.github.simcityexpansion.buildpack.model.StructureInfo;
 import net.minecraft.nbt.CompoundTag;
@@ -22,14 +23,15 @@ public record ParsedStructure(StructureInfo info, NbtStructure structure) {
 
   /** Parses a structure file in the given format (gzip NBT is read only once). */
   public static ParsedStructure parse(Path path, StructureFormat format) throws IOException {
-    return parse(NbtIo.readCompressed(path, NbtAccounter.unlimitedHeap()), format);
+    return parse(NbtIo.readCompressed(
+        path, NbtAccounter.create(BuildPack.MAX_STRUCTURE_NBT_BYTES)), format);
   }
 
   /** Parses from in-memory bytes (used for entries inside a zip build pack, avoiding a disk write). */
   public static ParsedStructure parse(byte[] gzipBytes, StructureFormat format)
       throws IOException {
-    return parse(NbtIo.readCompressed(
-        new ByteArrayInputStream(gzipBytes), NbtAccounter.unlimitedHeap()), format);
+    return parse(NbtIo.readCompressed(new ByteArrayInputStream(gzipBytes),
+        NbtAccounter.create(BuildPack.MAX_STRUCTURE_NBT_BYTES)), format);
   }
 
   /** Parses from an already-read root tag. */

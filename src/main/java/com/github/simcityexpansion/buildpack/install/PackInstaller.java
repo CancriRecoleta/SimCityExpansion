@@ -8,7 +8,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -24,6 +28,7 @@ import com.github.simcityexpansion.buildpack.convert.StructureNbtWriter;
 import com.github.simcityexpansion.buildpack.convert.StructureUpgrader;
 import com.github.simcityexpansion.buildpack.install.BuildingInstaller.InstallResult;
 import com.github.simcityexpansion.buildpack.model.BuildingMetadata;
+import com.github.simcityexpansion.buildpack.model.FileNames;
 import com.github.simcityexpansion.buildpack.model.PackArchive;
 import com.github.simcityexpansion.buildpack.model.PackBuildingEntry;
 import com.github.simcityexpansion.buildpack.model.StructureFormat;
@@ -45,15 +50,30 @@ public final class PackInstaller {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(PackInstaller.class);
 
+  /**
+   * Per-zip context shared across every building installed from one pack.
+   *
+   * @param reclaimable {@code category/name} keys this pack already owns and may overwrite
+   * @param packName the pack's display name, appended to a building's name on a cross-pack conflict
+   */
+  private record PackContext(ZipFile zip, Map<String, String> hashes,
+      Set<String> reclaimable, String packName) {}
+
   /** Installs an entire build pack: converts/copies structures per building, generates or extracts .sk files, and registers the pack. */
   public static InstallResult installPack(PackArchive pack, InstallRegistry registry) {
     List<Component> messages = new ArrayList<>();
     List<String> installedFiles = new ArrayList<>();
     int installed = 0;
+    // Resolve the previous install first so this pack can reclaim (overwrite) its own file names on
+    // reinstall/update, instead of colliding with them and drifting to _2/_3 each time.
+    InstallRegistry.Entry previous = registry.find(pack.manifest().id()).orElse(null);
+    Set<String> reclaimable = reclaimableNames(previous);
     try (ZipFile zip = new ZipFile(pack.zipPath().toFile())) {
+      PackContext context = new PackContext(
+          zip, readIndexHashes(zip), reclaimable, pack.manifest().name());
       for (PackBuildingEntry building : pack.buildings()) {
         try {
-          installBuilding(zip, building, installedFiles, messages);
+          installBuilding(context, building, installedFiles, messages);
           installed++;
         } catch (IOException | RuntimeException e) {
           I18nLog.warn(LOGGER, e, "buildpack.log.pack_building_failed", building.structureEntry());
@@ -74,7 +94,6 @@ public final class PackInstaller {
       return new InstallResult(false, messages, null);
     }
 
-    InstallRegistry.Entry previous = registry.find(pack.manifest().id()).orElse(null);
     int removed = removeOrphans(previous, installedFiles);
     registry.add(new InstallRegistry.Entry(
         pack.manifest().id(), pack.manifest().name(), pack.manifest().version(),
@@ -86,6 +105,24 @@ public final class PackInstaller {
         : Component.translatable(
             "buildpack.msg.pack_installed", pack.manifest().name(), installed));
     return new InstallResult(true, messages, null);
+  }
+
+  /**
+   * Base names (as {@code category/name}) the pack installed previously and may therefore reclaim
+   * (overwrite) on this install, so its own file names stay stable across reinstall/update.
+   */
+  private static Set<String> reclaimableNames(@Nullable InstallRegistry.Entry previous) {
+    if (previous == null) {
+      return Set.of();
+    }
+    Set<String> names = new HashSet<>();
+    for (String file : previous.files()) {
+      int slash = file.lastIndexOf('/');
+      if (slash > 0) {
+        names.add(file.substring(0, slash + 1) + FileNames.baseName(file.substring(slash + 1)));
+      }
+    }
+    return names;
   }
 
   /** Removes files present in the old version but absent from the new version during a pack update; returns the number of files deleted. */
@@ -116,7 +153,9 @@ public final class PackInstaller {
   public static InstallResult installSingle(PackArchive pack, PackBuildingEntry building) {
     List<Component> messages = new ArrayList<>();
     try (ZipFile zip = new ZipFile(pack.zipPath().toFile())) {
-      String finalName = installBuilding(zip, building, null, messages);
+      PackContext context = new PackContext(
+          zip, readIndexHashes(zip), Set.of(), pack.manifest().name());
+      String finalName = installBuilding(context, building, null, messages);
       messages.add(0, Component.translatable("buildpack.msg.installed",
           building.category().dirName() + "/" + finalName));
       return new InstallResult(true, messages, null);
@@ -155,13 +194,20 @@ public final class PackInstaller {
    * @param installedFiles manifest collector for full-pack mode; pass {@code null} for
    *     single-building installs (no registry entry; the copied .sk gets the generated marker)
    */
-  private static String installBuilding(ZipFile zip, PackBuildingEntry building,
+  private static String installBuilding(PackContext context, PackBuildingEntry building,
       @Nullable List<String> installedFiles, List<Component> messages) throws IOException {
+    ZipFile zip = context.zip();
+    Map<String, String> hashes = context.hashes();
     Files.createDirectories(building.category().dir());
 
+    String categoryPrefix = building.category().dirName() + "/";
     String baseName = BuildingInstaller.sanitizeFileName(building.name());
-    String finalName = BuildingInstaller.resolveConflict(building.category().dir(), baseName);
-    if (!finalName.equals(baseName)) {
+    // A building from a different pack may already own this name; keep both by suffixing, but let
+    // this pack reclaim the names it installed before so reinstalling does not drift to _2/_3.
+    String finalName = BuildingInstaller.resolveConflict(building.category().dir(), baseName,
+        candidate -> context.reclaimable().contains(categoryPrefix + candidate));
+    boolean conflicted = !finalName.equals(baseName);
+    if (conflicted) {
       messages.add(Component.translatable("buildpack.msg.name_conflict", finalName));
     }
     Path nbtTarget = building.category().dir().resolve(finalName + ".nbt");
@@ -170,8 +216,9 @@ public final class PackInstaller {
     // Read the structure entry into memory in one pass: vanilla format is written directly to disk;
     // litematic/schem is parsed and converted; old-version structures are upgraded to the current DataVersion via DataFixer.
     byte[] structureBytes = readEntry(zip, building.structureEntry());
-    CompoundTag root = NbtIo.readCompressed(
-        new ByteArrayInputStream(structureBytes), NbtAccounter.unlimitedHeap());
+    verifyHash(hashes, building.structureEntry(), structureBytes, messages);
+    CompoundTag root = NbtIo.readCompressed(new ByteArrayInputStream(structureBytes),
+        NbtAccounter.create(BuildPack.MAX_STRUCTURE_NBT_BYTES));
     NbtStructure structure;
     switch (building.format()) {
       case LITEMATIC, SCHEM -> {
@@ -201,8 +248,9 @@ public final class PackInstaller {
 
     // Install SimuKraft native job/trade definitions as-is.
     if (building.simukraftJsonEntry() != null) {
-      Files.write(building.category().dir().resolve(finalName + ".json"),
-          readEntry(zip, building.simukraftJsonEntry()));
+      byte[] jsonBytes = readEntry(zip, building.simukraftJsonEntry());
+      verifyHash(hashes, building.simukraftJsonEntry(), jsonBytes, messages);
+      Files.write(building.category().dir().resolve(finalName + ".json"), jsonBytes);
     }
 
     if (building.skEntry() != null) {
@@ -210,6 +258,14 @@ public final class PackInstaller {
       // For single-building installs, prepend the generated marker line (SimuKraft skips # comments)
       // so the "Installed" tab can recognize and uninstall the building.
       byte[] skBytes = readEntry(zip, building.skEntry());
+      verifyHash(hashes, building.skEntry(), skBytes, messages);
+      if (conflicted) {
+        // Same name as another pack's building: disambiguate only the in-game display name (all
+        // other author-authored fields are preserved) so the two are distinguishable.
+        String original = SkFileReader.parseFields(skBytes).getOrDefault("name", building.name());
+        skBytes = renameSkDisplay(skBytes, disambiguate(
+            original.isBlank() ? building.name() : original, context.packName()));
+      }
       if (installedFiles == null) {
         byte[] marker = ("# " + BuildPack.GENERATED_MARKER + System.lineSeparator())
             .getBytes(StandardCharsets.UTF_8);
@@ -225,6 +281,9 @@ public final class PackInstaller {
           : new BuildingMetadata();
       if (meta.name.isBlank()) {
         meta.name = building.name();
+      }
+      if (conflicted) {
+        meta.name = disambiguate(meta.name, context.packName());
       }
       meta.category = building.category();
       meta.sizeX = structure.sizeX;
@@ -242,6 +301,32 @@ public final class PackInstaller {
       }
     }
     return finalName;
+  }
+
+  /** Appends the pack name so same-named buildings from different packs are distinguishable in-game. */
+  private static String disambiguate(String displayName, String packName) {
+    return packName.isBlank() ? displayName : displayName + " (" + packName + ")";
+  }
+
+  /** Returns the .sk bytes with the {@code name} field set to {@code newName}, preserving every other line. */
+  private static byte[] renameSkDisplay(byte[] skBytes, String newName) {
+    StringBuilder out = new StringBuilder(skBytes.length + newName.length());
+    boolean replaced = false;
+    for (String line : new String(skBytes, StandardCharsets.UTF_8).split("\\R", -1)) {
+      String trimmed = line.trim();
+      int colon = trimmed.indexOf(':');
+      if (!replaced && !trimmed.startsWith("#") && colon > 0
+          && trimmed.substring(0, colon).trim().equals("name")) {
+        out.append("name:").append(newName).append('\n');
+        replaced = true;
+      } else {
+        out.append(line).append('\n');
+      }
+    }
+    if (!replaced) {
+      out.append("name:").append(newName).append('\n');
+    }
+    return out.toString().getBytes(StandardCharsets.UTF_8);
   }
 
   /** Parses this mod's building metadata JSON from a zip entry. */
@@ -287,8 +372,56 @@ public final class PackInstaller {
       throw new LocalizedIOException(
           Component.translatable("buildpack.error.zip_entry_missing", entryName));
     }
+    // Reject oversized entries (zip bombs): check the declared size first, then bound the actual read.
+    if (entry.getSize() > BuildPack.MAX_PACK_ENTRY_BYTES) {
+      throw new LocalizedIOException(
+          Component.translatable("buildpack.error.entry_too_large", entryName));
+    }
     try (InputStream stream = zip.getInputStream(entry)) {
-      return stream.readAllBytes();
+      byte[] bytes = stream.readNBytes((int) BuildPack.MAX_PACK_ENTRY_BYTES + 1);
+      if (bytes.length > BuildPack.MAX_PACK_ENTRY_BYTES) {
+        throw new LocalizedIOException(
+            Component.translatable("buildpack.error.entry_too_large", entryName));
+      }
+      return bytes;
+    }
+  }
+
+  /**
+   * Reads the SHA-256 file manifest from {@code index.json} ({@code entry path -> hex hash}); returns
+   * an empty map when the pack has no index or it cannot be read.
+   */
+  private static Map<String, String> readIndexHashes(ZipFile zip) {
+    ZipEntry entry = zip.getEntry("index.json");
+    if (entry == null || entry.getSize() > BuildPack.MAX_PACK_JSON_BYTES) {
+      return Map.of();
+    }
+    try (InputStreamReader reader = new InputStreamReader(
+        zip.getInputStream(entry), StandardCharsets.UTF_8)) {
+      JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
+      if (!root.has("files") || !root.get("files").isJsonArray()) {
+        return Map.of();
+      }
+      Map<String, String> hashes = new HashMap<>();
+      for (JsonElement element : root.getAsJsonArray("files")) {
+        JsonObject file = element.getAsJsonObject();
+        if (file.has("path") && file.has("sha256")) {
+          hashes.put(file.get("path").getAsString(), file.get("sha256").getAsString());
+        }
+      }
+      return hashes;
+    } catch (IOException | RuntimeException e) {
+      I18nLog.warn(LOGGER, e, "buildpack.log.index_verify_failed");
+      return Map.of();
+    }
+  }
+
+  /** Warns (without aborting) when a packed file's bytes do not match the SHA-256 recorded in {@code index.json}. */
+  private static void verifyHash(Map<String, String> hashes, String entryName, byte[] bytes,
+      List<Component> messages) {
+    String expected = hashes.get(entryName);
+    if (expected != null && !expected.equalsIgnoreCase(BuildPack.sha256Hex(bytes))) {
+      messages.add(Component.translatable("buildpack.msg.checksum_mismatch", entryName));
     }
   }
 }

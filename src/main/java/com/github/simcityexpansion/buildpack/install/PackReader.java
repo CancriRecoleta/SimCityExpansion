@@ -15,8 +15,10 @@ import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
+import com.github.simcityexpansion.buildpack.BuildPack;
 import com.github.simcityexpansion.buildpack.LocalizedIOException;
 import com.github.simcityexpansion.buildpack.model.BuildingCategory;
+import com.github.simcityexpansion.buildpack.model.FileNames;
 import com.github.simcityexpansion.buildpack.model.PackArchive;
 import com.github.simcityexpansion.buildpack.model.PackBuildingEntry;
 import com.github.simcityexpansion.buildpack.model.PackManifest;
@@ -70,7 +72,7 @@ public final class PackReader {
         String lower = fileName.toLowerCase(Locale.ROOT);
         String baseName = lower.endsWith(".meta.json")
             ? fileName.substring(0, fileName.length() - ".meta.json".length())
-            : stripExtension(fileName);
+            : FileNames.baseName(fileName);
         BuildingFiles files = grouped.computeIfAbsent(
             parts[1] + "/" + baseName, key -> new BuildingFiles(category, baseName));
         StructureFormat format = StructureFormat.byFileName(lower).orElse(null);
@@ -91,7 +93,7 @@ public final class PackReader {
         if (files.structureEntry == null) {
           continue;
         }
-        files.classifyPlainJson(zip);
+        files.classifyPlainJson(zip, manifest.format());
         buildings.add(new PackBuildingEntry(files.category, files.baseName,
             files.structureEntry, files.format, files.skEntry,
             files.metaJsonEntry, files.simukraftJsonEntry));
@@ -111,6 +113,10 @@ public final class PackReader {
     if (manifestEntry == null) {
       throw new LocalizedIOException(
           Component.translatable("buildpack.error.pack_no_manifest"));
+    }
+    if (manifestEntry.getSize() > BuildPack.MAX_PACK_JSON_BYTES) {
+      throw new LocalizedIOException(
+          Component.translatable("buildpack.error.entry_too_large", "pack.json"));
     }
     JsonObject json;
     try (InputStreamReader reader = new InputStreamReader(
@@ -146,19 +152,23 @@ public final class PackReader {
         throw new LocalizedIOException(
             Component.translatable("buildpack.error.zip_entry_missing", entryName));
       }
+      if (entry.getSize() > BuildPack.MAX_PACK_ENTRY_BYTES) {
+        throw new LocalizedIOException(
+            Component.translatable("buildpack.error.entry_too_large", entryName));
+      }
       try (InputStream stream = zip.getInputStream(entry)) {
-        return stream.readAllBytes();
+        byte[] bytes = stream.readNBytes((int) BuildPack.MAX_PACK_ENTRY_BYTES + 1);
+        if (bytes.length > BuildPack.MAX_PACK_ENTRY_BYTES) {
+          throw new LocalizedIOException(
+              Component.translatable("buildpack.error.entry_too_large", entryName));
+        }
+        return bytes;
       }
     }
   }
 
   private static String getString(JsonObject json, String key, String fallback) {
     return json.has(key) ? json.get(key).getAsString() : fallback;
-  }
-
-  private static String stripExtension(String fileName) {
-    int dot = fileName.lastIndexOf('.');
-    return dot > 0 ? fileName.substring(0, dot) : fileName;
   }
 
   private static final class BuildingFiles {
@@ -177,16 +187,16 @@ public final class PackReader {
     }
 
     /**
-     * Classifies {@code <name>.json}: in v2 packs it is a SimuKraft native definition;
-     * in v1 legacy packs it was used as mod metadata — the two are distinguished
-     * heuristically by content (presence of gameplay keys such as offers/containers/job
-     * indicates a native definition), ensuring backwards compatibility with legacy packs.
+     * Classifies {@code <name>.json}. From format v2 on, this mod's metadata always lives in
+     * {@code <name>.meta.json}, so a plain {@code <name>.json} is unambiguously a SimuKraft native
+     * definition. Only v1 legacy packs are ambiguous; there the two are distinguished heuristically
+     * by content (gameplay keys such as offers/containers/job indicate a native definition).
      */
-    void classifyPlainJson(ZipFile zip) {
+    void classifyPlainJson(ZipFile zip, int format) {
       if (plainJsonEntry == null) {
         return;
       }
-      if (metaJsonEntry != null) {
+      if (metaJsonEntry != null || format >= 2) {
         simukraftJsonEntry = plainJsonEntry;
         return;
       }

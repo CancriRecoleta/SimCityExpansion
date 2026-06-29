@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 import com.github.simcityexpansion.buildpack.I18nLog;
 import com.github.simcityexpansion.buildpack.LocalizedIOException;
@@ -60,6 +62,7 @@ public final class ExportScreen extends Screen {
   private PreviewSlot iconSlot;
   private @Nullable byte[] autoIconCache;
   private Component status = Component.empty();
+  private boolean exporting;
 
   private ExportScreen(Screen parent, List<InstalledBuilding> buildings) {
     super(Component.translatable("buildpack.export.title"));
@@ -191,20 +194,39 @@ public final class ExportScreen extends Screen {
   }
 
   private void doExport() {
+    if (exporting) {
+      return;
+    }
     PackExporter.ExportOptions options = new PackExporter.ExportOptions(
         nameField.getValue().trim(), versionField.getValue().trim(),
         authorField.getValue().trim(), descField.getValue().trim(),
         includeSk.selected(), includeJson.selected());
+    // Resolve the icon on the main thread (auto-rendering a preview touches client/GPU state);
+    // only the heavy structure reads and zip writing run off-thread.
     byte[] icon = includeIcon.selected() ? resolveIconBytes() : null;
-    try {
-      PackExporter.export(buildings, options, icon);
-      Util.getPlatform().openPath(PackExporter.exportDir());
-      minecraft.setScreen(parent);
-    } catch (IOException | RuntimeException e) {
-      I18nLog.warn(LOGGER, e, "buildpack.log.export_failed");
-      status = Component.translatable(
-          "buildpack.msg.parse_failed", LocalizedIOException.messageOf(e));
-    }
+    exporting = true;
+    status = Component.translatable("buildpack.status.exporting");
+    CompletableFuture.supplyAsync(() -> {
+      try {
+        return PackExporter.export(buildings, options, icon);
+      } catch (IOException e) {
+        throw new CompletionException(e);
+      }
+    }).whenComplete((path, error) -> Minecraft.getInstance().execute(() -> {
+      exporting = false;
+      if (Minecraft.getInstance().screen != this) {
+        return;
+      }
+      if (error != null) {
+        Throwable cause = error.getCause() != null ? error.getCause() : error;
+        I18nLog.warn(LOGGER, cause, "buildpack.log.export_failed");
+        status = Component.translatable(
+            "buildpack.msg.parse_failed", LocalizedIOException.messageOf(cause));
+      } else {
+        Util.getPlatform().openPath(PackExporter.exportDir());
+        minecraft.setScreen(parent);
+      }
+    }));
   }
 
   @Override

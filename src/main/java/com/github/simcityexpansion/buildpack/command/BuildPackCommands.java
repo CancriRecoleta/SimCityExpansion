@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Supplier;
 
 import com.github.simcityexpansion.buildpack.I18nLog;
 import com.github.simcityexpansion.buildpack.LocalizedIOException;
@@ -21,6 +22,7 @@ import com.github.simcityexpansion.buildpack.install.PackInstaller;
 import com.github.simcityexpansion.buildpack.install.PackReader;
 import com.github.simcityexpansion.buildpack.model.BuildingCategory;
 import com.github.simcityexpansion.buildpack.model.BuildingMetadata;
+import com.github.simcityexpansion.buildpack.model.FileNames;
 import com.github.simcityexpansion.buildpack.model.ImportFile;
 import com.github.simcityexpansion.buildpack.model.ImportScanner;
 import com.github.simcityexpansion.buildpack.model.PackArchive;
@@ -32,6 +34,7 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
+import net.minecraft.Util;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
@@ -39,6 +42,7 @@ import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.server.MinecraftServer;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -203,28 +207,31 @@ public final class BuildPackCommands {
       return 0;
     }
 
-    try {
-      ImportFile importFile = new ImportFile(file, format,
-          Files.size(file), Files.getLastModifiedTime(file).toInstant());
-      BuildingMetadata meta = new BuildingMetadata();
-      meta.prefill(ParsedStructure.parse(file, format).info(), importFile.baseName());
-      if (name != null && !name.isBlank()) {
-        meta.name = name.trim();
-      }
-      if (meta.author.isBlank()) {
-        meta.author = source.getTextName();
-      }
-      meta.category = category;
+    BuildingCategory resolvedCategory = category;
+    String author = source.getTextName();
+    runOffThread(source, () -> {
+      try {
+        ImportFile importFile = new ImportFile(file, format,
+            Files.size(file), Files.getLastModifiedTime(file).toInstant());
+        BuildingMetadata meta = new BuildingMetadata();
+        meta.prefill(ParsedStructure.parse(file, format).info(), importFile.baseName());
+        if (name != null && !name.isBlank()) {
+          meta.name = name.trim();
+        }
+        if (meta.author.isBlank()) {
+          meta.author = author;
+        }
+        meta.category = resolvedCategory;
 
-      BuildingInstaller.InstallResult result = BuildingInstaller.install(importFile, meta, false);
-      sendResult(source, result.ok(), result.messages());
-      return result.ok() ? 1 : 0;
-    } catch (IOException | RuntimeException e) {
-      I18nLog.warn(LOGGER, e, "buildpack.log.cmd_install_failed", file);
-      source.sendFailure(Component.translatable(
-          "buildpack.msg.parse_failed", LocalizedIOException.messageOf(e)));
-      return 0;
-    }
+        BuildingInstaller.InstallResult result = BuildingInstaller.install(importFile, meta, false);
+        return new CmdOutcome(result.ok(), result.messages());
+      } catch (IOException | RuntimeException e) {
+        I18nLog.warn(LOGGER, e, "buildpack.log.cmd_install_failed", file);
+        return CmdOutcome.failure(Component.translatable(
+            "buildpack.msg.parse_failed", LocalizedIOException.messageOf(e)));
+      }
+    });
+    return 1;
   }
 
   private static int installPack(CommandSourceStack source, String relative) {
@@ -233,18 +240,47 @@ public final class BuildPackCommands {
       source.sendFailure(Component.translatable("buildpack.cmd.file_not_found", relative));
       return 0;
     }
-    try {
-      PackArchive pack = PackReader.read(zip);
-      InstallRegistry registry = InstallRegistry.load();
-      BuildingInstaller.InstallResult result = PackInstaller.installPack(pack, registry);
-      sendResult(source, result.ok(), result.messages());
-      return result.ok() ? 1 : 0;
-    } catch (IOException | RuntimeException e) {
-      I18nLog.warn(LOGGER, e, "buildpack.log.cmd_pack_failed", zip);
-      source.sendFailure(Component.translatable(
-          "buildpack.msg.invalid_pack", LocalizedIOException.messageOf(e)));
-      return 0;
+    runOffThread(source, () -> {
+      try {
+        PackArchive pack = PackReader.read(zip);
+        InstallRegistry registry = InstallRegistry.load();
+        BuildingInstaller.InstallResult result = PackInstaller.installPack(pack, registry);
+        return new CmdOutcome(result.ok(), result.messages());
+      } catch (IOException | RuntimeException e) {
+        I18nLog.warn(LOGGER, e, "buildpack.log.cmd_pack_failed", zip);
+        return CmdOutcome.failure(Component.translatable(
+            "buildpack.msg.invalid_pack", LocalizedIOException.messageOf(e)));
+      }
+    });
+    return 1;
+  }
+
+  /** A deferred command result delivered once the background install finishes. */
+  private record CmdOutcome(boolean ok, List<Component> messages) {
+    static CmdOutcome failure(Component message) {
+      return new CmdOutcome(false, List.of(message));
     }
+  }
+
+  /**
+   * Runs heavy convert/install work on the shared background executor and reports the result back on
+   * the server thread, so a large structure or pack never stalls the main tick loop (which would
+   * otherwise risk the server watchdog).
+   */
+  private static void runOffThread(CommandSourceStack source, Supplier<CmdOutcome> work) {
+    source.sendSuccess(() -> Component.translatable("buildpack.cmd.started"), false);
+    MinecraftServer server = source.getServer();
+    CompletableFuture.supplyAsync(work, Util.backgroundExecutor()).whenComplete((outcome, error) ->
+        server.execute(() -> {
+          if (error != null) {
+            Throwable cause = error.getCause() != null ? error.getCause() : error;
+            I18nLog.warn(LOGGER, cause, "buildpack.log.cmd_install_failed", "");
+            source.sendFailure(Component.translatable(
+                "buildpack.msg.parse_failed", LocalizedIOException.messageOf(cause)));
+          } else {
+            sendResult(source, outcome.ok(), outcome.messages());
+          }
+        }));
   }
 
   private static int uninstallPack(CommandSourceStack source, String packId) {
@@ -325,20 +361,11 @@ public final class BuildPackCommands {
   }
 
   private static String sanitizeName(String name) {
-    String cleaned = name.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
-    return cleaned.isBlank() ? "capture" : cleaned;
+    return FileNames.sanitize(name, "capture");
   }
 
   private static Path uniqueTarget(Path dir, String fileName) {
-    Path target = dir.resolve(fileName);
-    int dot = fileName.lastIndexOf('.');
-    String base = dot > 0 ? fileName.substring(0, dot) : fileName;
-    String extension = dot > 0 ? fileName.substring(dot) : "";
-    int suffix = 2;
-    while (Files.exists(target)) {
-      target = dir.resolve(base + "_" + suffix++ + extension);
-    }
-    return target;
+    return FileNames.unique(dir, FileNames.baseName(fileName), FileNames.extension(fileName));
   }
 
   private static void sendLines(CommandSourceStack source, List<String> lines) {

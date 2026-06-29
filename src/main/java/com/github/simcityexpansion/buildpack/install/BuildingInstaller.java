@@ -5,7 +5,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 
+import com.github.simcityexpansion.buildpack.BuildPack;
 import com.github.simcityexpansion.buildpack.I18nLog;
 import com.github.simcityexpansion.buildpack.LocalizedIOException;
 import com.github.simcityexpansion.buildpack.convert.LitematicConverter;
@@ -16,6 +18,7 @@ import com.github.simcityexpansion.buildpack.convert.StructureNbtWriter;
 import com.github.simcityexpansion.buildpack.convert.StructureUpgrader;
 import com.github.simcityexpansion.buildpack.model.BuildingCategory;
 import com.github.simcityexpansion.buildpack.model.BuildingMetadata;
+import com.github.simcityexpansion.buildpack.model.FileNames;
 import com.github.simcityexpansion.buildpack.model.ImportFile;
 import com.github.simcityexpansion.buildpack.model.InstalledBuilding;
 import com.github.simcityexpansion.buildpack.model.StructureFormat;
@@ -89,7 +92,8 @@ public final class BuildingInstaller {
         }
         case VANILLA_NBT -> {
           // Vanilla .nbt is upgraded on the raw tag, preserving fields such as entities that are not modeled here.
-          CompoundTag root = NbtIo.readCompressed(file.path(), NbtAccounter.unlimitedHeap());
+          CompoundTag root = NbtIo.readCompressed(
+              file.path(), NbtAccounter.create(BuildPack.MAX_STRUCTURE_NBT_BYTES));
           StructureUpgrader.warnMissingBlocks(StructureNbtReader.read(root), messages);
           CompoundTag upgraded = StructureUpgrader.upgradeToCurrent(
               root, root.getInt("DataVersion"), messages);
@@ -177,17 +181,25 @@ public final class BuildingInstaller {
 
   /** Replaces illegal Windows/Unix file name characters and trims leading/trailing whitespace and dots. */
   static String sanitizeFileName(String name) {
-    String cleaned = name.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
-    cleaned = cleaned.replaceAll("^\\.+|\\.+$", "");
-    return cleaned.isBlank() ? "building" : cleaned;
+    return FileNames.sanitize(name, "building");
   }
 
   /** Appends _2/_3... on a name conflict (a conflict is detected when either .sk or .nbt already exists). */
   static String resolveConflict(Path dir, String baseName) {
+    return resolveConflict(dir, baseName, name -> false);
+  }
+
+  /**
+   * Like {@link #resolveConflict(Path, String)}, but a base name for which {@code reclaimable} returns
+   * {@code true} is treated as free (its existing files may be overwritten) rather than as a conflict.
+   * Used so reinstalling/updating a pack keeps its own file names stable instead of drifting to _2/_3.
+   */
+  static String resolveConflict(Path dir, String baseName, Predicate<String> reclaimable) {
     String candidate = baseName;
     int suffix = 2;
-    while (Files.exists(dir.resolve(candidate + ".sk"))
-        || Files.exists(dir.resolve(candidate + ".nbt"))) {
+    while ((Files.exists(dir.resolve(candidate + ".sk"))
+        || Files.exists(dir.resolve(candidate + ".nbt")))
+        && !reclaimable.test(candidate)) {
       candidate = baseName + "_" + suffix++;
     }
     return candidate;

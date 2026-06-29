@@ -71,7 +71,7 @@ public final class InstalledScanner {
       I18nLog.warn(LOGGER, e, "buildpack.log.sk_read_failed", skPath);
     }
 
-    String baseName = stripExtension(skPath.getFileName().toString());
+    String baseName = FileNames.baseName(skPath.getFileName().toString());
     String name = fields.getOrDefault("name", baseName);
     Path structurePath = findStructureFile(skPath.getParent(), baseName);
     String relative = category.dirName() + "/" + skPath.getFileName();
@@ -89,11 +89,6 @@ public final class InstalledScanner {
       }
     }
     return null;
-  }
-
-  private static String stripExtension(String fileName) {
-    int dot = fileName.lastIndexOf('.');
-    return dot > 0 ? fileName.substring(0, dot) : fileName;
   }
 
   private static String stripBom(String line) {

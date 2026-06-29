@@ -70,8 +70,19 @@ public final class InstallRegistry {
     return registry;
   }
 
-  /** Persists the registry to disk. */
-  public void save() {
+  /**
+   * Reloads entries from disk, discarding in-memory state. Used before a write so that changes made
+   * by another writer (for example the dedicated-server {@code /buildpack} command, or a previous
+   * session) are not clobbered by this instance's stale view.
+   */
+  public synchronized void reload() {
+    InstallRegistry fresh = load();
+    entries.clear();
+    entries.addAll(fresh.entries);
+  }
+
+  /** Persists the registry to disk (atomic write, so a crash mid-save cannot corrupt the registry). */
+  public synchronized void save() {
     JsonArray packs = new JsonArray();
     for (Entry entry : entries) {
       JsonObject pack = new JsonObject();
@@ -89,38 +100,35 @@ public final class InstallRegistry {
 
     Path file = BuildPack.registryFile();
     try {
-      if (file.getParent() != null) {
-        Files.createDirectories(file.getParent());
-      }
-      Files.writeString(file, GSON.toJson(root), StandardCharsets.UTF_8);
+      BuildPack.writeAtomically(file, GSON.toJson(root).getBytes(StandardCharsets.UTF_8));
     } catch (IOException e) {
       I18nLog.warn(LOGGER, e, "buildpack.log.registry_write_failed", file);
     }
   }
 
   /** Returns all install records (read-only view). */
-  public List<Entry> entries() {
+  public synchronized List<Entry> entries() {
     return List.copyOf(entries);
   }
 
   /** Looks up a record by pack id. */
-  public Optional<Entry> find(String packId) {
+  public synchronized Optional<Entry> find(String packId) {
     return entries.stream().filter(entry -> entry.id().equals(packId)).findFirst();
   }
 
   /** Adds a record, removing any existing record with the same id first. */
-  public void add(Entry entry) {
+  public synchronized void add(Entry entry) {
     entries.removeIf(existing -> existing.id().equals(entry.id()));
     entries.add(entry);
   }
 
   /** Removes a record. */
-  public void remove(String packId) {
+  public synchronized void remove(String packId) {
     entries.removeIf(entry -> entry.id().equals(packId));
   }
 
   /** Returns the pack id that owns the given relative file path (path separator normalized to {@code /}). */
-  public Optional<String> packOwning(String relativeFile) {
+  public synchronized Optional<String> packOwning(String relativeFile) {
     String normalized = relativeFile.replace('\\', '/');
     for (Entry entry : entries) {
       if (entry.files().contains(normalized)) {
@@ -131,7 +139,7 @@ public final class InstallRegistry {
   }
 
   /** Removes a file from a record's manifest; removes the entire record if the manifest becomes empty. */
-  public void removeFile(String packId, String relativeFile) {
+  public synchronized void removeFile(String packId, String relativeFile) {
     String normalized = relativeFile.replace('\\', '/');
     find(packId).ifPresent(entry -> {
       List<String> files = new ArrayList<>(entry.files());
@@ -145,7 +153,7 @@ public final class InstallRegistry {
   }
 
   /** Replaces one file path in a record with another (used when recategorizing a building). */
-  public void replaceFile(String packId, String oldRelative, String newRelative) {
+  public synchronized void replaceFile(String packId, String oldRelative, String newRelative) {
     String oldNorm = oldRelative.replace('\\', '/');
     String newNorm = newRelative.replace('\\', '/');
     find(packId).ifPresent(entry -> {

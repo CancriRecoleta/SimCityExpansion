@@ -178,6 +178,8 @@
 
   "buildpack.status.count": "%1$s 个条目 · 已安装 %2$s 个建筑",
   "buildpack.status.hint": "反斜杠键开关",
+  "buildpack.status.installing": "正在安装……",
+  "buildpack.status.exporting": "正在导出……",
   "buildpack.status.remote_warning": "已连接远程服务器：文件仅安装到本地，专用服务器需管理员在服务端安装",
 
   "buildpack.msg.installed": "已安装：%s",
@@ -194,6 +196,7 @@
   "buildpack.msg.files_dropped": "已导入 %s 个文件",
   "buildpack.msg.name_conflict": "存在同名建筑，已重命名为 %s",
   "buildpack.msg.invalid_pack": "无效的拓展包：%s",
+  "buildpack.msg.checksum_mismatch": "校验和不匹配（文件可能损坏或被篡改）：%s",
   "buildpack.msg.exported": "已导出：%s",
   "buildpack.export.pack_name": "建筑导出 %s",
   "buildpack.export.pack_description": "由 SimCity Expansion 导出的 %s 个建筑",
@@ -205,6 +208,7 @@
   "buildpack.error.invalid_nbt": "不是有效的原版 NBT 结构（缺少 palette/blocks）",
   "buildpack.error.unknown_format": "未知结构格式",
   "buildpack.error.zip_entry_missing": "zip 条目缺失：%s",
+  "buildpack.error.entry_too_large": "拓展包条目过大，拒绝读取（可能是 zip 炸弹）：%s",
   "buildpack.error.pack_empty": "拓展包不含任何建筑（buildings/<分类>/ 下无结构文件）",
   "buildpack.error.pack_no_manifest": "缺少 pack.json",
   "buildpack.error.pack_bad_manifest": "pack.json 解析失败：%s",
@@ -241,6 +245,7 @@
   "buildpack.cmd.file_not_found": "文件不存在：%s",
   "buildpack.cmd.bad_category": "未知分类：%s（可用：residential / commercial / industry / public / other）",
   "buildpack.cmd.pack_not_found": "未找到拓展包：%s",
+  "buildpack.cmd.started": "正在后台处理，请稍候……",
 
   "buildpack.log.cmd_install_failed": "命令安装失败：%s",
   "buildpack.log.cmd_pack_failed": "命令安装拓展包失败：%s",
@@ -326,5 +331,6 @@
   "buildpack.log.index_read_failed": "读取导入索引失败：%s",
   "buildpack.log.index_write_failed": "写入导入索引失败：%s",
   "buildpack.log.index_parse_failed": "索引结构解析失败：%s",
-  "buildpack.log.index_hash_failed": "文件哈希计算失败：%s"
+  "buildpack.log.index_hash_failed": "文件哈希计算失败：%s",
+  "buildpack.log.index_verify_failed": "读取拓展包索引用于校验时失败"
 }

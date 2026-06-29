@@ -178,6 +178,8 @@
 
   "buildpack.status.count": "%1$s entries · %2$s buildings installed",
   "buildpack.status.hint": "Backslash to toggle",
+  "buildpack.status.installing": "Installing…",
+  "buildpack.status.exporting": "Exporting…",
   "buildpack.status.remote_warning": "Connected to a remote server: files are installed locally only; a dedicated server needs server-side installation",
 
   "buildpack.msg.installed": "Installed: %s",
@@ -194,6 +196,7 @@
   "buildpack.msg.files_dropped": "Imported %s file(s)",
   "buildpack.msg.name_conflict": "Name conflict, renamed to %s",
   "buildpack.msg.invalid_pack": "Invalid pack: %s",
+  "buildpack.msg.checksum_mismatch": "Checksum mismatch (file may be corrupted or tampered): %s",
   "buildpack.msg.exported": "Exported: %s",
   "buildpack.export.pack_name": "Building Export %s",
   "buildpack.export.pack_description": "%s building(s) exported by SimCity Expansion",
@@ -205,6 +208,7 @@
   "buildpack.error.invalid_nbt": "Not a valid vanilla NBT structure (missing palette/blocks)",
   "buildpack.error.unknown_format": "Unknown structure format",
   "buildpack.error.zip_entry_missing": "Missing zip entry: %s",
+  "buildpack.error.entry_too_large": "Pack entry too large, refusing to read (possible zip bomb): %s",
   "buildpack.error.pack_empty": "Pack contains no buildings (no structure files under buildings/<category>/)",
   "buildpack.error.pack_no_manifest": "Missing pack.json",
   "buildpack.error.pack_bad_manifest": "Failed to parse pack.json: %s",
@@ -241,6 +245,7 @@
   "buildpack.cmd.file_not_found": "File not found: %s",
   "buildpack.cmd.bad_category": "Unknown category: %s (valid: residential / commercial / industry / public / other)",
   "buildpack.cmd.pack_not_found": "Pack not found: %s",
+  "buildpack.cmd.started": "Working in the background, please wait…",
 
   "buildpack.log.cmd_install_failed": "Command install failed: %s",
   "buildpack.log.cmd_pack_failed": "Command pack install failed: %s",
@@ -326,5 +331,6 @@
   "buildpack.log.index_read_failed": "Failed to read import index: %s",
   "buildpack.log.index_write_failed": "Failed to write import index: %s",
   "buildpack.log.index_parse_failed": "Failed to index structure: %s",
-  "buildpack.log.index_hash_failed": "Failed to hash file: %s"
+  "buildpack.log.index_hash_failed": "Failed to hash file: %s",
+  "buildpack.log.index_verify_failed": "Failed to read pack index for verification"
 }

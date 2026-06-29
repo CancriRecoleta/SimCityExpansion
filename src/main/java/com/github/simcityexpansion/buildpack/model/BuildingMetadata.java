@@ -26,6 +26,26 @@ public final class BuildingMetadata {
     return sizeX + " x " + sizeY + " x " + sizeZ;
   }
 
+  /**
+   * Returns an independent copy of this model. Used to snapshot the live UI form before handing the
+   * metadata to a background install thread, so later edits (or the installer writing back the
+   * computed size) cannot race with the form.
+   */
+  public BuildingMetadata copy() {
+    BuildingMetadata copy = new BuildingMetadata();
+    copy.name = name;
+    copy.amount = amount;
+    copy.author = author;
+    copy.description = description;
+    copy.tags = tags;
+    copy.jobType = jobType;
+    copy.category = category;
+    copy.sizeX = sizeX;
+    copy.sizeY = sizeY;
+    copy.sizeZ = sizeZ;
+    return copy;
+  }
+
   /** Pre-fills the form from a parsed structure summary (name and author are only filled when blank, to avoid overwriting user input). */
   public void prefill(StructureInfo info, String fallbackName) {
     if (name.isBlank()) {
