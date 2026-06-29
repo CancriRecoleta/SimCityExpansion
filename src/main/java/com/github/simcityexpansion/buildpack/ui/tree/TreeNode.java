@@ -4,8 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Lightweight generic tree node (replaces the original ldlib2 TreeNode): branch
- * nodes have {@code null} content; leaf nodes carry the corresponding data object.
+ * Lightweight generic tree node: branch nodes have {@code null} content; leaf nodes carry
+ * the corresponding data object.
  * Pure data structure with no dependency on any UI framework.
  *
  * @param <K> node key (display string)

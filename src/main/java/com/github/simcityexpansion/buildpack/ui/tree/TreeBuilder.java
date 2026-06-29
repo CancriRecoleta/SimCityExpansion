@@ -6,8 +6,8 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * Fluent builder for {@link TreeNode} (replaces the original ldlib2 TreeBuilder):
- * maintains a "current branch" stack and supports both a stateful style
+ * Fluent builder for {@link TreeNode}: maintains a "current branch" stack and supports both
+ * a stateful style
  * ({@link #startBranch}/{@link #content}/{@link #endBranch}) and a functional
  * style ({@link #branch}/{@link #diveBranch}/{@link #leaf}).
  *
