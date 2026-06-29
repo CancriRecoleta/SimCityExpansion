@@ -68,7 +68,7 @@ public final class ThemedButton extends AbstractButton {
     Component label = getMessage();
     int textX = x + Math.max(2, (w - font.width(label)) / 2);
     int textY = y + (h - font.lineHeight) / 2 + 1;
-    g.enableScissor(x + 1, y + 1, x + w - 1, y + h - 1);
+    UiScale.enableScissor(g, x + 1, y + 1, x + w - 1, y + h - 1);
     g.drawString(font, label, textX, textY, textColor, true);
     g.disableScissor();
   }
