@@ -6,29 +6,55 @@ import java.util.Map;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * A building already present in the SimuKraft buildings directory (discovered by .sk scan).
+ * A building installed in one of the zip packages SimuKraft 2.0 reads from
+ * {@code simukraftbuilding/*.zip} (discovered by scanning {@code buildings/<category>/*.sk}
+ * entries inside each zip).
  *
- * @param category category the building belongs to
- * @param name the {@code name} field from the .sk file (falls back to the file base name if absent)
- * @param skPath path to the .sk metadata file
- * @param structurePath path to the structure file with the same base name (may be null, indicating metadata without a structure)
- * @param skFields all key-value pairs parsed from the .sk file
- * @param managed whether this building was generated/installed by this mod (the .sk carries a generation marker, or it is recorded in the build-pack registry)
- * @param packId pack id if installed by a zip build pack; otherwise null
+ * @param category category the building belongs to (from the entry path inside the zip)
+ * @param name the {@code name} field from the .sk entry (falls back to the entry base name if absent)
+ * @param zipPath the zip package the building lives in
+ * @param baseName base name of the .sk entry (without extension)
+ * @param hasStructure whether a same-base {@code .nbt} structure entry exists in the zip
+ * @param hasJson whether a same-base SimuKraft native {@code .json} definition exists in the zip
+ * @param skFields all key-value pairs parsed from the .sk entry
+ * @param managed whether this mod owns the zip (its file name carries the managed prefix, or the
+ *     zip is recorded in the build-pack registry) and may therefore modify or delete the building
+ * @param packId pack id if installed by a zip build pack recorded in the registry; otherwise null
  */
 public record InstalledBuilding(
     BuildingCategory category,
     String name,
-    Path skPath,
-    @Nullable Path structurePath,
+    Path zipPath,
+    String baseName,
+    boolean hasStructure,
+    boolean hasJson,
     Map<String, String> skFields,
     boolean managed,
     @Nullable String packId) {
 
-  /** Base name of the .sk file. */
-  public String baseName() {
-    String fileName = skPath.getFileName().toString();
-    int dot = fileName.lastIndexOf('.');
-    return dot > 0 ? fileName.substring(0, dot) : fileName;
+  /** File name of the zip package this building lives in. */
+  public String zipFileName() {
+    return zipPath.getFileName().toString();
+  }
+
+  /** Zip-internal entry path of the .sk metadata ({@code buildings/<category>/<base>.sk}). */
+  public String skEntry() {
+    return entry(baseName + ".sk");
+  }
+
+  /** Zip-internal entry path of the structure, or null when the zip carries only metadata. */
+  @Nullable
+  public String structureEntry() {
+    return hasStructure ? entry(baseName + ".nbt") : null;
+  }
+
+  /** Zip-internal entry path of the SimuKraft native definition, or null when absent. */
+  @Nullable
+  public String jsonEntry() {
+    return hasJson ? entry(baseName + ".json") : null;
+  }
+
+  private String entry(String fileName) {
+    return "buildings/" + category.dirName() + "/" + fileName;
   }
 }

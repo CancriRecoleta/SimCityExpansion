@@ -14,6 +14,11 @@ import org.slf4j.Logger;
 public final class I18nLog {
   private I18nLog() {}
 
+  /** Logs at INFO level. */
+  public static void info(Logger logger, String key, Object... args) {
+    logger.info(resolve(key, args));
+  }
+
   /** Logs at WARN level (no exception). */
   public static void warn(Logger logger, String key, Object... args) {
     logger.warn(resolve(key, args));

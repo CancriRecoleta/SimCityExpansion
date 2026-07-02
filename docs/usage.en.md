@@ -65,7 +65,11 @@ v directory tree           | [preview: embedded thumbnail or top-down]
 ```
 
 - **Three tabs** — Import Files (loose files), Packs (zip), Installed (the current state of
-  `simukraftbuilding/`, including SimuKraft's built-in buildings).
+  the `simukraftbuilding/*.zip` building packages, including SimuKraft's official package;
+  since SimuKraft 2.0 only zip packages are read).
+- With the Create mod installed (or a `schematics/` directory present), the Import tab
+  gains a **Create schematics** branch listing the blueprints under `schematics/`
+  (including server uploads in `uploaded/`), ready to preview and install.
 - **Install form** — each row has a tooltip describing the field's format; size is computed
   automatically; author defaults to the current player name; ticking "overwrite same-name
   building" replaces a same-name file, otherwise it is auto-renamed `_2`.
@@ -83,13 +87,15 @@ v directory tree           | [preview: embedded thumbnail or top-down]
   building); selecting any building inside reads it **straight from the zip** (no
   extraction) and shows its summary, preview, material list, and metadata.
 - **Install the whole pack** — select the pack node, then Install. Every building is
-  converted into the matching category directory and the install manifest is recorded in
+  normalized (structures converted to `.nbt`, a `.sk` guaranteed) into
+  `simukraftbuilding/sce_pack_<packid>.zip`, and the install manifest is recorded in
   `simcity_expansion/installed_packs.json`.
 - **Install one building** — select a single building inside the pack and Install just that
-  one (not counted in the whole-pack manifest; its `.sk` carries this mod's marker so it
-  can be uninstalled individually from the Installed tab).
-- **Uninstall** — select an installed pack, then Uninstall; files are removed precisely by
-  the manifest.
+  one (written into this mod's managed `simukraftbuilding/sce_local.zip`; it can be
+  uninstalled individually from the Installed tab).
+- **Uninstall** — select an installed pack, then Uninstall; the pack's
+  `sce_pack_<packid>.zip` is deleted (legacy installs migrated into `sce_local.zip` have
+  their entries removed by the manifest).
 - **Export** — Installed tab -> "Export as Pack" packages the listed buildings (respecting
   the search filter) into `<game dir>/simcity_expansion/export/`, ready to share; the
   recipient drops it back into the import directory to install. You can optionally
@@ -100,13 +106,32 @@ v directory tree           | [preview: embedded thumbnail or top-down]
 
 See [pack-format.en.md](pack-format.en.md) for the pack specification.
 
+## Create schematic interop
+
+Create schematics are plain vanilla structure NBT (`.nbt`) — the same format SimuKraft
+builds from — so conversion works both ways (pure file-system convention, Create is not a
+dependency):
+
+- **Import** — blueprints under `schematics/` appear in the Import tab's "Create
+  schematics" branch and install like any structure file.
+- **Export** —
+  - right-click any structure file on the Import tab (`.litematic`/`.schem` are converted
+    to `.nbt` first) or any installed building with a structure → "Export as Create
+    schematic";
+  - the structure editor's "Export Create schematic" button;
+  - `/buildpack capture <from> <to> <name> create` writes the selection straight into
+    `schematics/`.
+- Exports replace `structure_void` with air (matching Create's own schematic saves), so
+  the result is ready for the schematic table and schematicannon.
+
 ## Source labels on the Installed tab
 
 | Label | Meaning |
 | --- | --- |
-| Source: installed by this mod | Installed by this mod (`.sk` carries the generation marker); removable |
-| Source: pack xxx | Installed as part of a zip pack; removable (tracked in the registry) |
-| Source: external (read-only) | Shipped by SimuKraft or placed manually; this mod will not delete it |
+| Package: xxx.zip | The zip building package the building lives in |
+| Source: installed by this mod | Lives in one of this mod's managed `sce_*.zip` packages; removable/recategorizable |
+| Source: pack xxx | Installed as part of a zip build pack (tracked in the registry); removable |
+| Source: external (read-only) | Lives in SimuKraft's official package or a hand-placed zip; this mod will not modify it |
 
 ## Multiplayer and server commands
 
@@ -121,19 +146,21 @@ an administrator can install directly with the `/buildpack` command — put file
 | Command | Effect |
 | --- | --- |
 | `/buildpack list` | List the structure files and zip packs in the server import directory |
-| `/buildpack install <file> [category] [name]` | Install a loose file (category defaults to `other`; quote names with spaces) |
+| `/buildpack install <file> [category] [name]` | Install a loose file (category defaults to `other`; quote names with spaces; a `schematics/` prefix installs a Create blueprint directly) |
 | `/buildpack installpack <zip>` | Install a zip pack |
 | `/buildpack packs` | List installed packs |
 | `/buildpack uninstallpack <id>` | Uninstall a pack by id from the registry |
+| `/buildpack migrate` | Pack legacy (pre-SimuKraft-2.0) loose files under `simukraftbuilding/<category>/` into `sce_local.zip` (originals backed up to `legacy_backup/`; also runs automatically on server start and when the manager opens) |
 
 - Requires operator permission level 2; file names, categories, and pack ids all have
   tab-completion.
 - Uses the **exact same** conversion pipeline as the client interface (format conversion,
   DataVersion upgrade, missing-block warnings).
 - The commands also work in single-player.
-- If you would rather not install the server mod: install locally, then copy the artifacts
-  under `simukraftbuilding/` to the same directory on the server (SimuKraft scans live, so
-  a restart is usually unnecessary).
+- If you would rather not install the server mod: install locally, then copy the
+  `sce_*.zip` packages under `simukraftbuilding/` to the same directory on the server
+  (SimuKraft 2.0 reads zip packages directly; run `/simukraft reload` on the server to
+  pick them up).
 
 ## Troubleshooting
 

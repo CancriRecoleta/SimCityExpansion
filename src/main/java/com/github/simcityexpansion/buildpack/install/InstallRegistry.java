@@ -32,10 +32,14 @@ public final class InstallRegistry {
   /**
    * A single install record.
    *
-   * @param files file paths relative to {@code simukraftbuilding/} (e.g., {@code residential/x.nbt})
+   * @param zip file name of the managed zip package the pack was installed into (under
+   *     {@code simukraftbuilding/}); empty for records written before the SimuKraft 2.0 zip layout
+   *     (their {@code files} are loose paths and are rewritten by the legacy migration)
+   * @param files zip-internal entry paths (e.g., {@code buildings/residential/x.nbt}); for legacy
+   *     records, paths relative to {@code simukraftbuilding/} (e.g., {@code residential/x.nbt})
    */
   public record Entry(String id, String name, String version, long installedAt,
-      List<String> files) {}
+      String zip, List<String> files) {}
 
   private final List<Entry> entries = new ArrayList<>();
 
@@ -62,6 +66,7 @@ public final class InstallRegistry {
             pack.has("name") ? pack.get("name").getAsString() : "",
             pack.has("version") ? pack.get("version").getAsString() : "",
             pack.has("installedAt") ? pack.get("installedAt").getAsLong() : 0L,
+            pack.has("zip") ? pack.get("zip").getAsString() : "",
             files));
       }
     } catch (IOException | RuntimeException e) {
@@ -90,6 +95,7 @@ public final class InstallRegistry {
       pack.addProperty("name", entry.name());
       pack.addProperty("version", entry.version());
       pack.addProperty("installedAt", entry.installedAt());
+      pack.addProperty("zip", entry.zip());
       JsonArray files = new JsonArray();
       entry.files().forEach(files::add);
       pack.add("files", files);
@@ -127,11 +133,10 @@ public final class InstallRegistry {
     entries.removeIf(entry -> entry.id().equals(packId));
   }
 
-  /** Returns the pack id that owns the given relative file path (path separator normalized to {@code /}). */
-  public synchronized Optional<String> packOwning(String relativeFile) {
-    String normalized = relativeFile.replace('\\', '/');
+  /** Returns the pack id installed into the given managed zip file name (case-insensitive). */
+  public synchronized Optional<String> packOwningZip(String zipFileName) {
     for (Entry entry : entries) {
-      if (entry.files().contains(normalized)) {
+      if (!entry.zip().isBlank() && entry.zip().equalsIgnoreCase(zipFileName)) {
         return Optional.of(entry.id());
       }
     }
@@ -147,7 +152,7 @@ public final class InstallRegistry {
       entries.removeIf(existing -> existing.id().equals(packId));
       if (!files.isEmpty()) {
         entries.add(new Entry(
-            entry.id(), entry.name(), entry.version(), entry.installedAt(), files));
+            entry.id(), entry.name(), entry.version(), entry.installedAt(), entry.zip(), files));
       }
     });
   }
@@ -163,7 +168,7 @@ public final class InstallRegistry {
         files.set(index, newNorm);
         entries.removeIf(existing -> existing.id().equals(packId));
         entries.add(new Entry(
-            entry.id(), entry.name(), entry.version(), entry.installedAt(), files));
+            entry.id(), entry.name(), entry.version(), entry.installedAt(), entry.zip(), files));
       }
     });
   }

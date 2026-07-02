@@ -5,11 +5,10 @@
   "plugin": "com.github.simcityexpansion.mixin.SimuKraftMixinPlugin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
-    "simukraft.BuildingCatalogMixin"
+    "simukraft.BuildingPackageCatalogMixin"
   ],
   "client": [
-    "simukraft.client.BuildingCacheServiceMixin",
-    "simukraft.client.BuildingStructureLoaderMixin"
+    "simukraft.client.BuildingCacheServiceMixin"
   ],
   "injectors": {
     "defaultRequire": 1

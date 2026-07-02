@@ -1,5 +1,6 @@
 package com.github.simcityexpansion.buildpack.ui;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.file.ClosedWatchServiceException;
 import java.nio.file.FileSystems;
@@ -13,6 +14,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
@@ -23,13 +25,17 @@ import com.github.simcityexpansion.buildpack.LocalizedIOException;
 import com.github.simcityexpansion.buildpack.client.WorldSelection;
 import com.github.simcityexpansion.buildpack.convert.NbtStructure;
 import com.github.simcityexpansion.buildpack.convert.ParsedStructure;
+import com.github.simcityexpansion.buildpack.convert.StructureMaterializer;
 import com.github.simcityexpansion.buildpack.install.BuildingInstaller;
 import com.github.simcityexpansion.buildpack.install.InstallRegistry;
+import com.github.simcityexpansion.buildpack.install.LegacyMigration;
 import com.github.simcityexpansion.buildpack.install.PackInstaller;
 import com.github.simcityexpansion.buildpack.install.PackReader;
 import com.github.simcityexpansion.buildpack.install.SkFileReader;
 import com.github.simcityexpansion.buildpack.integration.ActivePackProvider;
+import com.github.simcityexpansion.buildpack.integration.CreateSchematics;
 import com.github.simcityexpansion.buildpack.integration.PackActivationService;
+import com.github.simcityexpansion.buildpack.integration.SimukraftBridge;
 import com.github.simcityexpansion.buildpack.model.BuildingCategory;
 import com.github.simcityexpansion.buildpack.model.BuildingMetadata;
 import com.github.simcityexpansion.buildpack.model.FileNames;
@@ -49,6 +55,9 @@ import com.github.simcityexpansion.buildpack.ui.tree.TreeNode;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtAccounter;
+import net.minecraft.nbt.NbtIo;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
@@ -362,7 +371,17 @@ public final class BuildPackScreen extends Screen {
   private void refresh() {
     // Pick up registry changes made elsewhere (e.g. the dedicated-server command) before scanning.
     registry.reload();
-    importFiles = ImportScanner.scan();
+    // Fold any pre-2.0 loose building files into the managed zip before scanning (no-op when clean).
+    List<Component> migrationMessages = new ArrayList<>();
+    LegacyMigration.migrateIfNeeded(registry, migrationMessages);
+    if (!migrationMessages.isEmpty()) {
+      setMessage(migrationMessages.get(0), false);
+      SimukraftBridge.requestCatalogReload();
+    }
+    // Import sources: the import directory plus (when present) Create's schematics directory.
+    List<ImportFile> scanned = new ArrayList<>(ImportScanner.scan());
+    scanned.addAll(ImportScanner.scanCreateSchematics());
+    importFiles = scanned;
 
     List<PackArchive> parsed = new ArrayList<>();
     List<String> invalid = new ArrayList<>();
@@ -533,14 +552,14 @@ public final class BuildPackScreen extends Screen {
   private void showInstalled(InstalledBuilding building) {
     StructureInfo info = null;
     NbtStructure structure = null;
-    if (building.structurePath() != null) {
+    if (building.structureEntry() != null) {
       try {
-        ParsedStructure parsed =
-            ParsedStructure.parse(building.structurePath(), StructureFormat.VANILLA_NBT);
+        byte[] bytes = PackReader.readEntryBytes(building.zipPath(), building.structureEntry());
+        ParsedStructure parsed = ParsedStructure.parse(bytes, StructureFormat.VANILLA_NBT);
         info = parsed.info();
         structure = parsed.structure();
       } catch (IOException | RuntimeException e) {
-        I18nLog.warn(LOGGER, e, "buildpack.log.structure_parse_failed", building.structurePath());
+        I18nLog.warn(LOGGER, e, "buildpack.log.structure_parse_failed", building.structureEntry());
       }
     }
     infoPanel.showInstalled(building, info, structure);
@@ -681,6 +700,61 @@ public final class BuildPackScreen extends Screen {
         }));
   }
 
+  /** Converts an import file to vanilla NBT and writes it into Create's schematics directory. */
+  private void runExportCreate(ImportFile file) {
+    runAsyncCreateExport(() -> {
+      byte[] bytes = Files.readAllBytes(file.path());
+      StructureMaterializer.Result result =
+          StructureMaterializer.toVanilla(bytes, file.format(), new ArrayList<>());
+      return CreateSchematics.export(result.nbt(), file.baseName());
+    });
+  }
+
+  /** Copies an installed building's structure out of its zip package into Create's schematics directory. */
+  private void runExportCreate(InstalledBuilding building) {
+    runAsyncCreateExport(() -> {
+      byte[] bytes = PackReader.readEntryBytes(building.zipPath(), building.structureEntry());
+      CompoundTag tag = NbtIo.readCompressed(new ByteArrayInputStream(bytes),
+          NbtAccounter.create(BuildPack.MAX_STRUCTURE_NBT_BYTES));
+      return CreateSchematics.export(tag, building.baseName());
+    });
+  }
+
+  /** Runs a Create-schematic export off the render thread and reports the created file. */
+  private void runAsyncCreateExport(Callable<Path> work) {
+    if (busy) {
+      return;
+    }
+    busy = true;
+    updateActionButtons();
+    setMessage(Component.translatable("buildpack.status.exporting"), false);
+    CompletableFuture.supplyAsync(() -> {
+      try {
+        return work.call();
+      } catch (Exception e) {
+        throw new java.util.concurrent.CompletionException(e);
+      }
+    }).whenComplete((target, error) ->
+        Minecraft.getInstance().execute(() -> {
+          busy = false;
+          if (Minecraft.getInstance().screen != this) {
+            return;
+          }
+          if (error != null) {
+            Throwable cause = error.getCause() != null ? error.getCause() : error;
+            I18nLog.warn(LOGGER, cause, "buildpack.log.export_failed");
+            setMessage(Component.translatable(
+                "buildpack.msg.parse_failed", LocalizedIOException.messageOf(cause)), true);
+            updateActionButtons();
+          } else {
+            setMessage(Component.translatable("buildpack.msg.create_exported",
+                "schematics/" + target.getFileName()), false);
+            // The schematics directory is also an import source; show the new file.
+            refresh();
+          }
+        }));
+  }
+
   private void runBatchInstall() {
     if (busy) {
       return;
@@ -796,13 +870,7 @@ public final class BuildPackScreen extends Screen {
     }
     if (selected instanceof InstalledBuilding building && building.managed()) {
       registry.reload();
-      BuildingInstaller.uninstall(building);
-      if (building.packId() != null) {
-        String prefix = building.category().dirName() + "/";
-        registry.removeFile(building.packId(), prefix + building.baseName() + ".sk");
-        registry.removeFile(building.packId(), prefix + building.baseName() + ".nbt");
-        registry.save();
-      }
+      BuildingInstaller.uninstall(building, registry);
       setMessage(Component.translatable("buildpack.msg.uninstalled", building.name()), false);
       refresh();
     } else if (selected instanceof PackArchive pack) {
@@ -950,13 +1018,23 @@ public final class BuildPackScreen extends Screen {
           Component.translatable("buildpack.menu.note"), () -> promptNote(file)));
       items.add(new ContextMenu.Item(
           Component.translatable("buildpack.menu.reveal"), () -> reveal(path)));
+      if (CreateSchematics.available()) {
+        items.add(new ContextMenu.Item(Component.translatable("buildpack.menu.export_create"),
+            () -> runExportCreate(file)));
+      }
       items.add(new ContextMenu.Item(
           Component.translatable("buildpack.menu.delete"), () -> deleteImportFileNow(file)));
     } else if (content instanceof InstalledBuilding building) {
-      items.add(new ContextMenu.Item(Component.translatable("buildpack.menu.recategorize"),
-          () -> openCategoryMenu(building, mouseX, mouseY)));
+      if (building.managed()) {
+        items.add(new ContextMenu.Item(Component.translatable("buildpack.menu.recategorize"),
+            () -> openCategoryMenu(building, mouseX, mouseY)));
+      }
       items.add(new ContextMenu.Item(Component.translatable("buildpack.menu.reveal"),
-          () -> reveal(building.skPath())));
+          () -> reveal(building.zipPath())));
+      if (CreateSchematics.available() && building.hasStructure()) {
+        items.add(new ContextMenu.Item(Component.translatable("buildpack.menu.export_create"),
+            () -> runExportCreate(building)));
+      }
       if (building.managed()) {
         items.add(new ContextMenu.Item(Component.translatable("buildpack.menu.uninstall"), () -> {
           selected = building;

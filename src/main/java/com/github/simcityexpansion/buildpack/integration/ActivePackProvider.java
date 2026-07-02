@@ -1,20 +1,21 @@
 package com.github.simcityexpansion.buildpack.integration;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * In-memory registry of "active" build-pack buildings that should appear in SimuKraft <b>without</b>
- * being installed into {@code simukraftbuilding/}. The activation flow registers a pack's buildings
- * here (their structures already converted into this mod's cache directory); the SimuKraft mixins in
- * {@code com.github.simcityexpansion.mixin.simukraft} read it to splice those buildings into
- * SimuKraft's catalog (server) and build menu / preview (client) on the fly.
+ * In-memory registry of "active" build packs that should appear in SimuKraft <b>without</b> being
+ * installed into {@code simukraftbuilding/}. The activation flow converts a pack into a cache zip
+ * package ({@code simcity_expansion/cache/<packId>.zip}, SimuKraft 2.0 package layout) and
+ * registers it here; the {@code BuildingPackageCatalogMixin} splices those cache zips into
+ * SimuKraft's package scan, and the client-menu mixin uses the building metadata for remote
+ * (server-pushed) entries on dedicated servers.
  *
  * <p>Contains no SimuKraft reference, so it loads regardless of whether SimuKraft is installed.
  * All reads return immutable snapshots and are safe to call from the server thread, the client
@@ -23,30 +24,27 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class ActivePackProvider {
   private ActivePackProvider() {}
 
-  /** packId -> its active buildings. */
-  private static final Map<String, List<ActiveBuilding>> BY_PACK = new ConcurrentHashMap<>();
+  /** An active pack: its cache zip package plus per-building display metadata. */
+  private record ActivePack(Path cacheZip, List<ActiveBuilding> buildings) {}
 
-  /** Immutable snapshot keyed by normalized category, rebuilt on every activation change. */
-  private static volatile Map<String, List<ActiveBuilding>> byCategory = Map.of();
+  /** packId -> active pack. */
+  private static final Map<String, ActivePack> BY_PACK = new ConcurrentHashMap<>();
 
   /**
-   * Buildings pushed from a remote (dedicated) server for display only — they carry no local file
-   * path (preview/build resolve server-side). Kept separate from {@link #BY_PACK} so a host client
-   * never mixes them with its own locally-activated packs.
+   * Buildings pushed from a remote (dedicated) server for display only — the cache zip lives
+   * server-side. Kept separate from {@link #BY_PACK} so a host client never mixes them with its
+   * own locally-activated packs. Immutable snapshot keyed by normalized category.
    */
   private static volatile Map<String, List<ActiveBuilding>> remoteByCategory = Map.of();
 
-  /** Activates (or replaces) a pack's buildings. */
-  public static void activate(String packId, List<ActiveBuilding> buildings) {
-    BY_PACK.put(packId, List.copyOf(buildings));
-    rebuild();
+  /** Activates (or replaces) a pack: its cache zip package and building metadata. */
+  public static void activate(String packId, Path cacheZip, List<ActiveBuilding> buildings) {
+    BY_PACK.put(packId, new ActivePack(cacheZip, List.copyOf(buildings)));
   }
 
-  /** Deactivates a pack; its buildings disappear from SimuKraft on the next catalog/menu query. */
+  /** Deactivates a pack; its package disappears from SimuKraft on the next catalog reload. */
   public static void deactivate(String packId) {
-    if (BY_PACK.remove(packId) != null) {
-      rebuild();
-    }
+    BY_PACK.remove(packId);
   }
 
   public static boolean isActive(String packId) {
@@ -58,10 +56,15 @@ public final class ActivePackProvider {
     return Set.copyOf(BY_PACK.keySet());
   }
 
+  /** Cache zip packages of all active packs, spliced into SimuKraft's package scan by mixin. */
+  public static List<Path> activeCacheZips() {
+    return BY_PACK.values().stream().map(ActivePack::cacheZip).toList();
+  }
+
   /** All locally-activated buildings across packs (used by the server to sync clients). */
   public static List<ActiveBuilding> allActive() {
     List<ActiveBuilding> all = new ArrayList<>();
-    BY_PACK.values().forEach(all::addAll);
+    BY_PACK.values().forEach(pack -> all.addAll(pack.buildings()));
     return all;
   }
 
@@ -76,54 +79,16 @@ public final class ActivePackProvider {
     remoteByCategory = Map.copyOf(snapshot);
   }
 
-  /** All active buildings in a category (case-insensitive): local activations plus remote ones. */
-  public static List<ActiveBuilding> forCategory(String category) {
-    String key = normalize(category);
-    List<ActiveBuilding> local = byCategory.getOrDefault(key, List.of());
-    List<ActiveBuilding> remote = remoteByCategory.getOrDefault(key, List.of());
-    if (remote.isEmpty()) {
-      return local;
-    }
-    if (local.isEmpty()) {
-      return remote;
-    }
-    List<ActiveBuilding> merged = new ArrayList<>(local);
-    merged.addAll(remote);
-    return merged;
-  }
-
-  /** Finds an active building in a category by structure file name (extension-insensitive). */
-  public static Optional<ActiveBuilding> findByStructureFile(String category, String structureFileName) {
-    if (structureFileName == null) {
-      return Optional.empty();
-    }
-    String target = stripExtension(structureFileName);
-    for (ActiveBuilding building : forCategory(category)) {
-      if (stripExtension(building.structureFileName()).equalsIgnoreCase(target)) {
-        return Optional.of(building);
-      }
-    }
-    return Optional.empty();
-  }
-
-  private static void rebuild() {
-    Map<String, List<ActiveBuilding>> grouped = new HashMap<>();
-    for (List<ActiveBuilding> buildings : BY_PACK.values()) {
-      for (ActiveBuilding building : buildings) {
-        grouped.computeIfAbsent(normalize(building.category()), key -> new ArrayList<>()).add(building);
-      }
-    }
-    Map<String, List<ActiveBuilding>> snapshot = new HashMap<>();
-    grouped.forEach((category, buildings) -> snapshot.put(category, List.copyOf(buildings)));
-    byCategory = Map.copyOf(snapshot);
+  /**
+   * Remote (server-pushed) buildings in a category (case-insensitive). Locally activated packs are
+   * not included: their cache zips are part of the (client-side) package scan already, so the
+   * client menu sees them through SimuKraft's own pipeline.
+   */
+  public static List<ActiveBuilding> remoteForCategory(String category) {
+    return remoteByCategory.getOrDefault(normalize(category), List.of());
   }
 
   private static String normalize(String category) {
     return category == null ? "other" : category.toLowerCase(Locale.ROOT);
-  }
-
-  private static String stripExtension(String fileName) {
-    int dot = fileName.lastIndexOf('.');
-    return dot > 0 ? fileName.substring(0, dot) : fileName;
   }
 }

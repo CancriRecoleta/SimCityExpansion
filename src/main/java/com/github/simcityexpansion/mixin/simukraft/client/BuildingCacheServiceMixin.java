@@ -13,10 +13,11 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 
 /**
- * Client counterpart of {@link com.github.simcityexpansion.mixin.simukraft.BuildingCatalogMixin}:
- * makes active build-pack buildings show up in SimuKraft's build menu. The client keeps its own
- * directory scan ({@code BuildingCacheService}); appending to {@code getBuildings} on every call
- * reflects activation/deactivation immediately without poking its cache.
+ * Makes <b>remote</b> (server-pushed) active build-pack buildings show up in SimuKraft's build menu
+ * on a dedicated-server client. Locally activated packs need no help here — their cache zips are
+ * part of the client-side package scan (via {@code BuildingPackageCatalogMixin}) — but a client
+ * connected to a dedicated server has no local copy of the server's cache package, so the entries
+ * synced by {@code ActivePacksSyncPacket} are appended for display; building resolves server-side.
  */
 @Mixin(BuildingCacheService.class)
 abstract class BuildingCacheServiceMixin {
@@ -24,20 +25,21 @@ abstract class BuildingCacheServiceMixin {
   @ModifyReturnValue(
       method = "getBuildings(Ljava/lang/String;)Ljava/util/List;",
       at = @At("RETURN"))
-  private static List<BuildingMeta> simcity_expansion$appendActivePacks(
+  private static List<BuildingMeta> simcity_expansion$appendRemoteActivePacks(
       List<BuildingMeta> original, @Local(argsOnly = true) String category) {
-    List<ActiveBuilding> active = ActivePackProvider.forCategory(category);
-    if (active.isEmpty()) {
+    List<ActiveBuilding> remote = ActivePackProvider.remoteForCategory(category);
+    if (remote.isEmpty()) {
       return original;
     }
     List<BuildingMeta> merged = new ArrayList<>(original);
-    for (ActiveBuilding building : active) {
+    for (ActiveBuilding building : remote) {
       boolean clash = original.stream()
           .anyMatch(meta -> meta.metaFileName().equalsIgnoreCase(building.metaFileName()));
       if (!clash) {
         merged.add(new BuildingMeta(
             building.category(), building.displayName(), building.size(), building.amount(),
-            building.author(), building.metaFileName(), building.structureFileName()));
+            building.author(), building.description(), building.metaFileName(),
+            building.structureFileName(), building.packId()));
       }
     }
     return merged;

@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Set;
 
 import com.github.simcityexpansion.buildpack.integration.ActivePackProvider;
+import com.github.simcityexpansion.buildpack.integration.CreateSchematics;
 import com.github.simcityexpansion.buildpack.model.BuildingCategory;
 import com.github.simcityexpansion.buildpack.model.ImportFile;
 import com.github.simcityexpansion.buildpack.model.ImportIndex;
@@ -27,16 +28,28 @@ public final class DirectoryTree {
   /** Key for the synthetic tree root (hidden by TreeList in flattenRoot mode). */
   public static final String ROOT_KEY = "buildpack";
 
-  /** Imported loose files: builds a hierarchy from subdirectories relative to the import root; favorites are prefixed with ★ and duplicates are suffixed with a marker. */
+  /**
+   * Imported loose files: builds a hierarchy from subdirectories relative to the import root;
+   * favorites are prefixed with ★ and duplicates are suffixed with a marker. Files that live under
+   * the Create mod's {@code schematics/} directory instead of the import root are grouped under a
+   * dedicated "Create schematics" branch.
+   */
   public static TreeNode<String, Object> buildImport(
       Path importRoot, List<ImportFile> files, Set<Path> duplicates) {
     TreeBuilder<String, Object> builder = TreeBuilder.start(ROOT_KEY);
+    Path importBase = importRoot.toAbsolutePath().normalize();
+    Path createBase = CreateSchematics.schematicsDir().toAbsolutePath().normalize();
+    String createBranch =
+        Component.translatable("buildpack.tree.create_schematics").getString();
     for (ImportFile file : files) {
       String label = importLabel(file, duplicates);
-      Path relative = importRoot.relativize(file.path());
+      Path path = file.path().toAbsolutePath().normalize();
       List<String> folders = new ArrayList<>();
-      for (int i = 0; i < relative.getNameCount() - 1; i++) {
-        folders.add(relative.getName(i).toString());
+      if (path.startsWith(createBase)) {
+        folders.add(createBranch);
+        addParentFolders(createBase.relativize(path), folders);
+      } else if (path.startsWith(importBase)) {
+        addParentFolders(importBase.relativize(path), folders);
       }
       if (folders.isEmpty()) {
         builder.leaf(label, file);
@@ -45,6 +58,12 @@ public final class DirectoryTree {
       }
     }
     return builder.build();
+  }
+
+  private static void addParentFolders(Path relative, List<String> folders) {
+    for (int i = 0; i < relative.getNameCount() - 1; i++) {
+      folders.add(relative.getName(i).toString());
+    }
   }
 
   /** Display label: favorites prefixed with ★, duplicates suffixed with a marker. */

@@ -18,10 +18,13 @@ import com.github.simcityexpansion.buildpack.convert.StructureNbtWriter;
 import com.github.simcityexpansion.buildpack.convert.WorldCapture;
 import com.github.simcityexpansion.buildpack.install.BuildingInstaller;
 import com.github.simcityexpansion.buildpack.install.InstallRegistry;
+import com.github.simcityexpansion.buildpack.install.LegacyMigration;
 import com.github.simcityexpansion.buildpack.install.PackInstaller;
 import com.github.simcityexpansion.buildpack.install.PackReader;
 import com.github.simcityexpansion.buildpack.integration.ActivePackProvider;
+import com.github.simcityexpansion.buildpack.integration.CreateSchematics;
 import com.github.simcityexpansion.buildpack.integration.PackActivationService;
+import com.github.simcityexpansion.buildpack.integration.SimukraftBridge;
 import com.github.simcityexpansion.buildpack.model.BuildingCategory;
 import com.github.simcityexpansion.buildpack.model.BuildingMetadata;
 import com.github.simcityexpansion.buildpack.model.FileNames;
@@ -53,8 +56,8 @@ import org.slf4j.LoggerFactory;
 /**
  * {@code /buildpack} server-side admin command (OP level 2), providing native install capability
  * for dedicated servers: scans {@code simcity_expansion/import/} in the <b>server</b> game
- * directory and reuses the same conversion/install pipeline as the client GUI to write into
- * {@code simukraftbuilding/}.
+ * directory and reuses the same conversion/install pipeline as the client GUI to write zip
+ * packages into {@code simukraftbuilding/} (the SimuKraft 2.0 layout).
  *
  * <pre>
  * /buildpack list                              List structures and zip packs in the import directory
@@ -65,6 +68,7 @@ import org.slf4j.LoggerFactory;
  * /buildpack activate &lt;zip&gt;                    Serve a pack to SimuKraft virtually (no install)
  * /buildpack deactivate &lt;packId&gt;               Stop serving an activated pack
  * /buildpack active                            List currently active packs
+ * /buildpack migrate                           Pack pre-2.0 loose building files into the managed zip
  * </pre>
  *
  * <p>Messages use translation components: they are rendered in the player's language when sent to
@@ -131,6 +135,8 @@ public final class BuildPackCommands {
                     StringArgumentType.getString(context, "id")))))
         .then(Commands.literal("active")
             .executes(context -> activeList(context.getSource())))
+        .then(Commands.literal("migrate")
+            .executes(context -> migrate(context.getSource())))
         .then(captureNode()));
   }
 
@@ -347,6 +353,22 @@ public final class BuildPackCommands {
     return 1;
   }
 
+  /** Packs pre-2.0 loose building files into the managed local zip (SimuKraft 2.0 ignores loose files). */
+  private static int migrate(CommandSourceStack source) {
+    if (!LegacyMigration.hasLegacyFiles()) {
+      source.sendSuccess(() -> Component.translatable("buildpack.cmd.migrate.none"), false);
+      return 0;
+    }
+    runOffThread(source, () -> {
+      List<Component> messages = new ArrayList<>();
+      LegacyMigration.migrateIfNeeded(InstallRegistry.load(), messages);
+      SimukraftBridge.requestCatalogReload();
+      return new CmdOutcome(true, messages.isEmpty()
+          ? List.of(Component.translatable("buildpack.cmd.migrate.none")) : messages);
+    });
+    return 1;
+  }
+
   private static int activeList(CommandSourceStack source) {
     List<String> ids = new ArrayList<>(ActivePackProvider.activePackIds());
     if (ids.isEmpty()) {
@@ -385,12 +407,17 @@ public final class BuildPackCommands {
           : "capture_" + min.getX() + "_" + min.getY() + "_" + min.getZ());
       Path dir = ImportScanner.ensureImportDir();
       List<String> written = new ArrayList<>();
-      if (!"litematic".equals(format)) {
+      if ("create".equals(format)) {
+        // Straight into Create's schematic library, ready for the schematic table / cannon.
+        Path target = CreateSchematics.export(StructureNbtWriter.toTag(structure), base);
+        written.add("schematics/" + target.getFileName());
+      }
+      if (!"litematic".equals(format) && !"create".equals(format)) {
         Path target = uniqueTarget(dir, base + ".nbt");
         StructureNbtWriter.write(structure, target);
         written.add(target.getFileName().toString());
       }
-      if (!"nbt".equals(format)) {
+      if (!"nbt".equals(format) && !"create".equals(format)) {
         Path target = uniqueTarget(dir, base + ".litematic");
         LitematicWriter.write(structure, base, source.getTextName(), target);
         written.add(target.getFileName().toString());
@@ -409,11 +436,22 @@ public final class BuildPackCommands {
 
   // ---- Utilities ----
 
-  /** Resolves a relative path under the import directory and guards against {@code ../} traversal. */
+  /**
+   * Resolves a relative path under the import directory — or, with a {@code schematics/} prefix,
+   * under the Create mod's schematic directory — guarding against {@code ../} traversal.
+   */
   @Nullable
   private static Path resolveImportFile(String relative) {
+    String normalized = relative.replace('\\', '/');
+    if (normalized.startsWith("schematics/")) {
+      Path schematicsDir = CreateSchematics.schematicsDir().toAbsolutePath().normalize();
+      Path resolved = schematicsDir
+          .resolve(normalized.substring("schematics/".length())).normalize();
+      return resolved.startsWith(schematicsDir) && Files.isRegularFile(resolved)
+          ? resolved : null;
+    }
     Path importDir = ImportScanner.ensureImportDir().toAbsolutePath().normalize();
-    Path resolved = importDir.resolve(relative.replace('\\', '/')).normalize();
+    Path resolved = importDir.resolve(normalized).normalize();
     if (!resolved.startsWith(importDir) || !Files.isRegularFile(resolved)) {
       return null;
     }
@@ -465,9 +503,13 @@ public final class BuildPackCommands {
       CommandContext<CommandSourceStack> context,
       SuggestionsBuilder builder) {
     Path importDir = ImportScanner.ensureImportDir();
-    List<String> names = ImportScanner.scan().stream()
+    List<String> names = new ArrayList<>(ImportScanner.scan().stream()
         .map(file -> quoteIfNeeded(relativize(importDir, file.path())))
-        .toList();
+        .toList());
+    Path schematicsDir = CreateSchematics.schematicsDir();
+    for (ImportFile file : ImportScanner.scanCreateSchematics()) {
+      names.add(quoteIfNeeded("schematics/" + relativize(schematicsDir, file.path())));
+    }
     return SharedSuggestionProvider.suggest(names, builder);
   }
 
@@ -511,7 +553,7 @@ public final class BuildPackCommands {
   private static CompletableFuture<Suggestions> suggestFormats(
       CommandContext<CommandSourceStack> context,
       SuggestionsBuilder builder) {
-    return SharedSuggestionProvider.suggest(List.of("nbt", "litematic", "both"), builder);
+    return SharedSuggestionProvider.suggest(List.of("nbt", "litematic", "both", "create"), builder);
   }
 
   /** Wraps suggestion entries that contain spaces in quotes, matching the parsing rules of {@link StringArgumentType#string()}. */

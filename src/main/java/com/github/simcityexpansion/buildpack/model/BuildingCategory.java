@@ -1,16 +1,16 @@
 package com.github.simcityexpansion.buildpack.model;
 
-import java.nio.file.Path;
 import java.util.Optional;
 
-import com.github.simcityexpansion.buildpack.BuildPack;
 import net.minecraft.network.chat.Component;
 
 /**
- * SimuKraft's five fixed building categories, corresponding to subdirectory names under {@code simukraftbuilding/}.
+ * SimuKraft's five fixed building categories, corresponding to the {@code buildings/<category>/}
+ * entry directories inside a zip building package (and, pre-2.0, to loose subdirectories under
+ * {@code simukraftbuilding/}).
  *
- * <p>The directory names are hard-coded on the SimuKraft side (its BuildingBuiltinResourceService
- * only copies/scans these five), so entries in this enum must not be added or removed arbitrarily.
+ * <p>The category names are hard-coded on the SimuKraft side (its BuildingPackageCatalog only
+ * scans these five), so entries in this enum must not be added or removed arbitrarily.
  */
 public enum BuildingCategory {
   RESIDENTIAL("residential"),
@@ -25,14 +25,9 @@ public enum BuildingCategory {
     this.dirName = dirName;
   }
 
-  /** Subdirectory name under the SimuKraft building root directory. */
+  /** Category directory name (inside a package: {@code buildings/<dirName>/}). */
   public String dirName() {
     return dirName;
-  }
-
-  /** Target installation directory for this category ({@code <game-dir>/simukraftbuilding/<dirName>}). */
-  public Path dir() {
-    return BuildPack.simukraftDir().resolve(dirName);
   }
 
   /** Localized display name. */

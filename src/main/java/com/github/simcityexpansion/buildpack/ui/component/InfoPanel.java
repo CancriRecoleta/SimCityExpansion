@@ -217,6 +217,7 @@ public final class InfoPanel {
         row("buildpack.info.size", building.skFields().getOrDefault("size", "-")),
         Component.translatable("buildpack.info.category",
             building.category().displayName().copy().withStyle(ChatFormatting.WHITE)),
+        row("buildpack.info.package", building.zipFileName()),
         building.packId() != null
             ? row("buildpack.info.from_pack", building.packId())
             : (building.managed()

@@ -85,9 +85,16 @@ my_pack.zip
 
 ## 分类目录
 
-对应 SimuKraft 运行时 `simukraftbuilding/` 下的五个固定子目录，**不可自创**：
+对应 SimuKraft 2.0 建筑包内 `buildings/<分类>/` 的五个固定分类（与其官方
+`official_building.zip` 布局一致），**不可自创**：
 
 `residential`（住宅）· `commercial`（商业）· `industry`（工业）· `public`（公共）· `other`（其他）
+
+> 本格式的 `buildings/<分类>/` 布局与 SimuKraft 2.0 原生建筑包完全一致：若包内结构均为
+> `.nbt` 且每个建筑都带 `.sk`，成品 zip 可以直接放进 `simukraftbuilding/` 由 SimuKraft
+> 读取（多出的 `pack.json`/`icon.png`/`index.json`/`.meta.json` 会被其忽略）。经由本模组
+> 安装的收益是：`.litematic`/`.schem` 自动转换、DataVersion 升级、`.meta.json` 补齐 `.sk`、
+> 跨包重名处理与一键卸载。
 
 ## 结构文件
 
@@ -169,7 +176,7 @@ job_type:breadShopOwner
 
 > `containers.positions` 为结构内局部坐标——若结构经过转换（litematic 多区域合并会
 > 平移到合并包围盒原点），请以**转换后的 .nbt** 校对坐标：先用管理器安装一次，
-> 对照 `simukraftbuilding/<分类>/<名>.nbt` 调整。
+> 从 `simukraftbuilding/` 下对应 `sce_*.zip` 内的 `buildings/<分类>/<名>.nbt` 取出调整。
 
 ## v1 兼容
 
@@ -179,7 +186,9 @@ job_type:breadShopOwner
 
 ## 安装产物与卸载
 
-每个建筑落盘为 `simukraftbuilding/<分类>/` 下的：
+SimuKraft 2.0 只读取 `simukraftbuilding/*.zip` 建筑包，因此整包安装会把包规范化后写成
+`simukraftbuilding/sce_pack_<包id>.zip`（单独安装的建筑写入共享的 `sce_local.zip`），
+包内每个建筑为 `buildings/<分类>/` 下的：
 
 ```
 <名>.nbt          转换后的结构
@@ -187,14 +196,18 @@ job_type:breadShopOwner
 <名>.json         （若包内提供原生定义）
 ```
 
-同名冲突时自动追加 `_2/_3`。整包安装清单写入
-`simcity_expansion/installed_packs.json`，卸载按清单精确删除：
+与**所有**已存在建筑包（含官方包）重名时自动追加 `_2/_3`（SimuKraft 按基名合并所有包）。
+整包安装清单写入 `simcity_expansion/installed_packs.json`，卸载直接删除对应 zip：
 
 ```json
 { "packs": [ { "id": "yourname.starter_homes", "name": "入门住宅包",
   "version": "1.0.0", "installedAt": 1760000000000,
-  "files": ["residential/small_house.nbt", "residential/small_house.sk"] } ] }
+  "zip": "sce_pack_yourname.starter_homes.zip",
+  "files": ["buildings/residential/small_house.nbt", "buildings/residential/small_house.sk"] } ] }
 ```
+
+旧版（SimuKraft 2.0 之前）安装到 `simukraftbuilding/<分类>/` 的散文件会在服务器启动或打开
+管理器时自动迁移进 `sce_local.zip`，原文件移入 `simukraftbuilding/legacy_backup/` 备份。
 
 ## 制作流程建议
 

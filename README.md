@@ -19,7 +19,7 @@ share them as one-click zip packs.
 ![Minecraft](https://img.shields.io/badge/Minecraft-1.21.1-44883e?style=flat-square)
 ![NeoForge](https://img.shields.io/badge/NeoForge-21.1.233%2B-f16436?style=flat-square)
 ![No dependencies](https://img.shields.io/badge/dependencies-none-3fb950?style=flat-square)
-![Version](https://img.shields.io/badge/version-1.0.6-3b82f6?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.1.0-3b82f6?style=flat-square)
 ![License](https://img.shields.io/badge/license-All%20Rights%20Reserved-9ca3af?style=flat-square)
 [![Source](https://img.shields.io/badge/source-GitHub-181717?style=flat-square&logo=github&logoColor=white)](https://github.com/CancriRecoleta/SimCityExpansion)
 
@@ -53,10 +53,13 @@ structures from three common formats, convert them into SimuKraft's buildable fo
 organise and edit them through a Litematica-style manager, and package them as portable
 zip packs for one-click install and sharing.
 
-Integration with SimuKraft is a **pure file-system convention** — the mod writes `.sk` and
-`.nbt` files under `<game dir>/simukraftbuilding/<category>/` — so there is no compile-time
-dependency on SimuKraft. The manager is built on Minecraft's own GUI toolkit and needs no
-extra library, and the command interface runs on a dedicated server as well.
+Integration with SimuKraft is a **pure file-system convention** — the mod writes zip
+building packages (`buildings/<category>/` entries with `.sk` + `.nbt`) into
+`<game dir>/simukraftbuilding/`, the layout New-Simukraft 2.0+ reads natively — so there is
+no compile-time dependency on SimuKraft. The manager is built on Minecraft's own GUI
+toolkit and needs no extra library, and the command interface runs on a dedicated server as
+well. Legacy loose files from pre-2.0 installs are migrated into a managed zip
+automatically.
 
 ## Features
 
@@ -75,6 +78,12 @@ extra library, and the command interface runs on a dedicated server as well.
   `.litematic` or save and install directly.
 - **Capture from the world** — mark two corners in-game, capture the selection as a
   blueprint, and optionally include block-entity contents.
+- **Create (机械动力) schematic interop** — blueprints in Create's `schematics/` folder
+  (including server uploads under `schematics/uploaded/`) show up on the Import tab and
+  install like any structure; any import file, installed building, editor result, or world
+  capture can be exported back into `schematics/` for the schematic table and
+  schematicannon (structure voids are replaced with air, matching Create's own exports).
+  Pure file-system convention — Create is not a dependency.
 - **Zip pack ecosystem** — manifest-tracked install / uninstall, one-click export of
   installed buildings into a shareable pack, an optional pack icon and an `index.json`
   file manifest, and pass-through of SimuKraft native job/trade definitions (format v2).
@@ -92,6 +101,7 @@ extra library, and the command interface runs on a dedicated server as well.
 | --- | --- |
 | Minecraft | 1.21.1 |
 | NeoForge | 21.1.233 or newer |
+| New-Simukraft (optional) | 2.0.1 or newer (the zip building-package architecture) |
 
 Place the jar in your `mods/` folder — there are no other mod dependencies. The in-game
 manager works out of the box on a client; on a dedicated server the jar loads headless and
@@ -162,9 +172,10 @@ The same operation is available on servers via `/buildpack capture` (see
 Buildings are grouped into five fixed categories: `residential`, `commercial`,
 `industry`, `public`, and `other`.
 
-- **Install / uninstall** — installing a pack converts every building into the matching
-  category directory and records a manifest in `simcity_expansion/installed_packs.json`,
-  so uninstalling removes exactly the files that pack added.
+- **Install / uninstall** — installing a pack normalizes every building into a managed zip
+  package (`simukraftbuilding/sce_pack_<id>.zip`, read natively by SimuKraft 2.0) and
+  records a manifest in `simcity_expansion/installed_packs.json`; uninstalling deletes
+  exactly that package.
 - **Export** (Installed tab -> Export) — packages the listed buildings (respecting the
   current search filter) into a zip. Options:
   - include `.sk` metadata,
@@ -202,8 +213,14 @@ blocks.
 ├── simcity_expansion/
 │   ├── import/                 import directory (drop loose files and zip packs here)
 │   ├── export/                 exported build packs
+│   ├── cache/                  cache zip packages for activated packs
 │   └── installed_packs.json    installed-pack registry
-└── simukraftbuilding/<category>/   SimuKraft building directory (install target)
+├── simukraftbuilding/          SimuKraft 2.0 building-package directory (install target)
+│   ├── official_building.zip   SimuKraft's built-in package (read-only)
+│   ├── sce_local.zip           individually installed buildings (managed by this mod)
+│   ├── sce_pack_<id>.zip       one managed package per installed build pack
+│   └── legacy_backup/          pre-2.0 loose files, backed up by the migration
+└── schematics/                 Create's schematic library (import source + export target)
 ```
 
 ## Commands
@@ -221,7 +238,11 @@ tab-completion.
 | `/buildpack activate <zip>` | Serve a pack to SimuKraft virtually (no install) — requires SimuKraft |
 | `/buildpack deactivate <id>` | Stop serving an activated pack |
 | `/buildpack active` | List currently active packs |
-| `/buildpack capture <from> <to> [name] [format]` | Capture a region into a blueprint |
+| `/buildpack capture <from> <to> [name] [format]` | Capture a region into a blueprint (`nbt` / `litematic` / `both` / `create` — the latter writes into Create's `schematics/`) |
+| `/buildpack migrate` | Pack pre-2.0 loose building files into the managed zip (also runs automatically) |
+
+`/buildpack install` also accepts paths prefixed with `schematics/` to install a Create
+blueprint directly (e.g. `/buildpack install schematics/house.nbt residential`).
 
 ## Documentation
 

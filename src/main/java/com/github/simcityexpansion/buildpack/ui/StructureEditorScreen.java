@@ -12,6 +12,7 @@ import java.util.function.UnaryOperator;
 import com.github.simcityexpansion.buildpack.I18nLog;
 import com.github.simcityexpansion.buildpack.LocalizedIOException;
 import com.github.simcityexpansion.buildpack.convert.LitematicWriter;
+import com.github.simcityexpansion.buildpack.integration.CreateSchematics;
 import com.github.simcityexpansion.buildpack.convert.NbtStructure;
 import com.github.simcityexpansion.buildpack.convert.StructureNbtWriter;
 import com.github.simcityexpansion.buildpack.convert.StructureTransforms;
@@ -220,9 +221,12 @@ public final class StructureEditorScreen extends Screen {
     y = row2(x, y,
         "buildpack.editor.save", () -> save(),
         "buildpack.action.back", () -> onClose());
-    row2(x, y,
+    y = row2(x, y,
         "buildpack.editor.export_lite", () -> exportLitematic(),
         "buildpack.editor.save_install", () -> openInstall());
+    if (CreateSchematics.available()) {
+      row1(x, y, "buildpack.editor.export_create", () -> exportCreate());
+    }
   }
 
   private int section(String key, int x, int y) {
@@ -667,6 +671,21 @@ public final class StructureEditorScreen extends Screen {
     } catch (IOException | RuntimeException e) {
       I18nLog.warn(LOGGER, e, "buildpack.log.export_failed");
       status = Component.translatable("buildpack.editor.save_failed", LocalizedIOException.messageOf(e));
+      statusError = true;
+    }
+  }
+
+  /** Export the edited structure as a Create schematic (.nbt) into {@code <game dir>/schematics/}. */
+  private void exportCreate() {
+    try {
+      Path target = CreateSchematics.export(StructureNbtWriter.toTag(work), sanitize(outName));
+      status = Component.translatable(
+          "buildpack.msg.create_exported", "schematics/" + target.getFileName());
+      statusError = false;
+    } catch (IOException | RuntimeException e) {
+      I18nLog.warn(LOGGER, e, "buildpack.log.export_failed");
+      status = Component.translatable(
+          "buildpack.editor.save_failed", LocalizedIOException.messageOf(e));
       statusError = true;
     }
   }

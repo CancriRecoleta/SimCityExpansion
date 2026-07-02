@@ -72,13 +72,15 @@ versionRange = "${minecraft_version_range}"
 ordering = "NONE"
 side = "BOTH"
 
-# SimuKraft is an OPTIONAL integration: when present, our mixins serve build packs straight into its
-# catalog (no files written to simukraftbuilding/). 'optional' keeps this mod loadable without it;
-# 'AFTER' ensures SimuKraft's classes are available when our mixin config is processed.
+# SimuKraft is an OPTIONAL integration: when present, our mixins splice active build packs into its
+# zip package scan (no files written to simukraftbuilding/). 'optional' keeps this mod loadable
+# without it; 'AFTER' ensures SimuKraft's classes are available when our mixin config is processed.
+# The integration targets the SimuKraft 2.0+ zip package architecture (BuildingPackageCatalog);
+# on older SimuKraft versions the mixins disable themselves.
 [[dependencies."${mod_id}"]]
 modId = "simukraft"
 type = "optional"
-versionRange = "*"
+versionRange = "[2.0.1,)"
 ordering = "AFTER"
 side = "BOTH"
 

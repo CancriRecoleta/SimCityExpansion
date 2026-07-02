@@ -12,6 +12,7 @@ import java.util.stream.Stream;
 
 import com.github.simcityexpansion.buildpack.BuildPack;
 import com.github.simcityexpansion.buildpack.I18nLog;
+import com.github.simcityexpansion.buildpack.integration.CreateSchematics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,8 +24,28 @@ public final class ImportScanner {
 
   /** Recursively scans all loose .nbt / .litematic files, sorted by relative path; creates the directory if it does not exist. */
   public static List<ImportFile> scan() {
-    Path root = ensureImportDir();
+    return scanStructures(ensureImportDir());
+  }
+
+  /**
+   * Recursively scans the Create mod's schematic directory ({@code <game dir>/schematics/},
+   * including {@code uploaded/}) for structure files; empty when the Create integration is not
+   * {@linkplain CreateSchematics#available() available}. Never creates the directory.
+   */
+  public static List<ImportFile> scanCreateSchematics() {
+    Path root = CreateSchematics.schematicsDir();
+    if (!CreateSchematics.available() || !Files.isDirectory(root)) {
+      return List.of();
+    }
+    return scanStructures(root);
+  }
+
+  /** Recursively collects structure files under {@code root}, sorted by relative path. */
+  private static List<ImportFile> scanStructures(Path root) {
     List<ImportFile> files = new ArrayList<>();
+    if (!Files.isDirectory(root)) {
+      return files;
+    }
     try (Stream<Path> stream = Files.walk(root)) {
       stream.filter(Files::isRegularFile).forEach(path -> {
         StructureFormat.byFileName(path.getFileName().toString()).ifPresent(format -> {

@@ -22,6 +22,11 @@ public final class SkFileWriter {
     if (skPath.getParent() != null) {
       Files.createDirectories(skPath.getParent());
     }
+    Files.write(skPath, toBytes(meta));
+  }
+
+  /** Serializes metadata to UTF-8 .sk bytes (for writing into a zip package). */
+  public static byte[] toBytes(BuildingMetadata meta) {
     List<String> lines = new ArrayList<>();
     lines.add("# " + BuildPack.GENERATED_MARKER);
     putLine(lines, "name", meta.name);
@@ -32,7 +37,7 @@ public final class SkFileWriter {
     putLine(lines, "description", meta.description.replace('\r', ' ').replace('\n', ' '));
     putLine(lines, "tags", meta.tags);
     putLine(lines, "job_type", meta.jobType);
-    Files.write(skPath, lines, StandardCharsets.UTF_8);
+    return (String.join("\n", lines) + "\n").getBytes(StandardCharsets.UTF_8);
   }
 
   private static void putLine(List<String> lines, String key, String value) {

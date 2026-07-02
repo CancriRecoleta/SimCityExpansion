@@ -92,10 +92,19 @@ install — it is there for pre-release review and integrity checks.
 
 ## Category directories
 
-These map to the five fixed subdirectories under SimuKraft's runtime `simukraftbuilding/`
-and **cannot be invented**:
+These map to the five fixed `buildings/<category>/` directories inside a SimuKraft 2.0
+building package (the same layout as its official `official_building.zip`) and **cannot be
+invented**:
 
 `residential` . `commercial` . `industry` . `public` . `other`
+
+> This format's `buildings/<category>/` layout is identical to a native SimuKraft 2.0
+> building package: if every structure in the pack is already `.nbt` and every building has
+> a `.sk`, the finished zip can be dropped straight into `simukraftbuilding/` and read by
+> SimuKraft (the extra `pack.json`/`icon.png`/`index.json`/`.meta.json` are ignored).
+> Installing through this mod adds `.litematic`/`.schem` conversion, DataVersion upgrades,
+> `.sk` generation from `.meta.json`, cross-package name-collision handling, and one-click
+> uninstall.
 
 ## Structure files
 
@@ -184,8 +193,9 @@ its built-in buildings). Abbreviated example:
 
 > `containers.positions` are structure-local coordinates — if the structure is transformed
 > (litematic multi-region merge shifts it to the merged bounding-box origin), verify against
-> the **converted .nbt**: install once with the manager, then adjust against
-> `simukraftbuilding/<category>/<name>.nbt`.
+> the **converted .nbt**: install once with the manager, then extract and adjust against
+> `buildings/<category>/<name>.nbt` inside the matching `sce_*.zip` under
+> `simukraftbuilding/`.
 
 ## v1 compatibility
 
@@ -196,7 +206,10 @@ treated as a SimuKraft native definition, otherwise as metadata. New packs shoul
 
 ## Install output and uninstall
 
-Each building lands under `simukraftbuilding/<category>/` as:
+SimuKraft 2.0 reads only `simukraftbuilding/*.zip` building packages, so installing a pack
+normalizes it into `simukraftbuilding/sce_pack_<packid>.zip` (individually installed
+buildings go into the shared `sce_local.zip`). Inside the package each building lands under
+`buildings/<category>/` as:
 
 ```
 <name>.nbt          the converted structure
@@ -204,14 +217,21 @@ Each building lands under `simukraftbuilding/<category>/` as:
 <name>.json         (if the pack provides a native definition)
 ```
 
-Name collisions auto-append `_2/_3`. The whole-pack install manifest is written to
-`simcity_expansion/installed_packs.json`, and uninstall removes files precisely by manifest:
+Name collisions against **any** existing package (including the official one) auto-append
+`_2/_3` (SimuKraft merges all packages into one catalog keyed by base name). The whole-pack
+install manifest is written to `simcity_expansion/installed_packs.json`, and uninstall
+deletes the pack's zip:
 
 ```json
 { "packs": [ { "id": "yourname.starter_homes", "name": "Starter Homes",
   "version": "1.0.0", "installedAt": 1760000000000,
-  "files": ["residential/small_house.nbt", "residential/small_house.sk"] } ] }
+  "zip": "sce_pack_yourname.starter_homes.zip",
+  "files": ["buildings/residential/small_house.nbt", "buildings/residential/small_house.sk"] } ] }
 ```
+
+Legacy loose files (installed under `simukraftbuilding/<category>/` before SimuKraft 2.0)
+are migrated into `sce_local.zip` automatically on server start or when the manager opens;
+the originals are backed up to `simukraftbuilding/legacy_backup/`.
 
 ## Suggested workflow
 

@@ -73,9 +73,22 @@ public final class BuildPack {
     return gameDir().resolve("simcity_expansion").resolve("active_packs.json");
   }
 
-  /** SimuKraft's building root directory, scanned at runtime by its BuildingCatalog. */
+  /**
+   * SimuKraft's building root directory. Since SimuKraft 2.0 this directory holds <b>zip building
+   * packages</b> ({@code *.zip} with the internal layout {@code buildings/<category>/<file>});
+   * loose category directories are no longer read by SimuKraft.
+   */
   public static Path simukraftDir() {
     return gameDir().resolve("simukraftbuilding");
+  }
+
+  /**
+   * Backup directory that legacy loose building files ({@code simukraftbuilding/<category>/}, the
+   * pre-2.0 SimuKraft layout) are moved into after being migrated into a managed zip. SimuKraft only
+   * scans regular files in its root, so a subdirectory is invisible to it.
+   */
+  public static Path legacyBackupDir() {
+    return simukraftDir().resolve("legacy_backup");
   }
 
   /**

@@ -27,6 +27,13 @@ public final class StructureNbtWriter {
     NbtIo.writeCompressed(root, target);
   }
 
+  /** Serializes an already-built root tag to gzip-compressed bytes (for writing into a zip package). */
+  public static byte[] toBytes(CompoundTag root) throws IOException {
+    java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+    NbtIo.writeCompressed(root, out);
+    return out.toByteArray();
+  }
+
   /** Builds the root tag of a vanilla structure template. */
   public static CompoundTag toTag(NbtStructure structure) {
     CompoundTag root = new CompoundTag();

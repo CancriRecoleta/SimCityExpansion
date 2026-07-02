@@ -1,5 +1,6 @@
 package com.github.simcityexpansion.buildpack.ui;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -7,16 +8,20 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
+import com.github.simcityexpansion.buildpack.BuildPack;
 import com.github.simcityexpansion.buildpack.I18nLog;
 import com.github.simcityexpansion.buildpack.LocalizedIOException;
 import com.github.simcityexpansion.buildpack.convert.NbtStructure;
 import com.github.simcityexpansion.buildpack.convert.StructureNbtReader;
 import com.github.simcityexpansion.buildpack.install.PackExporter;
+import com.github.simcityexpansion.buildpack.install.PackReader;
 import com.github.simcityexpansion.buildpack.model.InstalledBuilding;
 import com.github.simcityexpansion.buildpack.ui.preview.PackIcon;
 import com.github.simcityexpansion.buildpack.ui.preview.PreviewSlot;
 import com.github.simcityexpansion.buildpack.ui.preview.StructurePreview;
 import net.minecraft.Util;
+import net.minecraft.nbt.NbtAccounter;
+import net.minecraft.nbt.NbtIo;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Checkbox;
@@ -175,11 +180,13 @@ public final class ExportScreen extends Screen {
       return autoIconCache.length == 0 ? null : autoIconCache;
     }
     for (InstalledBuilding building : buildings) {
-      if (building.structurePath() == null) {
+      if (building.structureEntry() == null) {
         continue;
       }
       try {
-        NbtStructure structure = StructureNbtReader.read(building.structurePath());
+        byte[] bytes = PackReader.readEntryBytes(building.zipPath(), building.structureEntry());
+        NbtStructure structure = StructureNbtReader.read(NbtIo.readCompressed(
+            new ByteArrayInputStream(bytes), NbtAccounter.create(BuildPack.MAX_STRUCTURE_NBT_BYTES)));
         byte[] png = PackIcon.render(structure);
         if (png != null) {
           autoIconCache = png;
