@@ -21,6 +21,7 @@ import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexBuffer;
 import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.blaze3d.vertex.VertexSorting;
 import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -33,6 +34,8 @@ import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.block.BlockRenderDispatcher;
+import net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher;
+import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -42,8 +45,13 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtUtils;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.EntityBlock;
+import net.minecraft.world.level.block.RenderShape;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
+import org.joml.Matrix4fStack;
 import org.joml.Vector4f;
 import org.lwjgl.opengl.GL11;
 
@@ -58,6 +66,11 @@ import org.lwjgl.opengl.GL11;
  *       culling), rendered with a {@code POSITION_COLOR} vertex buffer, enabling interactive 3D
  *       preview of million-block structures (at reduced detail).</li>
  * </ul>
+ *
+ * <p>Blocks drawn by a {@link BlockEntityRenderer} (chests, signs, beds, banners...) have no
+ * usable baked model, so the immediate and VBO tiers exclude them from the static geometry and
+ * re-render them live each frame in {@link #drawBlockEntities}; the voxel LOD tier keeps its
+ * map-color cubes.
  */
 public final class StructureScene extends AbstractWidget {
 
@@ -71,14 +84,20 @@ public final class StructureScene extends AbstractWidget {
   private static final int LOD_TARGET_RES = 48;
   /** Blocks processed per frame during incremental baking (amortizes baking cost). */
   private static final int BAKE_BUDGET = 8000;
+  /** Maximum number of block entities rendered live per structure (protects the frame rate). */
+  private static final int BLOCK_ENTITY_LIMIT = 2048;
 
   private record PosState(BlockPos pos, BlockState state) {}
+
+  /** A block entity rendered live each frame at its structure-local position. */
+  private record PosEntity(BlockPos pos, BlockEntity entity) {}
 
   /** A raycast result in the editor: the hit cell and the face the ray entered through. */
   public record Hit(BlockPos pos, Direction face) {}
 
   private final boolean interactive;
   private final List<PosState> blocks = new ArrayList<>();
+  private final List<PosEntity> blockEntities = new ArrayList<>();
   private final Map<Long, BlockState> grid = new HashMap<>();
   private NbtStructure structure;
 
@@ -172,6 +191,7 @@ public final class StructureScene extends AbstractWidget {
   /** Parses the structure; when {@code resetCamera=false} the current view is preserved (no camera jump after editor transforms). */
   public boolean setStructure(NbtStructure s, boolean resetCamera) {
     blocks.clear();
+    blockEntities.clear();
     grid.clear();
     cancelBake();
     closeBuffers();
@@ -252,10 +272,54 @@ public final class StructureScene extends AbstractWidget {
       if (si < 0 || si >= palette.length || palette[si] == null) {
         continue;
       }
-      blocks.add(new PosState(new BlockPos(b.x(), b.y(), b.z()), palette[si]));
-      grid.put(encode(b.x(), b.y(), b.z()), palette[si]);
+      BlockState state = palette[si];
+      BlockPos pos = new BlockPos(b.x(), b.y(), b.z());
+      grid.put(encode(b.x(), b.y(), b.z()), state);
+      // ENTITYBLOCK_ANIMATED states must not reach renderSingleBlock: it falls back to the item
+      // renderer, which ignores the block state and bakes foreign-atlas UVs into the block-atlas
+      // VBO (garbled chests). They render through their block entity below instead.
+      if (state.getRenderShape() != RenderShape.ENTITYBLOCK_ANIMATED) {
+        blocks.add(new PosState(pos, state));
+      }
+      if (state.hasBlockEntity()) {
+        addBlockEntity(pos, state, b.nbt());
+      }
     }
-    return !blocks.isEmpty();
+    return !blocks.isEmpty() || !blockEntities.isEmpty();
+  }
+
+  /**
+   * Creates the block entity backing a renderer-driven block (chest, sign, bed...) so
+   * {@link #drawBlockEntities} can draw it with its real model. Attaching the client level makes
+   * vanilla renderers honor the block state (facing, double-chest halves, bed part) instead of
+   * using their level-less item fallback.
+   */
+  private void addBlockEntity(BlockPos pos, BlockState state, @Nullable CompoundTag nbt) {
+    if (blockEntities.size() >= BLOCK_ENTITY_LIMIT
+        || !(state.getBlock() instanceof EntityBlock entityBlock)) {
+      return;
+    }
+    Minecraft mc = Minecraft.getInstance();
+    try {
+      BlockEntity entity = entityBlock.newBlockEntity(pos, state);
+      if (entity == null || mc.getBlockEntityRenderDispatcher().getRenderer(entity) == null) {
+        return;
+      }
+      if (mc.level != null) {
+        if (nbt != null) {
+          try {
+            entity.loadWithComponents(nbt, mc.level.registryAccess());
+          } catch (RuntimeException ignored) {
+            // Corrupt or foreign data only costs the extra detail (sign text, banner pattern).
+          }
+        }
+        entity.setLevel(mc.level);
+      }
+      blockEntities.add(new PosEntity(pos, entity));
+    } catch (RuntimeException ignored) {
+      // A block entity that cannot be built outside a real level is skipped; the rest of the
+      // preview still renders.
+    }
   }
 
   /** Resets the view (rotation/zoom/pan/slice). */
@@ -1410,11 +1474,13 @@ public final class StructureScene extends AbstractWidget {
       if (layerBuffers != null) {
         drawBaked(g, x, y, w, h, scale, mc);
       }
+      drawBlockEntities(g, x, y, w, h, scale, mc);
       if (baking) {
         drawCenteredText(g, x, y, w, h, mc, "buildpack.preview.baking");
       }
     } else {
       drawImmediate(g, x, y, w, h, scale, mc);
+      drawBlockEntities(g, x, y, w, h, scale, mc);
     }
     if (showGizmo) {
       if (decorBuffer == null) {
@@ -1594,6 +1660,81 @@ public final class StructureScene extends AbstractWidget {
       mc.renderBuffers().bufferSource().endBatch();
     } finally {
       pose.popPose();
+      Lighting.setupForFlatItems();
+      g.flush();
+      g.disableScissor();
+    }
+  }
+
+  /**
+   * Overlay pass for renderer-driven blocks (chests, signs, beds...): their dynamic models live on
+   * separate texture atlases and cannot be baked, so they draw through their real
+   * {@link BlockEntityRenderer} every frame, after the static geometry so depth testing composes
+   * them correctly. Not used by the voxel LOD tier.
+   */
+  private void drawBlockEntities(GuiGraphics g, int x, int y, int w, int h, float scale,
+      Minecraft mc) {
+    if (blockEntities.isEmpty()) {
+      return;
+    }
+    g.flush();
+    UiScale.enableScissor(g, x, y, x + w, y + h);
+    PoseStack pose;
+    if (perspective) {
+      // The VBO tier draws with explicit matrices in perspective mode; mirror them through the
+      // global RenderSystem state so this immediate pass lands in the same clip space.
+      RenderSystem.backupProjectionMatrix();
+      RenderSystem.setProjectionMatrix(projectionFor(x, y, w, h), VertexSorting.DISTANCE_TO_ORIGIN);
+      Matrix4fStack modelViewStack = RenderSystem.getModelViewStack();
+      modelViewStack.pushMatrix();
+      modelViewStack.identity();
+      RenderSystem.applyModelViewMatrix();
+      pose = new PoseStack();
+      pose.mulPose(perspectiveModelView());
+    } else {
+      pose = g.pose();
+      pose.pushPose();
+      pose.translate(x + w / 2.0f + panX, y + h / 2.0f + panY, 400.0f);
+      pose.scale(scale, -scale, scale);
+      pose.mulPose(Axis.XP.rotationDegrees(pitch));
+      pose.mulPose(Axis.YP.rotationDegrees(yaw));
+      pose.translate(-centerX, -centerY, -centerZ);
+    }
+    RenderSystem.enableDepthTest();
+    Lighting.setupForEntityInInventory();
+    BlockEntityRenderDispatcher dispatcher = mc.getBlockEntityRenderDispatcher();
+    MultiBufferSource.BufferSource buffers = mc.renderBuffers().bufferSource();
+    try {
+      for (PosEntity pe : blockEntities) {
+        BlockPos pos = pe.pos();
+        if (!inClip(pos.getX(), pos.getY(), pos.getZ())) {
+          continue;
+        }
+        pose.pushPose();
+        pose.translate(pos.getX(), pos.getY(), pos.getZ());
+        try {
+          BlockEntityRenderer<BlockEntity> renderer = dispatcher.getRenderer(pe.entity());
+          if (renderer != null) {
+            renderer.render(pe.entity(), 0.0f, pose, buffers,
+                LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY);
+          }
+        } catch (Throwable ignored) {
+          // One broken renderer must not hide the rest of the preview.
+        }
+        pose.popPose();
+      }
+      buffers.endBatch();
+    } catch (Throwable t) {
+      // Render exception: discard this frame's block entity pass.
+      mc.renderBuffers().bufferSource().endBatch();
+    } finally {
+      if (perspective) {
+        RenderSystem.getModelViewStack().popMatrix();
+        RenderSystem.applyModelViewMatrix();
+        RenderSystem.restoreProjectionMatrix();
+      } else {
+        pose.popPose();
+      }
       Lighting.setupForFlatItems();
       g.flush();
       g.disableScissor();
