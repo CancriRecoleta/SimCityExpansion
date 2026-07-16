@@ -19,6 +19,8 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
 
@@ -49,6 +51,8 @@ public final class VisualDefinitionEditor {
     INFO,
     OFFER_GROUP,
     OFFER,
+    WORK_AREA,
+    SPAWN_ENTITY,
     POINT_GROUP,
     POINT,
     CONTAINER_GROUP,
@@ -80,6 +84,8 @@ public final class VisualDefinitionEditor {
       return switch (kind) {
         case INFO -> 0xFFB0BEC5;
         case OFFER_GROUP, OFFER -> 0xFFF6C445;
+        case WORK_AREA -> 0xFF9CCC65;
+        case SPAWN_ENTITY -> 0xFFF48FB1;
         case POINT_GROUP, POINT -> 0xFF4DB6AC;
         case CONTAINER_GROUP, CONTAINER -> 0xFFBCAAA4;
         case RECIPE_GROUP, RECIPE -> 0xFF64B5F6;
@@ -152,6 +158,10 @@ public final class VisualDefinitionEditor {
       tree.addChild(arrayGroup(NodeKind.OFFER_GROUP, NodeKind.OFFER,
           "buildpack.definition.node.offers", root, "offers", this::offerLabel));
     } else {
+      tree.addChild(toggleNode(NodeKind.WORK_AREA, "buildpack.definition.node.work_area",
+          "workArea"));
+      tree.addChild(toggleNode(NodeKind.SPAWN_ENTITY, "buildpack.definition.node.spawn_entity",
+          "spawnEntity"));
       tree.addChild(mapGroup(NodeKind.POINT_GROUP, NodeKind.POINT,
           "buildpack.definition.node.points", "points"));
       tree.addChild(mapGroup(NodeKind.CONTAINER_GROUP, NodeKind.CONTAINER,
@@ -159,6 +169,18 @@ public final class VisualDefinitionEditor {
       tree.addChild(recipeGroup());
     }
     return tree;
+  }
+
+  /** A node for an optional top-level object (work area / spawn entity): "✓" marks presence. */
+  private TreeNode<String, Object> toggleNode(NodeKind kind, String labelKey, String field) {
+    JsonObject value = obj(root, field);
+    TreeNode<String, Object> node =
+        new TreeNode<>(translate(labelKey) + (value == null ? "" : " ✓"),
+            new DefinitionNode(kind, root, root, null, -1, field));
+    if (value != null) {
+      nodeIndex.put(value, node);
+    }
+    return node;
   }
 
   /** Tree node built for a JSON element in the latest {@link #buildTree} pass, or null. */
@@ -205,9 +227,35 @@ public final class VisualDefinitionEditor {
   }
 
   private void offerLabel(GroupChild child) {
-    child.label = child.object == null
-        ? (child.index + 1) + ". ?"
-        : str(child.object, "id").isBlank() ? "offer_" + child.index : str(child.object, "id");
+    if (child.object == null) {
+      child.label = (child.index + 1) + ". ?";
+      return;
+    }
+    String id = str(child.object, "id").isBlank() ? "offer_" + child.index
+        : str(child.object, "id");
+    child.label = id + " · " + translate("buildpack.definition.node." + offerTrade(child.object));
+  }
+
+  /** Classifies an offer the way SimuKraft's trade tabs do: sell, buy, or barter. */
+  private static String offerTrade(JsonObject offer) {
+    boolean costMoney = hasMoney(arrAny(offer, "cost", "costs"));
+    boolean resultMoney = hasMoney(arrAny(offer, "result", "results"));
+    if (costMoney && !resultMoney) {
+      return "offer_sell";
+    }
+    return resultMoney && !costMoney ? "offer_buy" : "offer_barter";
+  }
+
+  private static boolean hasMoney(@Nullable JsonArray resources) {
+    if (resources == null) {
+      return false;
+    }
+    for (JsonElement element : resources) {
+      if (element.isJsonObject() && element.getAsJsonObject().has("money")) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private TreeNode<String, Object> mapGroup(NodeKind groupKind, NodeKind childKind,
@@ -254,11 +302,28 @@ public final class VisualDefinitionEditor {
             "buildpack.definition.node.inputs", recipe, "inputs", this::inputLabel));
         node.addChild(arrayGroup(NodeKind.OUTPUT_GROUP, NodeKind.OUTPUT,
             "buildpack.definition.node.outputs", recipe, "outputs", this::outputLabel));
-        node.addChild(arrayGroup(NodeKind.STEP_GROUP, NodeKind.STEP,
-            "buildpack.definition.node.steps", recipe, "steps", this::stepLabel));
+        TreeNode<String, Object> steps = arrayGroup(NodeKind.STEP_GROUP, NodeKind.STEP,
+            "buildpack.definition.node.steps", recipe, "steps", this::stepLabel);
+        attachNestedSteps(steps);
+        node.addChild(steps);
       }
     }
     return group;
+  }
+
+  /** Expands repeat/loop bodies into child step groups so nested steps stay visually editable. */
+  private void attachNestedSteps(TreeNode<String, Object> stepsGroup) {
+    for (TreeNode<String, Object> child : List.copyOf(stepsGroup.getChildren())) {
+      if (child.getContent() instanceof DefinitionNode node && node.object() != null) {
+        String type = str(node.object(), "type");
+        if ("repeat".equals(type) || "loop".equals(type)) {
+          TreeNode<String, Object> nested = arrayGroup(NodeKind.STEP_GROUP, NodeKind.STEP,
+              "buildpack.definition.node.steps", node.object(), "steps", this::stepLabel);
+          attachNestedSteps(nested);
+          child.addChild(nested);
+        }
+      }
+    }
   }
 
   private void inputLabel(GroupChild child) {
@@ -313,6 +378,8 @@ public final class VisualDefinitionEditor {
         }
       }
       case OFFER -> offerForm(node);
+      case WORK_AREA -> workAreaForm();
+      case SPAWN_ENTITY -> spawnEntityForm();
       case POINT, CONTAINER -> mapEntryForm(node);
       case RECIPE -> recipeForm(node);
       case INPUT -> inputForm(node);
@@ -359,10 +426,10 @@ public final class VisualDefinitionEditor {
     JsonObject workTime = ensureObject(root, "workTime");
     int half = (formW - LABEL_W - 4) / 2;
     label("buildpack.definition.field.work_time");
-    textField(formX + LABEL_W, half, str(workTime, "start"),
-        v -> setInt(workTime, "start", v));
-    textField(formX + LABEL_W + half + 4, half, str(workTime, "end"),
-        v -> setInt(workTime, "end", v));
+    tip(textField(formX + LABEL_W, half, str(workTime, "start"),
+        v -> setInt(workTime, "start", v)), "buildpack.definition.field.work_time");
+    tip(textField(formX + LABEL_W + half + 4, half, str(workTime, "end"),
+        v -> setInt(workTime, "end", v)), "buildpack.definition.field.work_time");
     nextRow();
   }
 
@@ -396,8 +463,9 @@ public final class VisualDefinitionEditor {
     JsonObject stockRead = obj(offer, "stock");
     label("buildpack.definition.field.stock");
     int itemW = formW - LABEL_W - 40;
-    textField(formX + LABEL_W, itemW, str(stockRead, "item"),
-        v -> setString(ensureObject(offer, "stock"), "item", v));
+    tip(textField(formX + LABEL_W, itemW, str(stockRead, "item"),
+        v -> setString(ensureObject(offer, "stock"), "item", v)),
+        "buildpack.definition.field.stock");
     textField(formX + LABEL_W + itemW + 4, 36, str(stockRead, "max"),
         v -> setInt(ensureObject(offer, "stock"), "max", v));
     nextRow();
@@ -413,19 +481,76 @@ public final class VisualDefinitionEditor {
         "buildpack.definition.field.restock_interval",
         v -> setInt(ensureObject(offer, "stock"), "restockInterval", v));
     nextRow();
+    label("buildpack.definition.field.materials");
+    tip(textField(formX + LABEL_W, formW - LABEL_W, materialsText(stockRead),
+        v -> writeMaterials(ensureObject(offer, "stock"), v)),
+        "buildpack.definition.field.materials");
+    nextRow();
     arrayOpButtons(node);
+  }
+
+  // ---- Stock materials codec ("item*count; item*count") ----
+
+  private static String materialsText(@Nullable JsonObject stock) {
+    if (stock == null) {
+      return "";
+    }
+    JsonArray materials = arrAny(stock, "materials", "requiredMaterials", "required_materials");
+    if (materials == null) {
+      return "";
+    }
+    List<String> parts = new ArrayList<>();
+    for (JsonElement element : materials) {
+      JsonObject material = asObject(element);
+      if (material != null && !str(material, "item").isBlank()) {
+        parts.add(str(material, "item") + "*" + Math.max(1, (int) number(material, "count")));
+      }
+    }
+    return String.join("; ", parts);
+  }
+
+  private void writeMaterials(JsonObject stock, String text) {
+    JsonArray materials = new JsonArray();
+    for (String part : text.split(";")) {
+      String[] pieces = part.trim().split("\\*");
+      if (pieces[0].isBlank()) {
+        continue;
+      }
+      JsonObject material = new JsonObject();
+      material.addProperty("item", pieces[0].trim());
+      if (pieces.length > 1) {
+        try {
+          material.addProperty("count", Math.max(1, Integer.parseInt(pieces[1].trim())));
+        } catch (NumberFormatException ignored) {
+          // Half-typed counts default to 1 until they parse.
+        }
+      }
+      materials.add(material);
+    }
+    stock.remove("materials");
+    if (!materials.isEmpty()) {
+      stock.add("materials", materials);
+    }
+    host.markDirty();
   }
 
   /** One "type + value (+ count)" row bound to the first element of a cost/result list. */
   private void resourceRow(String labelKey, JsonObject offer, String field) {
-    JsonObject resource = firstObject(ensureArray(offer, field), "cost".equals(field));
+    JsonArray list = ensureArray(offer, field);
+    JsonObject resource = firstObject(list, "cost".equals(field));
     boolean money = resource.has("money");
-    label(labelKey);
+    if (list.size() > 1) {
+      // Only the first entry is bound here; flag the extra ones (editable in JSON mode).
+      labels.add(new FieldLabel(Component.literal(
+          translate(labelKey) + " +" + (list.size() - 1)), formX, cursorY));
+    } else {
+      label(labelKey);
+    }
     int typeW = 44;
     int x = formX + LABEL_W;
     Component typeLabel = Component.translatable(money
         ? "buildpack.definition.field.money" : "buildpack.definition.field.item");
-    sink.accept(new ThemedButton(x, cursorY, typeW, ROW_H, typeLabel, () -> {
+    ThemedButton typeButton = new ThemedButton(x, cursorY, typeW, ROW_H, typeLabel, () -> {
       // Toggle the resource shape between {money} and {item, count}; rebuild to relayout.
       for (String key : List.copyOf(resource.keySet())) {
         resource.remove(key);
@@ -438,7 +563,9 @@ public final class VisualDefinitionEditor {
       }
       host.markDirty();
       host.structureChanged(offer);
-    }));
+    });
+    tip(typeButton, labelKey);
+    sink.accept(typeButton);
     x += typeW + 4;
     if (money) {
       textField(x, formW - LABEL_W - typeW - 4, str(resource, "money"),
@@ -449,6 +576,85 @@ public final class VisualDefinitionEditor {
       textField(x + itemW + 4, 40, str(resource, "count"), v -> setInt(resource, "count", v));
     }
     nextRow();
+  }
+
+  /** Radiating work-area config (harvesting outside the building); optional, doc defaults. */
+  private void workAreaForm() {
+    JsonObject area = obj(root, "workArea");
+    if (area == null) {
+      hintRow("buildpack.definition.visual.work_area_off");
+      addButton("buildpack.definition.visual.enable_work_area", () -> {
+        JsonObject created = new JsonObject();
+        created.addProperty("type", "building_outer_rect");
+        created.addProperty("radius", 32);
+        created.addProperty("startOffset", 1);
+        created.addProperty("minYOffset", -4);
+        created.addProperty("maxYOffset", 32);
+        created.addProperty("excludeBuilding", true);
+        created.addProperty("scanColumnsPerTick", 64);
+        root.add("workArea", created);
+        host.markDirty();
+        host.structureChanged(created);
+      });
+      return;
+    }
+    pairIntRow(area, "buildpack.definition.field.radius",
+        "radius", "buildpack.definition.field.radius",
+        "startOffset", "buildpack.definition.field.start_offset");
+    pairIntRow(area, "buildpack.definition.field.min_y",
+        "minYOffset", "buildpack.definition.field.min_y",
+        "maxYOffset", "buildpack.definition.field.max_y");
+    textRow("buildpack.definition.field.scan_columns", str(area, "scanColumnsPerTick"),
+        v -> setInt(area, "scanColumnsPerTick", v));
+    boolRow("buildpack.definition.field.exclude_building",
+        bool(area, "excludeBuilding", true), v -> area.addProperty("excludeBuilding", v));
+    removeKeyButton("workArea");
+  }
+
+  /** First-run entity spawning (animal farms); optional. */
+  private void spawnEntityForm() {
+    JsonObject spawn = obj(root, "spawnEntity");
+    if (spawn == null) {
+      hintRow("buildpack.definition.visual.spawn_off");
+      addButton("buildpack.definition.visual.enable_spawn", () -> {
+        JsonObject created = new JsonObject();
+        created.addProperty("enabled", true);
+        created.addProperty("type", "minecraft:cow");
+        created.addProperty("count", 4);
+        root.add("spawnEntity", created);
+        host.markDirty();
+        host.structureChanged(created);
+      });
+      return;
+    }
+    boolRow("buildpack.definition.field.enabled", bool(spawn, "enabled", false),
+        v -> spawn.addProperty("enabled", v));
+    textRow("buildpack.definition.field.entity", str(spawn, "type"),
+        v -> setString(spawn, "type", v));
+    textRow("buildpack.definition.field.count", str(spawn, "count"),
+        v -> setInt(spawn, "count", v));
+    removeKeyButton("spawnEntity");
+  }
+
+  /** Two labeled integer fields on one row (hints carry the per-field meaning). */
+  private void pairIntRow(JsonObject target, String rowLabelKey,
+      String keyA, String hintA, String keyB, String hintB) {
+    label(rowLabelKey);
+    int half = (formW - LABEL_W - 4) / 2;
+    hintedField(formX + LABEL_W, half, str(target, keyA), hintA,
+        v -> setInt(target, keyA, v));
+    hintedField(formX + LABEL_W + half + 4, half, str(target, keyB), hintB,
+        v -> setInt(target, keyB, v));
+    nextRow();
+  }
+
+  /** "Remove config" button for the optional top-level objects. */
+  private void removeKeyButton(String field) {
+    addButton("buildpack.definition.visual.disable", () -> {
+      root.remove(field);
+      host.markDirty();
+      host.structureChanged(null);
+    });
   }
 
   private void mapEntryForm(DefinitionNode node) {
@@ -553,7 +759,8 @@ public final class VisualDefinitionEditor {
     label("buildpack.definition.field.type");
     int menuW = 60;
     int typeW = formW - LABEL_W - menuW - 4;
-    textField(formX + LABEL_W, typeW, str(step, "type"), v -> setString(step, "type", v));
+    tip(textField(formX + LABEL_W, typeW, str(step, "type"), v -> setString(step, "type", v)),
+        "buildpack.definition.field.type");
     int menuX = formX + LABEL_W + typeW + 4;
     int menuY = cursorY;
     sink.accept(new ThemedButton(menuX, menuY, menuW, ROW_H,
@@ -565,30 +772,220 @@ public final class VisualDefinitionEditor {
               host.structureChanged(step);
             })));
     nextRow();
-    textRow("buildpack.definition.field.point", str(step, "point"),
-        v -> setString(step, "point", v));
-    textRow("buildpack.definition.field.container", str(step, "container"),
-        v -> setString(step, "container", v));
-    textRow("buildpack.definition.field.item", str(step, "item"),
-        v -> setString(step, "item", v));
-    int third = (formW - LABEL_W - 8) / 3;
-    label("buildpack.definition.field.count");
-    hintedField(formX + LABEL_W, third, str(step, "count"),
-        "buildpack.definition.field.count", v -> setInt(step, "count", v));
-    hintedField(formX + LABEL_W + third + 4, third, str(step, "ticks"),
-        "buildpack.definition.field.ticks", v -> setInt(step, "ticks", v));
-    hintedField(formX + LABEL_W + (third + 4) * 2, third, str(step, "range"),
-        "buildpack.definition.field.range", v -> setDouble(step, "range", v));
-    nextRow();
-    boolRow("buildpack.definition.field.swing", bool(step, "swing", false), v -> {
-      if (v) {
-        step.addProperty("swing", true);
-      } else {
-        step.remove("swing");
-      }
-    });
+    stepTypeFields(step);
     hintRow("buildpack.definition.visual.advanced_hint");
     arrayOpButtons(node);
+  }
+
+  /**
+   * Type-specific step fields: each SimuKraft step type gets exactly the fields it reads (per the
+   * industrial customization docs), instead of one generic dump. Unknown or blank types fall back
+   * to the generic set. Fields refresh when the type is picked from the menu or on reselection.
+   */
+  private void stepTypeFields(JsonObject step) {
+    switch (str(step, "type")) {
+      case "set_held_item" -> stepText(step, "item", "buildpack.definition.field.item");
+      case "repeat", "loop" -> {
+        stepInt(step, "count", "buildpack.definition.field.count");
+        positionsRow(step);
+        hintRow("buildpack.definition.visual.repeat_hint");
+      }
+      case "move_to" -> {
+        stepText(step, "point", "buildpack.definition.field.point");
+        stepDouble(step, "range", "buildpack.definition.field.range");
+      }
+      case "look_at" -> stepText(step, "point", "buildpack.definition.field.point");
+      case "move_to_container", "move_to_chest" -> {
+        stepText(step, "container", "buildpack.definition.field.container");
+        stepDouble(step, "range", "buildpack.definition.field.range");
+      }
+      case "look_at_container", "look_at_chest", "require_inputs", "require_output_space" ->
+          stepText(step, "container", "buildpack.definition.field.container");
+      case "inspect_container", "open_container" -> {
+        stepText(step, "container", "buildpack.definition.field.container");
+        stepInt(step, "ticks", "buildpack.definition.field.ticks");
+      }
+      case "move_to_entity" -> {
+        stepText(step, "entityType", "buildpack.definition.field.entity");
+        stepText(step, "point", "buildpack.definition.field.point");
+        stepDouble(step, "range", "buildpack.definition.field.range");
+        stepInt(step, "radius", "buildpack.definition.field.radius");
+      }
+      case "use_item" -> {
+        stepInt(step, "ticks", "buildpack.definition.field.ticks");
+        swingRow(step);
+      }
+      case "craft_recipe", "craft_available_recipe", "craft_all_recipe" -> {
+        stepText(step, "input", "buildpack.definition.field.input");
+        stepText(step, "output", "buildpack.definition.field.output");
+      }
+      case "real_machine_recipe" -> {
+        stepText(step, "point", "buildpack.definition.field.point");
+        stepText(step, "input", "buildpack.definition.field.input");
+        stepText(step, "output", "buildpack.definition.field.output");
+        cycleRow("buildpack.definition.field.output_policy",
+            List.of("extract_to_output", "keep_in_machine"),
+            str(step, "outputPolicy").isBlank() ? "extract_to_output"
+                : str(step, "outputPolicy"),
+            v -> setString(step, "outputPolicy", v));
+        pairIntRow(step, "buildpack.definition.field.poll_ticks",
+            "pollTicks", "buildpack.definition.field.poll_ticks",
+            "timeoutTicks", "buildpack.definition.field.timeout_ticks");
+        swingRow(step);
+      }
+      case "insert_item", "store_item", "put_item" -> {
+        stepText(step, "container", "buildpack.definition.field.container");
+        stepText(step, "item", "buildpack.definition.field.item");
+        pairIntRow(step, "buildpack.definition.field.count",
+            "count", "buildpack.definition.field.count",
+            "ticks", "buildpack.definition.field.ticks");
+      }
+      case "fill_item", "fill_slot", "refill_item", "refill_slot" -> {
+        stepText(step, "point", "buildpack.definition.field.point");
+        stepText(step, "item", "buildpack.definition.field.item");
+        stepText(step, "input", "buildpack.definition.field.input");
+        tripleIntRow(step, "buildpack.definition.field.slot",
+            "slot", "buildpack.definition.field.slot",
+            "targetCount", "buildpack.definition.field.target_count",
+            "thresholdCount", "buildpack.definition.field.threshold");
+        swingRow(step);
+      }
+      case "breed_entities", "breed_animals" -> {
+        stepText(step, "entityType", "buildpack.definition.field.entity");
+        stepText(step, "container", "buildpack.definition.field.container");
+        stepInt(step, "count", "buildpack.definition.field.count");
+        stepBool(step, "requireFood", "buildpack.definition.field.require_food", true);
+      }
+      case "slaughter_entities", "slaughter_animals" -> {
+        stepText(step, "entityType", "buildpack.definition.field.entity");
+        stepInt(step, "count", "buildpack.definition.field.count");
+      }
+      case "shear_entities", "shear_sheep" -> {
+        stepText(step, "entityType", "buildpack.definition.field.entity");
+        pairIntRow(step, "buildpack.definition.field.count",
+            "count", "buildpack.definition.field.count",
+            "ticks", "buildpack.definition.field.ticks");
+        swingRow(step);
+      }
+      case "require_drops", "require_drop_items", "has_drops" -> {
+        stepText(step, "item", "buildpack.definition.field.item");
+        stepText(step, "point", "buildpack.definition.field.point");
+        pairIntRow(step, "buildpack.definition.field.radius",
+            "radius", "buildpack.definition.field.radius",
+            "timeoutTicks", "buildpack.definition.field.timeout_ticks");
+      }
+      case "collect_drops" -> {
+        stepText(step, "item", "buildpack.definition.field.item");
+        stepText(step, "point", "buildpack.definition.field.point");
+        pairIntRow(step, "buildpack.definition.field.radius",
+            "radius", "buildpack.definition.field.radius",
+            "maxCarryStacks", "buildpack.definition.field.max_carry");
+      }
+      case "harvest_block_clusters", "harvest_blocks" -> {
+        stepText(step, "targetBlockTag", "buildpack.definition.field.target_tag");
+        stepText(step, "attachedBlockTag", "buildpack.definition.field.attached_tag");
+        stepText(step, "supportBlockTag", "buildpack.definition.field.support_tag");
+        stepText(step, "plantItemTag", "buildpack.definition.field.plant_tag");
+        tripleIntRow(step, "buildpack.definition.field.min_attached",
+            "minAttachedBlocks", "buildpack.definition.field.min_attached",
+            "maxClusterBlocks", "buildpack.definition.field.max_cluster",
+            "maxCarryStacks", "buildpack.definition.field.max_carry");
+        stepBool(step, "untilAreaEmpty", "buildpack.definition.field.until_empty", false);
+        stepDouble(step, "range", "buildpack.definition.field.range");
+        swingRow(step);
+      }
+      case "deposit_carried_items", "store_carried_items", "put_carried_items" -> {
+        stepText(step, "container", "buildpack.definition.field.container");
+        stepInt(step, "ticks", "buildpack.definition.field.ticks");
+      }
+      case "place_block", "set_block" -> {
+        stepText(step, "block", "buildpack.definition.field.block");
+        positionsRow(step);
+        stepBool(step, "replace", "buildpack.definition.field.replace", false);
+        stepBool(step, "consume", "buildpack.definition.field.consume", false);
+        swingRow(step);
+      }
+      case "place_fluid", "place_liquid" -> {
+        stepText(step, "fluid", "buildpack.definition.field.fluid");
+        positionsRow(step);
+        stepBool(step, "replace", "buildpack.definition.field.replace", false);
+        stepBool(step, "consume", "buildpack.definition.field.consume", false);
+        swingRow(step);
+      }
+      case "destroy_block", "break_block", "remove_block" -> {
+        positionsRow(step);
+        stepBool(step, "dropItems", "buildpack.definition.field.drop_items", false);
+        swingRow(step);
+      }
+      case "require_block", "wait_for_block", "find_block", "check_block" -> {
+        stepText(step, "block", "buildpack.definition.field.block");
+        positionsRow(step);
+        stepInt(step, "count", "buildpack.definition.field.count");
+        stepText(step, "statusText", "buildpack.definition.field.status_text");
+      }
+      case "set_status" -> {
+        stepText(step, "statusKey", "buildpack.definition.field.status_key");
+        stepText(step, "statusText", "buildpack.definition.field.status_text");
+      }
+      default -> {
+        stepText(step, "point", "buildpack.definition.field.point");
+        stepText(step, "container", "buildpack.definition.field.container");
+        stepText(step, "item", "buildpack.definition.field.item");
+        pairIntRow(step, "buildpack.definition.field.count",
+            "count", "buildpack.definition.field.count",
+            "ticks", "buildpack.definition.field.ticks");
+        stepDouble(step, "range", "buildpack.definition.field.range");
+        swingRow(step);
+      }
+    }
+  }
+
+  // ---- Step field row helpers ----
+
+  private void stepText(JsonObject step, String key, String labelKey) {
+    textRow(labelKey, str(step, key), v -> setString(step, key, v));
+  }
+
+  private void stepInt(JsonObject step, String key, String labelKey) {
+    textRow(labelKey, str(step, key), v -> setInt(step, key, v));
+  }
+
+  private void stepDouble(JsonObject step, String key, String labelKey) {
+    textRow(labelKey, str(step, key), v -> setDouble(step, key, v));
+  }
+
+  /** Bool row that only stores deviations from the loader default (keeps the JSON minimal). */
+  private void stepBool(JsonObject step, String key, String labelKey, boolean defaultValue) {
+    boolRow(labelKey, bool(step, key, defaultValue), v -> {
+      if (v == defaultValue) {
+        step.remove(key);
+      } else {
+        step.addProperty(key, v);
+      }
+    });
+  }
+
+  private void swingRow(JsonObject step) {
+    stepBool(step, "swing", "buildpack.definition.field.swing", false);
+  }
+
+  private void positionsRow(JsonObject step) {
+    textRow("buildpack.definition.field.positions", positionsText(step),
+        v -> writePositions(step, v));
+  }
+
+  /** Three labeled integer fields on one row. */
+  private void tripleIntRow(JsonObject target, String rowLabelKey,
+      String keyA, String hintA, String keyB, String hintB, String keyC, String hintC) {
+    label(rowLabelKey);
+    int third = (formW - LABEL_W - 8) / 3;
+    hintedField(formX + LABEL_W, third, str(target, keyA), hintA,
+        v -> setInt(target, keyA, v));
+    hintedField(formX + LABEL_W + third + 4, third, str(target, keyB), hintB,
+        v -> setInt(target, keyB, v));
+    hintedField(formX + LABEL_W + (third + 4) * 2, third, str(target, keyC), hintC,
+        v -> setInt(target, keyC, v));
+    nextRow();
   }
 
   private void stepGroupForm(DefinitionNode node) {
@@ -843,9 +1240,17 @@ public final class VisualDefinitionEditor {
 
   // ---- Row/widget helpers ----
 
+  /** Attaches "{@code <labelKey>.tip}" as a tooltip when that translation exists. */
+  private static void tip(AbstractWidget widget, String labelKey) {
+    String key = labelKey + ".tip";
+    if (I18n.exists(key)) {
+      widget.setTooltip(Tooltip.create(Component.translatable(key)));
+    }
+  }
+
   private void textRow(String labelKey, String value, Consumer<String> setter) {
     label(labelKey);
-    textField(formX + LABEL_W, formW - LABEL_W, value, setter);
+    tip(textField(formX + LABEL_W, formW - LABEL_W, value, setter), labelKey);
     nextRow();
   }
 
@@ -861,6 +1266,7 @@ public final class VisualDefinitionEditor {
           setter.accept(value);
           host.markDirty();
         });
+    tip(holder[0], labelKey);
     sink.accept(holder[0]);
     nextRow();
   }
@@ -876,6 +1282,7 @@ public final class VisualDefinitionEditor {
           setter.accept(state[0]);
           host.markDirty();
         });
+    tip(holder[0], labelKey);
     sink.accept(holder[0]);
     nextRow();
   }
@@ -894,7 +1301,7 @@ public final class VisualDefinitionEditor {
     labels.add(new FieldLabel(Component.translatable(key), formX, cursorY));
   }
 
-  private void textField(int x, int width, String value, Consumer<String> setter) {
+  private EditBox textField(int x, int width, String value, Consumer<String> setter) {
     EditBox box = new EditBox(font, x, cursorY, width, ROW_H, Component.empty());
     box.setMaxLength(256);
     box.setValue(value);
@@ -903,6 +1310,7 @@ public final class VisualDefinitionEditor {
       host.markDirty();
     });
     sink.accept(box);
+    return box;
   }
 
   /** A small field with a placeholder hint (used for compact multi-field rows). */
@@ -916,6 +1324,7 @@ public final class VisualDefinitionEditor {
       setter.accept(v);
       host.markDirty();
     });
+    tip(box, hintKey);
     sink.accept(box);
   }
 
@@ -928,6 +1337,32 @@ public final class VisualDefinitionEditor {
   @Nullable
   private static JsonObject obj(JsonObject owner, String key) {
     return owner.has(key) && owner.get(key).isJsonObject() ? owner.getAsJsonObject(key) : null;
+  }
+
+  @Nullable
+  private static JsonArray arrAny(JsonObject owner, String... keys) {
+    for (String key : keys) {
+      if (owner.has(key) && owner.get(key).isJsonArray()) {
+        return owner.getAsJsonArray(key);
+      }
+    }
+    return null;
+  }
+
+  @Nullable
+  private static JsonObject asObject(@Nullable JsonElement element) {
+    return element != null && element.isJsonObject() ? element.getAsJsonObject() : null;
+  }
+
+  private static double number(JsonObject object, String key) {
+    if (!object.has(key) || !object.get(key).isJsonPrimitive()) {
+      return 0.0;
+    }
+    try {
+      return object.get(key).getAsDouble();
+    } catch (RuntimeException e) {
+      return 0.0;
+    }
   }
 
   private static String str(JsonObject object, String key) {

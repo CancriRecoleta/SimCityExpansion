@@ -95,6 +95,7 @@ public final class BuildPackScreen extends Screen {
   private static final int REFRESH_W = 70;
   private static final int OPEN_W = 90;
   private static final int DEDUPE_W = 90;
+  private static final int GUIDE_W = 50;
   private static final int CLOSE_W = 70;
   private static final int SCALE_W = 18;
 
@@ -193,6 +194,7 @@ public final class BuildPackScreen extends Screen {
     registry = InstallRegistry.load();
     form = new MetadataForm();
     infoPanel = new InfoPanel(form);
+    infoPanel.setOnDefinitionChanged(this::refresh);
     refresh();
 
     // Warn when connected to a remote server: files are only written to the local machine;
@@ -297,6 +299,10 @@ public final class BuildPackScreen extends Screen {
     action("open_folder", PAD + REFRESH_W + GAP, row2Y, OPEN_W, this::openFolder);
     dedupeButton = action("dedupe",
         PAD + REFRESH_W + GAP + OPEN_W + GAP, row2Y, DEDUPE_W, this::runCleanDuplicates);
+    // Pack-making guide in the title row's free right corner (the bottom rows are full at
+    // narrow widths).
+    action("guide", viewW() - PAD - GUIDE_W, PAD - 2, GUIDE_W, PackGuideScreen::open)
+        .setHeight(TAB_H - 2);
     int closeX = viewW() - PAD - CLOSE_W;
     int scaleUpX = closeX - GAP - SCALE_W;
     int scaleDownX = scaleUpX - GAP - SCALE_W;

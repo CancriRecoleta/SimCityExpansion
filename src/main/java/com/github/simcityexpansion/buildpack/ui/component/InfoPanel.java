@@ -17,6 +17,7 @@ import com.github.simcityexpansion.buildpack.model.InstalledBuilding;
 import com.github.simcityexpansion.buildpack.model.PackArchive;
 import com.github.simcityexpansion.buildpack.model.StructureInfo;
 import com.github.simcityexpansion.buildpack.ui.BuildPackTheme;
+import com.github.simcityexpansion.buildpack.ui.DefinitionEditorScreen;
 import com.github.simcityexpansion.buildpack.ui.MaterialListScreen;
 import com.github.simcityexpansion.buildpack.ui.PackBuildingSelection;
 import com.github.simcityexpansion.buildpack.ui.StructureEditorScreen;
@@ -68,16 +69,24 @@ public final class InfoPanel {
   private PreviewSlot previewSlot;
   private ThemedButton materialButton;
   private ThemedButton editButton;
+  private ThemedButton definitionButton;
 
   private final List<Component> rows = new ArrayList<>();
   private AbstractWidget currentPreview;
   private String currentName = "";
   private NbtStructure currentStructure;
+  private InstalledBuilding currentBuilding;
   private List<MaterialEntry> currentMaterials = List.of();
+  private Runnable onDefinitionChanged = () -> {};
 
   public InfoPanel(MetadataForm form) {
     this.form = form;
     rows.add(Component.translatable("buildpack.detail.empty"));
+  }
+
+  /** Callback run after the definition editor saves or deletes (e.g. rescan the building list). */
+  public void setOnDefinitionChanged(Runnable callback) {
+    this.onDefinitionChanged = callback;
   }
 
   /** Rebuilds and positions all panel widgets (called once per screen init). */
@@ -108,18 +117,52 @@ public final class InfoPanel {
         Component.translatable("buildpack.editor.open"),
         () -> {
           if (currentStructure != null) {
-            StructureEditorScreen.open(currentStructure, currentName);
+            StructureEditorScreen.open(currentStructure, currentName,
+                currentBuilding, onDefinitionChanged);
           }
         });
-    editButton.visible = currentStructure != null;
     add.accept(editButton);
+    // Commerce/industry definition entry (visual-first editor) for installed buildings; shares
+    // the editor row so the form below keeps its position.
+    definitionButton = new ThemedButton(infoX, editY, infoW, BUTTON_H,
+        Component.translatable("buildpack.menu.definition"),
+        () -> {
+          if (currentBuilding != null) {
+            DefinitionEditorScreen.open(currentBuilding, onDefinitionChanged);
+          }
+        });
+    add.accept(definitionButton);
+    refreshEditRow();
 
     int formY = editY + BUTTON_H + PAD;
     form.rebuild(font, infoX, formY, infoW, add);
   }
 
+  /** Lays out the editor/definition row: side by side when both apply, full width otherwise. */
+  private void refreshEditRow() {
+    if (editButton == null) {
+      return;
+    }
+    boolean edit = currentStructure != null;
+    boolean definition = currentBuilding != null
+        && (currentBuilding.managed() || currentBuilding.hasJson());
+    editButton.visible = edit;
+    definitionButton.visible = definition;
+    if (edit && definition) {
+      int half = (infoW - BUTTON_GAP) / 2;
+      editButton.setWidth(half);
+      definitionButton.setX(infoX + half + BUTTON_GAP);
+      definitionButton.setWidth(infoW - half - BUTTON_GAP);
+    } else {
+      editButton.setWidth(infoW);
+      definitionButton.setX(infoX);
+      definitionButton.setWidth(infoW);
+    }
+  }
+
   /** Empty state: no entry is selected. */
   public void showEmpty() {
+    currentBuilding = null;
     setRows(Component.translatable("buildpack.detail.empty"));
     clearExtras();
     form.setModel(new BuildingMetadata(), false);
@@ -128,6 +171,7 @@ public final class InfoPanel {
   /** Import file: structure summary + file info + preview + editable form + material list entry. */
   public void showImport(
       ImportFile file, StructureInfo info, NbtStructure structure, BuildingMetadata model) {
+    currentBuilding = null;
     List<Component> list = new ArrayList<>(List.of(
         row("buildpack.info.name", info.name() == null ? "-" : info.name()),
         row("buildpack.info.author", info.author() == null ? "-" : info.author()),
@@ -151,6 +195,7 @@ public final class InfoPanel {
   /** Pack building (read directly from zip): summary + preview + material list + read-only metadata. */
   public void showPackBuilding(PackBuildingSelection selection, StructureInfo info,
       NbtStructure structure, BuildingMetadata model) {
+    currentBuilding = null;
     List<Component> list = new ArrayList<>(List.of(
         row("buildpack.info.name", model.name.isBlank() ? selection.entry().name() : model.name),
         row("buildpack.info.author", model.author.isBlank() ? "-" : model.author),
@@ -173,6 +218,7 @@ public final class InfoPanel {
 
   /** Zip build pack: manifest summary (form shows pack info in read-only mode). */
   public void showPack(PackArchive pack, boolean installed) {
+    currentBuilding = null;
     setRows(
         row("buildpack.info.name", pack.manifest().name()),
         row("buildpack.info.author",
@@ -211,6 +257,7 @@ public final class InfoPanel {
 
   /** Installed building: .sk fields displayed read-only + preview and material list (if the structure can be parsed). */
   public void showInstalled(InstalledBuilding building, StructureInfo info, NbtStructure structure) {
+    currentBuilding = building;
     setRows(
         row("buildpack.info.name", building.name()),
         row("buildpack.info.author", building.skFields().getOrDefault("author", "-")),
@@ -271,9 +318,7 @@ public final class InfoPanel {
       materialButton.setMessage(
           Component.translatable("buildpack.materials.open", currentMaterials.size()));
     }
-    if (editButton != null) {
-      editButton.visible = true;
-    }
+    refreshEditRow();
   }
 
   private void clearExtras() {
@@ -286,9 +331,7 @@ public final class InfoPanel {
     if (materialButton != null) {
       materialButton.visible = false;
     }
-    if (editButton != null) {
-      editButton.visible = false;
-    }
+    refreshEditRow();
   }
 
   /** Draws info rows and form labels (widgets themselves are drawn by the screen's widget renderer). */

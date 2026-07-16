@@ -27,6 +27,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
@@ -262,28 +263,32 @@ public final class DefinitionEditorScreen extends Screen
     int bw = (w - GAP * (count - 1)) / count;
     int x = MARGIN;
     if (templates) {
-      addRenderableWidget(new ThemedButton(x, buttonsY, bw, BUTTON_H,
-          Component.translatable("buildpack.definition.template.commercial"),
-          () -> applyTemplate(Kind.COMMERCIAL)));
+      bottomButton(x, buttonsY, bw, "buildpack.definition.template.commercial",
+          () -> applyTemplate(Kind.COMMERCIAL));
       x += bw + GAP;
-      addRenderableWidget(new ThemedButton(x, buttonsY, bw, BUTTON_H,
-          Component.translatable("buildpack.definition.template.industrial"),
-          () -> applyTemplate(Kind.INDUSTRIAL)));
+      bottomButton(x, buttonsY, bw, "buildpack.definition.template.industrial",
+          () -> applyTemplate(Kind.INDUSTRIAL));
       x += bw + GAP;
     }
-    addRenderableWidget(new ThemedButton(x, buttonsY, bw, BUTTON_H,
-        Component.translatable("buildpack.definition.validate"), this::runValidate));
+    bottomButton(x, buttonsY, bw, "buildpack.definition.validate", this::runValidate);
     x += bw + GAP;
-    addRenderableWidget(new ThemedButton(x, buttonsY, bw, BUTTON_H,
-        Component.translatable("buildpack.definition.save"), this::save));
+    bottomButton(x, buttonsY, bw, "buildpack.definition.save", this::save);
     x += bw + GAP;
-    deleteButton = new ThemedButton(x, buttonsY, bw, BUTTON_H,
-        Component.translatable("buildpack.definition.delete"), this::deleteDefinition);
+    deleteButton = bottomButton(x, buttonsY, bw, "buildpack.definition.delete",
+        this::deleteDefinition);
     deleteButton.visible = exists;
-    addRenderableWidget(deleteButton);
     x += bw + GAP;
     addRenderableWidget(new ThemedButton(x, buttonsY, bw, BUTTON_H,
         Component.translatable("buildpack.prompt.cancel"), this::onClose));
+  }
+
+  /** Bottom-row button with the "{@code <key>.tip}" tooltip attached. */
+  private ThemedButton bottomButton(int x, int y, int w, String key, Runnable action) {
+    ThemedButton button = new ThemedButton(x, y, w, BUTTON_H,
+        Component.translatable(key), action);
+    button.setTooltip(Tooltip.create(Component.translatable(key + ".tip")));
+    addRenderableWidget(button);
+    return button;
   }
 
   // ---- Mode switching & visual host ----

@@ -21,6 +21,7 @@ import com.github.simcityexpansion.buildpack.model.BuildingCategory;
 import com.github.simcityexpansion.buildpack.model.BuildingMetadata;
 import com.github.simcityexpansion.buildpack.model.ImportFile;
 import com.github.simcityexpansion.buildpack.model.ImportScanner;
+import com.github.simcityexpansion.buildpack.model.InstalledBuilding;
 import com.github.simcityexpansion.buildpack.model.StructureFormat;
 import com.github.simcityexpansion.buildpack.ui.preview.StructureScene;
 import net.minecraft.client.Minecraft;
@@ -33,6 +34,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
+import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -62,6 +64,10 @@ public final class StructureEditorScreen extends Screen {
   private final Screen previous;
   private final NbtStructure original;
   private final StructureScene scene;
+  /** Installed building being edited (null for imports); enables the definition editor entry. */
+  @Nullable
+  private final InstalledBuilding building;
+  private final Runnable onDefinitionChanged;
   private final Deque<NbtStructure> undo = new ArrayDeque<>();
   private final Deque<NbtStructure> redo = new ArrayDeque<>();
   private final List<SectionLabel> sections = new ArrayList<>();
@@ -89,11 +95,13 @@ public final class StructureEditorScreen extends Screen {
   private long workBlocks;
 
   private StructureEditorScreen(Screen previous, NbtStructure original, StructureScene scene,
-      String outName) {
+      String outName, @Nullable InstalledBuilding building, Runnable onDefinitionChanged) {
     super(Component.translatable("buildpack.editor.title"));
     this.previous = previous;
     this.original = original;
     this.scene = scene;
+    this.building = building;
+    this.onDefinitionChanged = onDefinitionChanged;
     this.work = original;
     this.outName = outName;
     this.selMax[0] = original.sizeX - 1;
@@ -105,12 +113,22 @@ public final class StructureEditorScreen extends Screen {
 
   /** Opens the editor (does nothing if the structure exceeds limits or cannot be rendered). */
   public static void open(NbtStructure original, String baseName) {
+    open(original, baseName, null, () -> {});
+  }
+
+  /**
+   * Opens the editor with an installed-building context: the tool panel then offers the
+   * commerce/industry definition editor (visual-first) for that building.
+   */
+  public static void open(NbtStructure original, String baseName,
+      @Nullable InstalledBuilding building, Runnable onDefinitionChanged) {
     StructureScene scene = new StructureScene(0, 0, 0, 0, true);
     if (!scene.setStructure(original)) {
       return;
     }
     Minecraft mc = Minecraft.getInstance();
-    mc.setScreen(new StructureEditorScreen(mc.screen, original, scene, sanitize(baseName) + "_edited"));
+    mc.setScreen(new StructureEditorScreen(mc.screen, original, scene,
+        sanitize(baseName) + "_edited", building, onDefinitionChanged));
   }
 
   private int bodyY() {
@@ -225,7 +243,12 @@ public final class StructureEditorScreen extends Screen {
         "buildpack.editor.export_lite", () -> exportLitematic(),
         "buildpack.editor.save_install", () -> openInstall());
     if (CreateSchematics.available()) {
-      row1(x, y, "buildpack.editor.export_create", () -> exportCreate());
+      y = row1(x, y, "buildpack.editor.export_create", () -> exportCreate());
+    }
+    // Commerce/industry definition entry (opens the visual-first definition editor).
+    if (building != null && (building.managed() || building.hasJson())) {
+      row1(x, y, "buildpack.menu.definition",
+          () -> DefinitionEditorScreen.open(building, onDefinitionChanged));
     }
   }
 

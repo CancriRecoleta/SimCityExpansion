@@ -151,14 +151,18 @@ public final class StructureScene extends AbstractWidget {
   private int structWidth = 1;
   private int structDepth = 1;
 
-  private float yaw = 35.0f;
-  private float pitch = 25.0f;
+  /** Default camera orientation (structure shown from its south-east side, slightly from above). */
+  private static final float DEFAULT_YAW = -55.0f;
+  private static final float DEFAULT_PITCH = 25.0f;
+
+  private float yaw = DEFAULT_YAW;
+  private float pitch = DEFAULT_PITCH;
   private float zoom = 1.0f;
   private float panX;
   private float panY;
   // Smooth-camera targets; drag/zoom set both (instant), presets/fit/focus set only the target.
-  private float targetYaw = 35.0f;
-  private float targetPitch = 25.0f;
+  private float targetYaw = DEFAULT_YAW;
+  private float targetPitch = DEFAULT_PITCH;
   private float targetZoom = 1.0f;
   private float targetPanX;
   private float targetPanY;
@@ -499,13 +503,13 @@ public final class StructureScene extends AbstractWidget {
   }
 
   private void resetCamera() {
-    yaw = 35.0f;
-    pitch = 25.0f;
+    yaw = DEFAULT_YAW;
+    pitch = DEFAULT_PITCH;
     zoom = 1.0f;
     panX = 0.0f;
     panY = 0.0f;
-    targetYaw = 35.0f;
-    targetPitch = 25.0f;
+    targetYaw = DEFAULT_YAW;
+    targetPitch = DEFAULT_PITCH;
     targetZoom = 1.0f;
     targetPanX = 0.0f;
     targetPanY = 0.0f;
@@ -1508,6 +1512,78 @@ public final class StructureScene extends AbstractWidget {
       }
     }
     drawHints(g, x, y, w, h, mc);
+    drawCompass(g, x, y, w, h, mc);
+  }
+
+  /** Cardinal directions in structure space: north = -Z, east = +X, south = +Z, west = -X. */
+  private static final String[] COMPASS_KEYS = {"north", "east", "south", "west"};
+  private static final int[][] COMPASS_DIRECTIONS = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}};
+  private static final int COMPASS_DISC_RADIUS = 20;
+  private static final int COMPASS_LABEL_RADIUS = 14;
+
+  /** Whether the corner compass is drawn (used by hints to keep the top-right corner clear). */
+  private boolean compassVisible(int w, int h) {
+    return w >= 70 && h >= 70 && structure != null;
+  }
+
+  /**
+   * Compass rose in the top-right corner: a translucent disc with a north needle and cardinal
+   * labels, projected through the same yaw/pitch as the structure, so "north" always points
+   * where -Z actually is on screen (structure-local directions, matching the definition docs).
+   */
+  private void drawCompass(GuiGraphics g, int x, int y, int w, int h, Minecraft mc) {
+    if (!compassVisible(w, h)) {
+      return;
+    }
+    Font font = mc.font;
+    int centerX = x + w - COMPASS_DISC_RADIUS - 4;
+    int centerY = y + COMPASS_DISC_RADIUS + 4;
+
+    // Translucent disc backdrop (row spans; radius is small, so this stays cheap).
+    for (int row = -COMPASS_DISC_RADIUS; row <= COMPASS_DISC_RADIUS; row++) {
+      int span = (int) Math.floor(Math.sqrt(
+          (double) COMPASS_DISC_RADIUS * COMPASS_DISC_RADIUS - (double) row * row));
+      g.fill(centerX - span, centerY + row, centerX + span + 1, centerY + row + 1, 0x58000000);
+    }
+
+    double yawRad = Math.toRadians(yaw);
+    double pitchRad = Math.toRadians(pitch);
+    double[] screenX = new double[4];
+    double[] screenY = new double[4];
+    double[] lengths = new double[4];
+    for (int i = 0; i < COMPASS_KEYS.length; i++) {
+      double dx = COMPASS_DIRECTIONS[i][0];
+      double dz = COMPASS_DIRECTIONS[i][1];
+      // View rotation Rx(pitch) * Ry(yaw) applied to the horizontal direction, then the scene's
+      // y-flip: screenX ∝ rotated x, screenY ∝ rotated z * sin(pitch).
+      screenX[i] = dx * Math.cos(yawRad) + dz * Math.sin(yawRad);
+      screenY[i] = (-dx * Math.sin(yawRad) + dz * Math.cos(yawRad)) * Math.sin(pitchRad);
+      lengths[i] = Math.sqrt(screenX[i] * screenX[i] + screenY[i] * screenY[i]);
+    }
+
+    // North needle (red) with a short gray south tail, rotated via the pose stack.
+    if (lengths[0] >= 0.08) {
+      float angle = (float) Math.atan2(screenY[0], screenX[0]);
+      g.pose().pushPose();
+      g.pose().translate(centerX, centerY, 0.0f);
+      g.pose().mulPose(Axis.ZP.rotation(angle));
+      g.fill(2, -1, COMPASS_LABEL_RADIUS - 4, 1, 0xFFFF5555);
+      g.fill(-(COMPASS_LABEL_RADIUS - 8), -1, -2, 1, 0xA0E0E0E0);
+      g.pose().popPose();
+    }
+    g.fill(centerX - 1, centerY - 1, centerX + 1, centerY + 1, 0xFFFFFFFF);
+
+    for (int i = 0; i < COMPASS_KEYS.length; i++) {
+      if (lengths[i] < 0.08) {
+        continue;
+      }
+      String label = Component.translatable("buildpack.preview." + COMPASS_KEYS[i]).getString();
+      int labelX = (int) Math.round(centerX + screenX[i] / lengths[i] * COMPASS_LABEL_RADIUS)
+          - font.width(label) / 2;
+      int labelY = (int) Math.round(centerY + screenY[i] / lengths[i] * COMPASS_LABEL_RADIUS)
+          - font.lineHeight / 2;
+      g.drawString(font, label, labelX, labelY, i == 0 ? 0xFFFF5555 : 0xD0E0E0E0, true);
+    }
   }
 
   private static final float PERSPECTIVE_FOV = (float) Math.toRadians(45.0);
@@ -1763,7 +1839,10 @@ public final class StructureScene extends AbstractWidget {
     Font font = mc.font;
     if (useLod) {
       String lod = Component.translatable("buildpack.preview.lod").getString();
-      g.drawString(font, lod, x + w - font.width(lod) - 3, y + 3, 0xFFFFD080, true);
+      // Keep clear of the top-right compass rose when it is shown.
+      int lodX = x + w - font.width(lod) - 3
+          - (compassVisible(w, h) ? COMPASS_DISC_RADIUS * 2 + 8 : 0);
+      g.drawString(font, lod, lodX, y + 3, 0xFFFFD080, true);
     }
     if (!interactive) {
       String hint = Component.translatable("buildpack.preview.zoom_hint").getString();
