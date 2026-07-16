@@ -621,6 +621,14 @@
   "buildpack.definition.field.exclude_building": "排除建筑",
   "buildpack.definition.field.exclude_building.tip": "采集时跳过建筑本体范围，避免拆自己小屋",
   "buildpack.definition.field.enabled": "启用",
+  "buildpack.definition.visual.pick": "3D选取",
+  "buildpack.definition.visual.pick.tip": "在建筑 3D 预览中点击方块添加/移除坐标（支持剖切查看内部）",
+  "buildpack.definition.msg.no_structure": "该建筑没有可用的结构文件，无法 3D 选取",
+  "buildpack.picker.title": "3D 坐标选取",
+  "buildpack.picker.hint": "左键点击方块：添加/移除 · 左键拖动旋转 · 右键拖动平移 · 滚轮缩放",
+  "buildpack.picker.count": "已选 %s 个坐标",
+  "buildpack.picker.clear": "清空",
+  "buildpack.picker.too_large": "结构过大（体素预览），无法点选，请返回手动输入坐标",
   "buildpack.guide.s6.title": "6. 分发与安装",
   "buildpack.guide.s6.body": "把 zip 分享给他人：拖入管理器窗口即可安装（成为独立的 sce_pack_<id>.zip）；也可以选中后\"激活（不安装）\"直接供 SimuKraft 使用。整个制作流程无需进入存档：主菜单 → 模组 → SimCity Expansion → 配置 即可打开管理器（仅\"捕获选区\"需要在世界中）。"
 }

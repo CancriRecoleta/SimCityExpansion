@@ -117,6 +117,10 @@ public final class StructureScene extends AbstractWidget {
   private int lodGz;
   private VertexBuffer lodBuffer;
 
+  // Marker cells (coordinate picker): highlighted boxes rendered like the selection overlay.
+  private final List<BlockPos> markerCells = new ArrayList<>();
+  private VertexBuffer markerBuffer;
+
   // Selection highlight (editor).
   private boolean hasSelection;
   private int selX0;
@@ -197,6 +201,8 @@ public final class StructureScene extends AbstractWidget {
     blocks.clear();
     blockEntities.clear();
     grid.clear();
+    markerCells.clear();
+    closeMarkerBuffer();
     cancelBake();
     closeBuffers();
     closeLod();
@@ -404,7 +410,57 @@ public final class StructureScene extends AbstractWidget {
     closeLod();
     closeSelectionBuffer();
     closeHoverBuffer();
+    closeMarkerBuffer();
     closeDecor();
+  }
+
+  /** Highlights the given cells (coordinate picker); pass an empty list to clear. */
+  public void setMarkers(List<BlockPos> cells) {
+    markerCells.clear();
+    markerCells.addAll(cells);
+    buildMarkerBuffer();
+  }
+
+  /** Whether cell picking works for this structure (voxel-LOD previews have no cell grid). */
+  public boolean supportsPicking() {
+    return !grid.isEmpty();
+  }
+
+  private void buildMarkerBuffer() {
+    closeMarkerBuffer();
+    if (markerCells.isEmpty()) {
+      return;
+    }
+    try (ByteBufferBuilder bytes = new ByteBufferBuilder(16 * 1024)) {
+      BufferBuilder b =
+          new BufferBuilder(bytes, VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+      for (BlockPos pos : markerCells) {
+        box(b, pos.getX() + 0.06f, pos.getY() + 0.06f, pos.getZ() + 0.06f,
+            pos.getX() + 0.94f, pos.getY() + 0.94f, pos.getZ() + 0.94f, 0x9050FF90);
+      }
+      MeshData mesh = b.build();
+      if (mesh != null) {
+        VertexBuffer buffer = new VertexBuffer(VertexBuffer.Usage.STATIC);
+        try {
+          buffer.bind();
+          buffer.upload(mesh);
+          VertexBuffer.unbind();
+          markerBuffer = buffer;
+        } catch (Throwable t) {
+          buffer.close();
+          markerBuffer = null;
+        }
+      }
+    } catch (Throwable t) {
+      markerBuffer = null;
+    }
+  }
+
+  private void closeMarkerBuffer() {
+    if (markerBuffer != null) {
+      markerBuffer.close();
+      markerBuffer = null;
+    }
   }
 
   /** Sets the highlighted selection region (inclusive bounds, automatically normalized). */
@@ -896,6 +952,12 @@ public final class StructureScene extends AbstractWidget {
 
   /** Draws the selection box (translucent, no depth test, overlaid on the structure). */
   private void drawSelectionBox(GuiGraphics g, int x, int y, int w, int h, float scale, Minecraft mc) {
+    drawOverlayBuffer(g, x, y, w, h, scale, selectionBuffer);
+  }
+
+  /** Draws a translucent POSITION_COLOR overlay buffer without depth testing (visible through walls). */
+  private void drawOverlayBuffer(GuiGraphics g, int x, int y, int w, int h, float scale,
+      VertexBuffer buffer) {
     Matrix4f modelView = cameraModelView(g, x, y, w, h, scale);
     Matrix4f projection = projectionFor(x, y, w, h);
     g.flush();
@@ -907,8 +969,8 @@ public final class StructureScene extends AbstractWidget {
     RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
     try {
       RenderSystem.setShader(GameRenderer::getPositionColorShader);
-      selectionBuffer.bind();
-      selectionBuffer.drawWithShader(modelView, projection, RenderSystem.getShader());
+      buffer.bind();
+      buffer.drawWithShader(modelView, projection, RenderSystem.getShader());
       VertexBuffer.unbind();
     } catch (Throwable t) {
       // Discard this frame.
@@ -1496,6 +1558,9 @@ public final class StructureScene extends AbstractWidget {
     }
     if (hasSelection && selectionBuffer != null) {
       drawSelectionBox(g, x, y, w, h, scale, mc);
+    }
+    if (markerBuffer != null) {
+      drawOverlayBuffer(g, x, y, w, h, scale, markerBuffer);
     }
     if (editMode || selectMode) {
       updateHover(mouseX, mouseY);

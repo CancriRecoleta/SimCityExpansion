@@ -621,6 +621,14 @@
   "buildpack.definition.field.exclude_building": "Skip building",
   "buildpack.definition.field.exclude_building.tip": "Never harvest inside the building's own bounds",
   "buildpack.definition.field.enabled": "Enabled",
+  "buildpack.definition.visual.pick": "Pick 3D",
+  "buildpack.definition.visual.pick.tip": "Click blocks in the 3D preview to add/remove coordinates (slice peeling reaches interiors)",
+  "buildpack.definition.msg.no_structure": "This building has no usable structure file; 3D picking unavailable",
+  "buildpack.picker.title": "3D Coordinate Picker",
+  "buildpack.picker.hint": "Click blocks to toggle · drag to rotate · right-drag to pan · wheel zooms",
+  "buildpack.picker.count": "%s coordinate(s) selected",
+  "buildpack.picker.clear": "Clear",
+  "buildpack.picker.too_large": "Structure too large (voxel preview); go back and type coordinates manually",
   "buildpack.guide.s6.title": "6. Distribute and install",
   "buildpack.guide.s6.body": "Share the zip: others drag it into this window to install it (as its own sce_pack_<id>.zip), or select it and use Activate to serve it to SimuKraft without installing. The whole workflow works without entering a save: title screen → Mods → SimCity Expansion → Config (only Capture needs a loaded world)."
 }

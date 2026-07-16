@@ -1,5 +1,6 @@
 package com.github.simcityexpansion.buildpack.ui;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -9,6 +10,8 @@ import java.util.regex.Pattern;
 
 import com.github.simcityexpansion.buildpack.I18nLog;
 import com.github.simcityexpansion.buildpack.LocalizedIOException;
+import com.github.simcityexpansion.buildpack.convert.NbtStructure;
+import com.github.simcityexpansion.buildpack.convert.StructureNbtReader;
 import com.github.simcityexpansion.buildpack.install.SimukraftZips;
 import com.github.simcityexpansion.buildpack.integration.SimukraftBridge;
 import com.github.simcityexpansion.buildpack.integration.SimukraftDefinitions;
@@ -29,6 +32,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.nbt.NbtAccounter;
+import net.minecraft.nbt.NbtIo;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -105,6 +110,11 @@ public final class DefinitionEditorScreen extends Screen
   private Kind pendingTemplate;
   private boolean pendingDelete;
   private boolean pendingDiscard;
+
+  // Structure for the 3D coordinate picker, loaded on first use.
+  @Nullable
+  private NbtStructure structureCache;
+  private boolean structureLoaded;
 
   private DefinitionEditorScreen(
       Screen parent, InstalledBuilding building, Runnable onChanged, String initial,
@@ -404,6 +414,47 @@ public final class DefinitionEditorScreen extends Screen
   @Override
   public void openMenu(ContextMenu menu) {
     contextMenu = menu;
+  }
+
+  @Override
+  public void pickPositions(JsonObject holder, @Nullable JsonElement reselect) {
+    NbtStructure structure = pickStructure();
+    if (structure == null) {
+      setMessage(Component.translatable("buildpack.definition.msg.no_structure"),
+          BuildPackTheme.MESSAGE_WARN);
+      return;
+    }
+    boolean opened = PositionPickerScreen.open(structure,
+        VisualDefinitionEditor.readPositionList(holder), picked -> {
+          VisualDefinitionEditor.writePositionList(holder, picked);
+          markDirty();
+          structureChanged(reselect);
+        });
+    if (!opened) {
+      setMessage(Component.translatable("buildpack.definition.msg.no_structure"),
+          BuildPackTheme.MESSAGE_WARN);
+    }
+  }
+
+  /** Lazily loads the building's structure for the 3D coordinate picker (null when absent). */
+  @Nullable
+  private NbtStructure pickStructure() {
+    if (!structureLoaded) {
+      structureLoaded = true;
+      if (building.hasStructure()) {
+        try {
+          byte[] bytes =
+              SimukraftZips.readEntry(building.zipPath(), building.structureEntry()).orElse(null);
+          if (bytes != null) {
+            structureCache = StructureNbtReader.read(NbtIo.readCompressed(
+                new ByteArrayInputStream(bytes), NbtAccounter.unlimitedHeap()));
+          }
+        } catch (IOException | RuntimeException e) {
+          I18nLog.warn(LOGGER, e, "buildpack.log.definition_read_failed", building.zipPath());
+        }
+      }
+    }
+    return structureCache;
   }
 
   private void clearPendings() {

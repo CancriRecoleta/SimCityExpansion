@@ -21,6 +21,7 @@ import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.resources.language.I18n;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
 
@@ -44,6 +45,12 @@ public final class VisualDefinitionEditor {
 
     /** Opens a context menu on top of the screen. */
     void openMenu(ContextMenu menu);
+
+    /**
+     * Opens the 3D coordinate picker for {@code holder}'s pos/positions; on confirm the host
+     * writes the picked cells back and reselects {@code reselect}.
+     */
+    void pickPositions(JsonObject holder, @Nullable JsonElement reselect);
   }
 
   /** Node kinds of the structure tree. */
@@ -663,8 +670,7 @@ public final class VisualDefinitionEditor {
       hintRow("buildpack.definition.visual.raw_hint");
       return;
     }
-    textRow("buildpack.definition.field.positions", positionsText(entry),
-        v -> writePositions(entry, v));
+    positionsRow(entry, entry);
     if (node.kind() == NodeKind.POINT) {
       cycleRow("buildpack.definition.field.select_mode", SELECT_MODES,
           str(entry, "select").isBlank() ? "nearest" : str(entry, "select"),
@@ -970,8 +976,72 @@ public final class VisualDefinitionEditor {
   }
 
   private void positionsRow(JsonObject step) {
-    textRow("buildpack.definition.field.positions", positionsText(step),
-        v -> writePositions(step, v));
+    positionsRow(step, step);
+  }
+
+  /** Coordinate text row plus the "pick in 3D" button opening the structure picker. */
+  private void positionsRow(JsonObject holder, @Nullable JsonElement reselect) {
+    label("buildpack.definition.field.positions");
+    int pickW = 44;
+    int fieldW = formW - LABEL_W - pickW - 4;
+    tip(textField(formX + LABEL_W, fieldW, positionsText(holder), v -> writePositions(holder, v)),
+        "buildpack.definition.field.positions");
+    ThemedButton pick = new ThemedButton(formX + LABEL_W + fieldW + 4, cursorY, pickW, ROW_H,
+        Component.translatable("buildpack.definition.visual.pick"),
+        () -> host.pickPositions(holder, reselect));
+    tip(pick, "buildpack.definition.visual.pick");
+    sink.accept(pick);
+    nextRow();
+  }
+
+  /** Reads pos/positions into structure-local cells (for the 3D picker's initial markers). */
+  public static List<BlockPos> readPositionList(JsonObject holder) {
+    List<BlockPos> cells = new ArrayList<>();
+    if (holder.has("pos") && holder.get("pos").isJsonArray()) {
+      addCell(cells, holder.getAsJsonArray("pos"));
+    }
+    if (holder.has("positions") && holder.get("positions").isJsonArray()) {
+      for (JsonElement element : holder.getAsJsonArray("positions")) {
+        if (element.isJsonArray()) {
+          addCell(cells, element.getAsJsonArray());
+        }
+      }
+    }
+    return cells;
+  }
+
+  private static void addCell(List<BlockPos> cells, JsonArray pos) {
+    if (pos.size() < 3) {
+      return;
+    }
+    try {
+      cells.add(new BlockPos(pos.get(0).getAsInt(), pos.get(1).getAsInt(), pos.get(2).getAsInt()));
+    } catch (RuntimeException ignored) {
+      // Malformed coordinates are simply not shown as markers.
+    }
+  }
+
+  /** Writes picked cells back into {@code holder} (single cell → pos, multiple → positions). */
+  public static void writePositionList(JsonObject holder, List<BlockPos> cells) {
+    holder.remove("pos");
+    holder.remove("positions");
+    if (cells.size() == 1) {
+      holder.add("pos", cellArray(cells.get(0)));
+    } else if (cells.size() > 1) {
+      JsonArray positions = new JsonArray();
+      for (BlockPos cell : cells) {
+        positions.add(cellArray(cell));
+      }
+      holder.add("positions", positions);
+    }
+  }
+
+  private static JsonArray cellArray(BlockPos cell) {
+    JsonArray pos = new JsonArray();
+    pos.add(cell.getX());
+    pos.add(cell.getY());
+    pos.add(cell.getZ());
+    return pos;
   }
 
   /** Three labeled integer fields on one row. */
