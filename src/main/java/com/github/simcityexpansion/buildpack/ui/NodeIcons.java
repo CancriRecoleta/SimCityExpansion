@@ -5,6 +5,7 @@ import com.github.simcityexpansion.buildpack.model.ImportFile;
 import com.github.simcityexpansion.buildpack.model.InstalledBuilding;
 import com.github.simcityexpansion.buildpack.model.PackArchive;
 import com.github.simcityexpansion.buildpack.model.StructureFormat;
+import com.github.simcityexpansion.buildpack.ui.definition.VisualDefinitionEditor;
 import net.minecraft.client.gui.GuiGraphics;
 
 /**
@@ -32,9 +33,20 @@ public final class NodeIcons {
       pack(g, x, y, size, PACK);
     } else if (content instanceof InstalledBuilding building) {
       building(g, x, y, size, categoryColor(building.category()));
+    } else if (content instanceof VisualDefinitionEditor.DefinitionNode node) {
+      chip(g, x, y, size, node.iconColor());
     } else {
       folder(g, x, y, size, FOLDER, expanded);
     }
+  }
+
+  /** Definition-editor node: a small rounded chip colored by node kind. */
+  private static void chip(GuiGraphics g, int x, int y, int s, int c) {
+    int pad = Math.max(1, s / 5);
+    int d = shade(c, 0.55f);
+    fill(g, x + pad, y + pad, s - pad * 2, s - pad * 2, d);
+    fill(g, x + pad + 1, y + pad + 1, s - pad * 2 - 2, s - pad * 2 - 2, c);
+    fill(g, x + pad + 1, y + pad + 1, s - pad * 2 - 2, 1, shade(c, 1.25f));
   }
 
   // ---- Icon types ----

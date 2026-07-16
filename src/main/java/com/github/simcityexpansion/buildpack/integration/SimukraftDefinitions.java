@@ -103,6 +103,12 @@ public final class SimukraftDefinitions {
     }
   }
 
+  /** {@link #detect(String)} for an already-parsed root object. */
+  @Nullable
+  public static Kind detectRoot(JsonObject root) {
+    return detectKind(root);
+  }
+
   @Nullable
   private static Kind detectKind(JsonObject root) {
     if (root.has("offers")) {

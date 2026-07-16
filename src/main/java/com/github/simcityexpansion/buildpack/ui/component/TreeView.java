@@ -58,10 +58,38 @@ public final class TreeView extends AbstractWidget {
   private TreeNode<String, Object> root;
   private TreeNode<String, Object> selected;
   private int page;
+  private boolean showCheckboxes = true;
 
   public TreeView(int x, int y, int width, int height, Consumer<Object> onSelect) {
     super(x, y, width, height, Component.empty());
     this.onSelect = onSelect;
+  }
+
+  /** Hides the multi-selection checkbox column (for trees that only use single selection). */
+  public void setShowCheckboxes(boolean show) {
+    this.showCheckboxes = show;
+  }
+
+  /** Expands every branch (small structural trees, e.g. the definition editor). */
+  public void expandAll() {
+    if (root != null) {
+      collectBranches(root);
+      rebuild();
+    }
+  }
+
+  private void collectBranches(TreeNode<String, Object> node) {
+    for (TreeNode<String, Object> child : node.getChildren()) {
+      if (!child.getChildren().isEmpty()) {
+        expanded.add(child);
+      }
+      collectBranches(child);
+    }
+  }
+
+  /** Sets the selection programmatically (no callback); pass null to clear. */
+  public void setSelectedNode(TreeNode<String, Object> node) {
+    this.selected = node;
   }
 
   /** Replaces the entire tree (the synthetic root's children become top-level items); collapses all, clears selection, and resets to the first page. */
@@ -167,8 +195,10 @@ public final class TreeView extends AbstractWidget {
       }
 
       int rowX = x + PAD_LEFT + row.depth * INDENT;
-      drawCheckbox(g, rowX, rowY + (ROW_HEIGHT - CHECK_SIZE) / 2, isRowChecked(row));
-      int afterCheck = rowX + CHECK_BOX;
+      if (showCheckboxes) {
+        drawCheckbox(g, rowX, rowY + (ROW_HEIGHT - CHECK_SIZE) / 2, isRowChecked(row));
+      }
+      int afterCheck = rowX + (showCheckboxes ? CHECK_BOX : 0);
       if (row.branch) {
         drawArrow(g, afterCheck + 1, rowY + (ROW_HEIGHT - 7) / 2, expanded.contains(row.node));
       }
@@ -258,11 +288,11 @@ public final class TreeView extends AbstractWidget {
     Row row = rows.get(idx);
     int rowX = x + PAD_LEFT + row.depth * INDENT;
     // Checkbox: toggle checked state (multi-selection) without changing the current selection.
-    if (mouseX >= rowX && mouseX < rowX + CHECK_SIZE) {
+    if (showCheckboxes && mouseX >= rowX && mouseX < rowX + CHECK_SIZE) {
       toggleChecked(row);
       return true;
     }
-    int afterCheck = rowX + CHECK_BOX;
+    int afterCheck = rowX + (showCheckboxes ? CHECK_BOX : 0);
     boolean arrowHit = row.branch && mouseX >= afterCheck && mouseX < afterCheck + ARROW_BOX;
     // Arrow: expand/collapse; content-less branches (folders/categories) also expand/collapse on full-row click; others (files/buildings/packs) are selected.
     if (arrowHit || (row.branch && row.node.getContent() == null)) {
