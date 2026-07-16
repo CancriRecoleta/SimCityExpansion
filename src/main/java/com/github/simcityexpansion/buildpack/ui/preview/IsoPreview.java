@@ -15,6 +15,10 @@ import org.jetbrains.annotations.Nullable;
  * edge), painted back-to-front via the painter's algorithm to produce a volumetric, blocky 3D
  * appearance.
  *
+ * <p>Viewed from the structure's north-west (screen-left face is north, screen-right face is
+ * west), matching the default {@link StructureScene} camera and upstream SimuKraft's
+ * BuildingConfirmScreen preview orientation.
+ *
  * <p>Render quality: internally drawn at {@value #SS}x supersampling then downsampled
  * (premultiplied-alpha averaging) for anti-aliasing, yielding smooth, non-jagged edges. Produces
  * an ARGB pixel image reusing the {@link StructurePreview#fromPixels} pipeline. Returns null for
@@ -61,7 +65,8 @@ public final class IsoPreview {
     int rQuart = Math.max(1, rHalf / 2);
     int rSh = rHalf;
 
-    // Keep only colored (non-air) blocks, sorted in painter order (depth x+z, then y, then x).
+    // Keep only colored (non-air) blocks, sorted in painter order: viewed from the north-west,
+    // larger x+z is farther away, so paint descending x+z (far to near), then y, then x.
     List<NbtStructure.BlockEntry> order = new ArrayList<>();
     for (NbtStructure.BlockEntry b : s.blocks) {
       int si = b.stateIndex();
@@ -72,18 +77,19 @@ public final class IsoPreview {
     if (order.isEmpty()) {
       return null;
     }
-    order.sort(Comparator.comparingInt((NbtStructure.BlockEntry b) -> b.x() + b.z())
+    order.sort(Comparator.comparingInt((NbtStructure.BlockEntry b) -> -(b.x() + b.z()))
         .thenComparingInt(NbtStructure.BlockEntry::y)
         .thenComparingInt(NbtStructure.BlockEntry::x));
 
-    // First pass: compute the render bounding box.
+    // First pass: compute the render bounding box (north-west view: screen right = -X +Z,
+    // closer blocks — smaller x+z — sit lower on screen).
     int minX = Integer.MAX_VALUE;
     int minY = Integer.MAX_VALUE;
     int maxX = Integer.MIN_VALUE;
     int maxY = Integer.MIN_VALUE;
     for (NbtStructure.BlockEntry b : order) {
-      int cx = (b.x() - b.z()) * rHalf;
-      int cy = (b.x() + b.z()) * rQuart - b.y() * rSh;
+      int cx = (b.z() - b.x()) * rHalf;
+      int cy = -(b.x() + b.z()) * rQuart - b.y() * rSh;
       minX = Math.min(minX, cx - rHalf);
       maxX = Math.max(maxX, cx + rHalf);
       minY = Math.min(minY, cy);
@@ -100,8 +106,8 @@ public final class IsoPreview {
 
     int[] px = new int[rw * rh];
     for (NbtStructure.BlockEntry b : order) {
-      int cx = (b.x() - b.z()) * rHalf - minX;
-      int cy = (b.x() + b.z()) * rQuart - b.y() * rSh - minY;
+      int cx = (b.z() - b.x()) * rHalf - minX;
+      int cy = -(b.x() + b.z()) * rQuart - b.y() * rSh - minY;
       drawCube(px, rw, rh, cx, cy, rHalf, rQuart, rSh, colors[b.stateIndex()]);
     }
     return new PixelImage(downsample(px, rw, rh, fw, fh), fw, fh);

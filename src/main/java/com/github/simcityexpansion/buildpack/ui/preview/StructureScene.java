@@ -155,8 +155,13 @@ public final class StructureScene extends AbstractWidget {
   private int structWidth = 1;
   private int structDepth = 1;
 
-  /** Default camera orientation (structure shown from its south-east side, slightly from above). */
-  private static final float DEFAULT_YAW = -55.0f;
+  /**
+   * Default camera orientation (structure shown from its north-west side, slightly from above),
+   * matching upstream SimuKraft's BuildingConfirmScreen (LDLib Scene camera yaw -135°, pitch 25°:
+   * camera direction (cos yaw, tan pitch, sin yaw) = north-west). In this scene the viewer-facing
+   * horizontal direction is (-sin yaw, cos yaw), so yaw 135° gives the same north-west view.
+   */
+  private static final float DEFAULT_YAW = 135.0f;
   private static final float DEFAULT_PITCH = 25.0f;
 
   private float yaw = DEFAULT_YAW;
