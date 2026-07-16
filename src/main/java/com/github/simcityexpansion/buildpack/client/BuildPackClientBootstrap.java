@@ -3,9 +3,11 @@ package com.github.simcityexpansion.buildpack.client;
 import com.github.simcityexpansion.buildpack.ui.BuildPackScreen;
 import net.minecraft.client.Minecraft;
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.fml.ModContainer;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
+import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import net.neoforged.neoforge.common.NeoForge;
 
 /**
@@ -21,11 +23,15 @@ public final class BuildPackClientBootstrap {
   private BuildPackClientBootstrap() {}
 
   /** Called by the main mod class in the client environment, passing in the mod event bus. */
-  public static void register(IEventBus modEventBus) {
+  public static void register(IEventBus modEventBus, ModContainer modContainer) {
     modEventBus.addListener(BuildPackClientBootstrap::onRegisterKeyMappings);
     NeoForge.EVENT_BUS.addListener(BuildPackClientBootstrap::onClientTick);
     NeoForge.EVENT_BUS.addListener(WorldSelection::onRenderLevelStage);
     NeoForge.EVENT_BUS.addListener(BuildPackClientBootstrap::onRenderGui);
+    // Mods-list "Config" entry: opens the pack manager from the title screen (and the pause
+    // menu), so pack developers can build and edit packs without entering a world.
+    modContainer.registerExtensionPoint(IConfigScreenFactory.class,
+        (container, modListScreen) -> new BuildPackScreen(modListScreen));
   }
 
   private static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {

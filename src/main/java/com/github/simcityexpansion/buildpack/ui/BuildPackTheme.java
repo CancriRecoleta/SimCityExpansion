@@ -37,6 +37,8 @@ public final class BuildPackTheme {
   public static final int HINT = 0xFF808080;
   /** Success status message (green). */
   public static final int MESSAGE_OK = 0xFF55FF55;
+  /** Warning status message (yellow). */
+  public static final int MESSAGE_WARN = 0xFFFFD860;
   /** Error status message (red). */
   public static final int MESSAGE_ERROR = 0xFFFF6060;
   /** Empty-state/placeholder text grey. */

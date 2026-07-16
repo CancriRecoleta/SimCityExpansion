@@ -218,6 +218,10 @@ public final class InfoPanel {
         Component.translatable("buildpack.info.category",
             building.category().displayName().copy().withStyle(ChatFormatting.WHITE)),
         row("buildpack.info.package", building.zipFileName()),
+        Component.translatable("buildpack.info.definition",
+            Component.translatable(building.hasJson()
+                ? "buildpack.info.definition_yes" : "buildpack.info.definition_no")
+                .withStyle(ChatFormatting.WHITE)),
         building.packId() != null
             ? row("buildpack.info.from_pack", building.packId())
             : (building.managed()

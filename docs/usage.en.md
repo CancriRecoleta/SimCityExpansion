@@ -19,7 +19,10 @@ Integration with SimuKraft is a file-system convention with no compile-time depe
 ## Quick start
 
 1.  Press **`\`** (backslash) in a world to open the manager (rebindable under
-    **Controls -> SimCity Expansion**).
+    **Controls -> SimCity Expansion**). You can also develop packs **without entering a
+    save**: on the title screen open **Mods**, select this mod, and click **Config** —
+    importing, editing, packaging, and commerce/industry definitions all work offline
+    (only "Capture selection" needs a loaded world).
 2.  **Drag building files straight into the window**, or click "Open folder" and drop them
     into `<game dir>/simcity_expansion/import/` (subdirectories are shown as a tree).
 3.  On the **Import Files** tab, select a file, fill in the install info on the right

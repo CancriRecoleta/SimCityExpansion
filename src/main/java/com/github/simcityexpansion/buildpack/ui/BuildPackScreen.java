@@ -64,6 +64,7 @@ import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -105,10 +106,23 @@ public final class BuildPackScreen extends Screen {
     lastTab = tab;
   }
 
-  /** Opens the build pack manager screen. */
+  /**
+   * Parent captured by the most recent manager instance. Sub-screens (editor, preview, material
+   * list) return via {@link #open()}, which would otherwise drop the mods-list parent of a
+   * title-screen session; in-game sessions never inherit it (close returns to gameplay).
+   */
+  @Nullable
+  private static Screen lastParent;
+
+  /** Opens the build pack manager screen (keybind and sub-screen return path). */
   public static void open() {
-    Minecraft.getInstance().setScreen(new BuildPackScreen());
+    Minecraft minecraft = Minecraft.getInstance();
+    minecraft.setScreen(new BuildPackScreen(minecraft.level == null ? lastParent : null));
   }
+
+  /** Screen restored on close (mods list / title screen); null returns to gameplay as before. */
+  @Nullable
+  private final Screen parent;
 
   private final InstallRegistry registry;
   private final MetadataForm form;
@@ -165,7 +179,17 @@ public final class BuildPackScreen extends Screen {
   private int statusX;
 
   public BuildPackScreen() {
+    this(null);
+  }
+
+  /**
+   * @param parent screen to return to on close — set when opened outside a world (mods list
+   *     "Config" entry), so pack development works without entering a save
+   */
+  public BuildPackScreen(@Nullable Screen parent) {
     super(Component.translatable("buildpack.title"));
+    this.parent = parent;
+    lastParent = parent;
     registry = InstallRegistry.load();
     form = new MetadataForm();
     infoPanel = new InfoPanel(form);
@@ -260,7 +284,13 @@ public final class BuildPackScreen extends Screen {
     ax += actionW + GAP;
     exportButton = action("export", ax, row1Y, actionW, this::runExport);
     ax += actionW + GAP;
-    action("capture", ax, row1Y, actionW, this::runCaptureSelection);
+    ThemedButton captureButton = action("capture", ax, row1Y, actionW, this::runCaptureSelection);
+    // Capturing reads blocks from the loaded world; from the title screen there is none.
+    if (minecraft.level == null) {
+      captureButton.active = false;
+      captureButton.setTooltip(
+          Tooltip.create(Component.translatable("buildpack.tooltip.capture_no_world")));
+    }
 
     // Bottom toolbar row
     action("refresh", PAD, row2Y, REFRESH_W, this::refresh);
@@ -607,9 +637,13 @@ public final class BuildPackScreen extends Screen {
 
   private static void prefillAuthor(BuildingMetadata model) {
     Minecraft minecraft = Minecraft.getInstance();
-    if (model.author.isBlank() && minecraft.player != null) {
-      model.author = minecraft.player.getGameProfile().getName();
+    if (!model.author.isBlank()) {
+      return;
     }
+    // Outside a world (title-screen pack development) fall back to the launcher account name.
+    model.author = minecraft.player != null
+        ? minecraft.player.getGameProfile().getName()
+        : minecraft.getUser().getName();
   }
 
   private void clearSelection() {
@@ -1029,6 +1063,11 @@ public final class BuildPackScreen extends Screen {
         items.add(new ContextMenu.Item(Component.translatable("buildpack.menu.recategorize"),
             () -> openCategoryMenu(building, mouseX, mouseY)));
       }
+      // Commercial/industrial definition: editable in managed zips, viewable when one exists.
+      if (building.managed() || building.hasJson()) {
+        items.add(new ContextMenu.Item(Component.translatable("buildpack.menu.definition"),
+            () -> DefinitionEditorScreen.open(building, this::refresh)));
+      }
       items.add(new ContextMenu.Item(Component.translatable("buildpack.menu.reveal"),
           () -> reveal(building.zipPath())));
       if (CreateSchematics.available() && building.hasStructure()) {
@@ -1341,6 +1380,6 @@ public final class BuildPackScreen extends Screen {
 
   @Override
   public void onClose() {
-    minecraft.setScreen(null);
+    minecraft.setScreen(parent);
   }
 }

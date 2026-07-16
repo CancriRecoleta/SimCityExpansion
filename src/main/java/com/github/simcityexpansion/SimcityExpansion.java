@@ -29,7 +29,7 @@ public class SimcityExpansion {
 
     // The management screen and key mappings are client-only features, registered only in a client environment.
     if (FMLEnvironment.dist == Dist.CLIENT) {
-      BuildPackClientBootstrap.register(modEventBus);
+      BuildPackClientBootstrap.register(modEventBus, modContainer);
     }
   }
 }
