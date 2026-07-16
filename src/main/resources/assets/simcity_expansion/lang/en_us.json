@@ -723,5 +723,17 @@
   "buildpack.cmd.testbuild.too_big": "Structure bounding volume %s exceeds the test placement cap %s",
   "buildpack.menu.update_from_selection": "Update structure from selection",
   "buildpack.msg.structure_updated": "Updated %s's structure from the selection (%s); metadata and definitions untouched",
-  "buildpack.msg.update_not_managed": "Only buildings managed by this mod can be updated"
+  "buildpack.msg.update_not_managed": "Only buildings managed by this mod can be updated",
+  "buildpack.definition.find": "Find",
+  "buildpack.definition.find.tip": "Find/replace (Ctrl+F opens, F3/Shift+F3 next/previous, Esc closes)",
+  "buildpack.definition.format": "Format",
+  "buildpack.definition.format.tip": "Re-indent the whole JSON document (undoable); syntax errors jump to the offending line",
+  "buildpack.definition.find.placeholder": "Find…",
+  "buildpack.definition.replace.placeholder": "Replace with…",
+  "buildpack.definition.replace_one": "Replace",
+  "buildpack.definition.replace_all": "All",
+  "buildpack.definition.msg.replaced": "Replaced %s occurrence(s)",
+  "buildpack.definition.msg.formatted": "Formatted",
+  "buildpack.definition.cursor_info": "%s:%s · %s",
+  "buildpack.definition.matches": "%s match(es)"
 }

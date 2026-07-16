@@ -31,12 +31,14 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
+import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -61,6 +63,8 @@ public final class DefinitionEditorScreen extends Screen
       new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
   private static final Pattern SIZE_PATTERN =
       Pattern.compile("(\\d+)\\s*[xX×]\\s*(\\d+)\\s*[xX×]\\s*(\\d+)");
+  /** Line number inside Gson's syntax-error messages ("... at line 5 column 3 path $..."). */
+  private static final Pattern ERROR_LINE_PATTERN = Pattern.compile("line (\\d+)");
   private static final int MARGIN = 12;
   private static final int GAP = 4;
   private static final int STATUS_ROWS = 5;
@@ -99,6 +103,15 @@ public final class DefinitionEditorScreen extends Screen
   @Nullable
   private ContextMenu contextMenu;
   private ThemedButton deleteButton;
+
+  // Find/replace bar state (JSON mode), preserved across widget rebuilds.
+  private boolean findOpen;
+  private String findQuery = "";
+  private String replaceText = "";
+  @Nullable
+  private EditBox findBox;
+  @Nullable
+  private EditBox replaceBox;
 
   // Layout (computed in init, shared with render).
   private int contentY;
@@ -215,16 +228,168 @@ public final class DefinitionEditorScreen extends Screen
   }
 
   private void initJsonMode(int w) {
-    jsonBox = new JsonEditBox(font, MARGIN, contentY, w, contentBottom - contentY,
+    // Toolbar row (next to the mode buttons): find toggle + pretty-print.
+    int modeY = MARGIN - 8;
+    int findButtonX = editable ? width - MARGIN - MODE_W * 3 - GAP * 3 : width - MARGIN - MODE_W;
+    ThemedButton findButton = new ThemedButton(findButtonX, modeY, MODE_W, 14,
+        Component.translatable("buildpack.definition.find"), this::openFind);
+    findButton.setTooltip(Tooltip.create(
+        Component.translatable("buildpack.definition.find.tip")));
+    addRenderableWidget(findButton.selected(() -> findOpen));
+    if (editable) {
+      ThemedButton formatButton = new ThemedButton(findButtonX - GAP - MODE_W, modeY, MODE_W, 14,
+          Component.translatable("buildpack.definition.format"), this::formatJson);
+      formatButton.setTooltip(Tooltip.create(
+          Component.translatable("buildpack.definition.format.tip")));
+      addRenderableWidget(formatButton);
+    }
+
+    int boxY = contentY;
+    if (findOpen) {
+      boxY += BUTTON_H + GAP;
+      int smallW = 18;
+      int actionW = 40;
+      int actions = smallW * 2 + GAP * 2 + 16 + GAP + (editable ? (actionW + GAP) * 2 : 0);
+      int fieldW = Math.max(80, (w - actions - GAP) / (editable ? 2 : 1));
+      int fx = MARGIN;
+      findBox = new EditBox(font, fx, contentY, fieldW, BUTTON_H,
+          Component.translatable("buildpack.definition.find.placeholder"));
+      findBox.setHint(Component.translatable("buildpack.definition.find.placeholder"));
+      findBox.setMaxLength(256);
+      findBox.setValue(findQuery);
+      findBox.setResponder(value -> {
+        findQuery = value;
+        if (jsonBox != null) {
+          jsonBox.setSearchQuery(value);
+        }
+      });
+      addRenderableWidget(findBox);
+      fx += fieldW + GAP;
+      if (editable) {
+        replaceBox = new EditBox(font, fx, contentY, fieldW, BUTTON_H,
+            Component.translatable("buildpack.definition.replace.placeholder"));
+        replaceBox.setHint(Component.translatable("buildpack.definition.replace.placeholder"));
+        replaceBox.setMaxLength(256);
+        replaceBox.setValue(replaceText);
+        replaceBox.setResponder(value -> replaceText = value);
+        addRenderableWidget(replaceBox);
+        fx += fieldW + GAP;
+      } else {
+        replaceBox = null;
+      }
+      addRenderableWidget(new ThemedButton(fx, contentY, smallW, BUTTON_H,
+          Component.literal("▲"), () -> {
+            if (jsonBox != null) {
+              jsonBox.findNext(false);
+            }
+          }));
+      fx += smallW + GAP;
+      addRenderableWidget(new ThemedButton(fx, contentY, smallW, BUTTON_H,
+          Component.literal("▼"), () -> {
+            if (jsonBox != null) {
+              jsonBox.findNext(true);
+            }
+          }));
+      fx += smallW + GAP;
+      if (editable) {
+        addRenderableWidget(new ThemedButton(fx, contentY, actionW, BUTTON_H,
+            Component.translatable("buildpack.definition.replace_one"), () -> {
+              if (jsonBox != null) {
+                jsonBox.replaceCurrent(replaceText);
+              }
+            }));
+        fx += actionW + GAP;
+        addRenderableWidget(new ThemedButton(fx, contentY, actionW, BUTTON_H,
+            Component.translatable("buildpack.definition.replace_all"), () -> {
+              if (jsonBox != null) {
+                setMessage(Component.translatable("buildpack.definition.msg.replaced",
+                    jsonBox.replaceAll(replaceText)), BuildPackTheme.MESSAGE_OK);
+              }
+            }));
+        fx += actionW + GAP;
+      }
+      addRenderableWidget(new ThemedButton(fx, contentY, 16, BUTTON_H,
+          Component.literal("×"), this::closeFind));
+    } else {
+      findBox = null;
+      replaceBox = null;
+    }
+
+    jsonBox = new JsonEditBox(font, MARGIN, boxY, w, contentBottom - boxY,
         Component.translatable("buildpack.definition.hint"));
     jsonBox.setCharacterLimit(MAX_LENGTH);
-    jsonBox.setValue(text);
+    jsonBox.setValueSilently(text);
     if (jsonView != null) {
       jsonBox.restoreViewState(jsonView);
     }
     jsonBox.setValueListener(this::onTextChanged);
+    if (findOpen && !findQuery.isEmpty()) {
+      jsonBox.setSearchQuery(findQuery);
+    }
     addRenderableWidget(jsonBox);
-    setInitialFocus(jsonBox);
+    setInitialFocus(findOpen && findBox != null ? findBox : jsonBox);
+  }
+
+  /** Opens (or re-focuses) the find bar; Ctrl+F. */
+  private void openFind() {
+    if (mode != Mode.JSON) {
+      return;
+    }
+    if (!findOpen) {
+      findOpen = true;
+      rebuildWidgets();
+    }
+    if (findBox != null) {
+      setFocused(findBox);
+    }
+  }
+
+  private void closeFind() {
+    if (!findOpen) {
+      return;
+    }
+    findOpen = false;
+    rebuildWidgets();
+    if (jsonBox != null) {
+      setFocused(jsonBox);
+    }
+  }
+
+  /** Pretty-prints the document via Gson (one undoable step); syntax errors jump to their line. */
+  private void formatJson() {
+    if (jsonBox == null || !editable) {
+      return;
+    }
+    try {
+      JsonElement parsed = JsonParser.parseString(jsonBox.getValue());
+      jsonBox.setValue(GSON.toJson(parsed));
+      jsonBox.setErrorLine(-1);
+      setMessage(Component.translatable("buildpack.definition.msg.formatted"),
+          BuildPackTheme.MESSAGE_OK);
+    } catch (RuntimeException e) {
+      markSyntaxErrorLine();
+      setMessage(Component.translatable("buildpack.definition.issue.syntax",
+          e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()),
+          BuildPackTheme.MESSAGE_ERROR);
+    }
+  }
+
+  /** Highlights (and jumps to) the syntax-error line reported by Gson; clears it when the text parses. */
+  private void markSyntaxErrorLine() {
+    if (jsonBox == null) {
+      return;
+    }
+    try {
+      JsonParser.parseString(jsonBox.getValue());
+      jsonBox.setErrorLine(-1);
+    } catch (RuntimeException e) {
+      Matcher matcher = ERROR_LINE_PATTERN.matcher(String.valueOf(e.getMessage()));
+      if (matcher.find()) {
+        int line = Integer.parseInt(matcher.group(1));
+        jsonBox.setErrorLine(line);
+        jsonBox.gotoLine(line);
+      }
+    }
   }
 
   private void initVisualMode() {
@@ -516,6 +681,7 @@ public final class DefinitionEditorScreen extends Screen
   private void runValidate() {
     clearPendings();
     syncTextFromVisual();
+    markSyntaxErrorLine();
     issues = SimukraftDefinitions.validate(text, sizeX, sizeY, sizeZ);
     NbtStructure structure = pickStructure();
     if (structure != null) {
@@ -547,6 +713,7 @@ public final class DefinitionEditorScreen extends Screen
     }
     issues = SimukraftDefinitions.validate(text, sizeX, sizeY, sizeZ);
     if (!SimukraftDefinitions.parses(text)) {
+      markSyntaxErrorLine();
       setMessage(Component.translatable("buildpack.definition.msg.syntax_block"),
           BuildPackTheme.MESSAGE_ERROR);
       return;
@@ -628,6 +795,31 @@ public final class DefinitionEditorScreen extends Screen
 
   @Override
   public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+    if (mode == Mode.JSON) {
+      if (keyCode == GLFW.GLFW_KEY_F && Screen.hasControlDown()) {
+        openFind();
+        return true;
+      }
+      if (keyCode == GLFW.GLFW_KEY_F3 && jsonBox != null) {
+        jsonBox.findNext(!Screen.hasShiftDown());
+        return true;
+      }
+      if (findOpen && keyCode == GLFW.GLFW_KEY_ESCAPE) {
+        closeFind();
+        return true;
+      }
+      boolean inFindField = (findBox != null && findBox.isFocused())
+          || (replaceBox != null && replaceBox.isFocused());
+      if (findOpen && inFindField && jsonBox != null
+          && (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER)) {
+        if (replaceBox != null && replaceBox.isFocused()) {
+          jsonBox.replaceCurrent(replaceText);
+        } else {
+          jsonBox.findNext(!Screen.hasShiftDown());
+        }
+        return true;
+      }
+    }
     if (editable && keyCode == 83 && Screen.hasControlDown()) {
       save();
       return true;
@@ -670,8 +862,22 @@ public final class DefinitionEditorScreen extends Screen
 
     int statusY = height - MARGIN - BUTTON_H - GAP - STATUS_ROWS * ROW_H;
     int rowY = statusY;
+    int messageWidth = width - MARGIN * 2;
+    if (mode == Mode.JSON && jsonBox != null) {
+      // Right-aligned cursor readout: line:column, JSON path, and search-match count.
+      Component info = Component.translatable("buildpack.definition.cursor_info",
+          jsonBox.cursorLine(), jsonBox.cursorColumn(), jsonBox.jsonPathAtCursor());
+      if (findOpen && !findQuery.isEmpty()) {
+        info = info.copy().append(" · ").append(
+            Component.translatable("buildpack.definition.matches", jsonBox.matchCount()));
+      }
+      Component clipped = clip(info, (width - MARGIN * 2) / 2);
+      int infoWidth = font.width(clipped);
+      g.drawString(font, clipped, width - MARGIN - infoWidth, rowY, BuildPackTheme.HINT, true);
+      messageWidth -= infoWidth + 8;
+    }
     if (message != null) {
-      g.drawString(font, clip(message, width - MARGIN * 2), MARGIN, rowY, messageColor, true);
+      g.drawString(font, clip(message, messageWidth), MARGIN, rowY, messageColor, true);
     }
     rowY += ROW_H;
     int shown = 0;

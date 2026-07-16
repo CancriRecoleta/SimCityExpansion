@@ -137,6 +137,23 @@ container coordinates point at actual container blocks and that `type` is `struc
 The install form gains a "**POI**" row for editing `poi: TYPE, capacity[, id]` declarations
 visually — no more hand-editing .sk text inside the zip.
 
+## Definition JSON editor
+
+The definition editor's JSON mode is a small code editor:
+
+- **line-number gutter** and current-line highlight; **matching-bracket highlight** at the
+  cursor (brackets inside strings are ignored);
+- the status bar shows the live **line:column and JSON path** at the cursor (for example
+  `$.recipes[0].steps[2].type` — no more getting lost in deep step lists);
+- **Ctrl+F find/replace**: case-insensitive, all matches highlighted, F3/Shift+F3 to jump,
+  replace-one and replace-all (handy when renaming container/point ids);
+- a **Format** button re-indents the whole document; **syntax errors highlight and jump to
+  the offending line** (validate/save do the same);
+- editing aids: auto-indent on Enter (pressing Enter between `{}`/`[]` expands a block),
+  auto-closing `{`/`[`/`"` pairs, Tab / Shift+Tab to (de)indent the selected lines;
+- **Ctrl+Z / Ctrl+Y text undo/redo** (typing runs coalesce into one step; history survives
+  mode switches).
+
 ## New editor tools
 
 - **Family swap** — replace a word root across block ids (`oak → spruce` converts planks,

@@ -723,5 +723,17 @@
   "buildpack.cmd.testbuild.too_big": "結構包圍體積 %s 超過測試放置上限 %s",
   "buildpack.menu.update_from_selection": "從當前選區更新結構",
   "buildpack.msg.structure_updated": "已用選區更新 %s 的結構（%s），元資料與定義保持不變",
-  "buildpack.msg.update_not_managed": "只能更新本模組託管的建築"
+  "buildpack.msg.update_not_managed": "只能更新本模組託管的建築",
+  "buildpack.definition.find": "查找",
+  "buildpack.definition.find.tip": "查找/替換（Ctrl+F 打開，F3/Shift+F3 下一個/上一個，Esc 關閉）",
+  "buildpack.definition.format": "格式化",
+  "buildpack.definition.format.tip": "重新縮排整個 JSON 文件（可復原）；語法錯誤會定位到出錯行",
+  "buildpack.definition.find.placeholder": "查找…",
+  "buildpack.definition.replace.placeholder": "替換為…",
+  "buildpack.definition.replace_one": "替換",
+  "buildpack.definition.replace_all": "全部",
+  "buildpack.definition.msg.replaced": "已替換 %s 處",
+  "buildpack.definition.msg.formatted": "已格式化",
+  "buildpack.definition.cursor_info": "%s:%s · %s",
+  "buildpack.definition.matches": "%s 處匹配"
 }
