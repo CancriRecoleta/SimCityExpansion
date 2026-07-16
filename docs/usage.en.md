@@ -49,10 +49,16 @@ Automatic processing on install:
 - **Missing-block detection** — when a structure uses blocks from a mod you do not have,
   the status bar lists the missing entries; those positions become air when built and are
   marked in magenta in the top-down preview.
+- **structure_void stripped** — SimuKraft places structure void as a real block (invisible
+  but occupying, replacing terrain), so install/activate strips it automatically and says so.
 - **Block entities preserved** — chest contents, sign text, and the like are kept with the
-  structure; **entities (mobs, armor stands, and so on) are not**.
+  structure file (for litematic / Create round-trips); note that SimuKraft **discards** them
+  when building (chests come out empty). **Entities (mobs, armor stands, item frames) are
+  now preserved through editing and transforms** as well.
 - Structures over 16,000,000 blocks after merging are rejected; over 2,000,000 blocks warn
   that building will take a while.
+- **Install check-up** — every install runs the doctor (next section); error/warning counts
+  show in the status bar.
 
 ## The interface
 
@@ -109,6 +115,58 @@ v directory tree           | [preview: embedded thumbnail or top-down]
 
 See [pack-format.en.md](pack-format.en.md) for the pack specification.
 
+## Check-up and layout preview
+
+With any structure-bearing entry selected, the "**Check-up**" button on the right audits the
+building against SimuKraft's silent-failure rules and opens a report:
+
+- residential buildings without **red bed** heads (only red beds count as homes upstream);
+- `amount` parsing traps (`1,000` silently becomes `1.0` upstream; garbage becomes 0 = free);
+- explicit air clears terrain when built; structure_void is placed as a real block (the
+  upstream preview filters both, so you cannot see it there);
+- chest/sign contents are discarded by the builder;
+- `poi:` line syntax (unknown types silently become OTHER; a non-integer capacity drops the
+  line) plus a **landing simulation** (block-name match → control box → origin);
+- `size` field mismatches, missing blocks, and the mod-dependency list.
+
+The report's "**Layout preview**" highlights red-bed homes, POI landings, the control box,
+and the definition's points/containers/output containers as colored boxes in 3D (with a
+legend). The definition editor has the same button, and its "Validate" now also checks that
+container coordinates point at actual container blocks and that `type` is `structure_pos`.
+
+The install form gains a "**POI**" row for editing `poi: TYPE, capacity[, id]` declarations
+visually — no more hand-editing .sk text inside the zip.
+
+## New editor tools
+
+- **Family swap** — replace a word root across block ids (`oak → spruce` converts planks,
+  stairs, doors, and fences in one step, keeping orientation properties; `dark_oak` is safe
+  from `oak`), optionally scoped to the selection.
+- **Props…** — edit the paint block's state properties (facing/half/shape/waterlogged);
+  hotkey `5` cycles the paint facing. Previously only the eyedropper could produce
+  non-default states.
+- **Array…** — clone the selection N times at a fixed offset (walls, floors, window columns);
+  the default offset equals the selection width.
+- **Alt+Arrows/PgUp/PgDn** — move the selection *contents* (plain arrows move only the box).
+- **2D layer view** — top-down per-layer editing (scroll changes layer, Ctrl+scroll zooms,
+  right-drag pans, left click applies the current tool); ideal for interiors and very large
+  structures.
+- Copy/cut/paste and the symmetry axis now have buttons (previously hotkey-only); all
+  transforms (rotate/mirror/crop/…) now **carry entities along** (positions, yaw, hanging
+  entity tiles).
+
+## Test placement and iteration
+
+- **`/buildpack testbuild <source> [pos]`** places a structure straight into the world for a
+  visual check (source is an import file or `installed/<category>/<base>`), with SimuKraft's
+  exact semantics (air clears terrain, missing blocks skipped, chests empty).
+  **`/buildpack testbuild undo`** restores the covered terrain (one undo slot per player).
+  Capped at 1,000,000 blocks.
+- **Update structure from selection** — after tweaking a building in the world, select the
+  new bounds with `[` `]` and right-click the building on the Installed tab → "Update
+  structure from selection": only the .nbt is replaced (and the size line rewritten); the
+  .sk metadata and definitions stay untouched, with a hot reload at the end.
+
 ## Create schematic interop
 
 Create schematics are plain vanilla structure NBT (`.nbt`) — the same format SimuKraft
@@ -154,6 +212,8 @@ an administrator can install directly with the `/buildpack` command — put file
 | `/buildpack packs` | List installed packs |
 | `/buildpack uninstallpack <id>` | Uninstall a pack by id from the registry |
 | `/buildpack migrate` | Pack legacy (pre-SimuKraft-2.0) loose files under `simukraftbuilding/<category>/` into `sce_local.zip` (originals backed up to `legacy_backup/`; also runs automatically on server start and when the manager opens) |
+| `/buildpack testbuild <source> [pos]` | Test placement: put the structure into the world to see the real result (import files and `installed/<category>/<base>`) |
+| `/buildpack testbuild undo` | Restore the terrain covered by the last test placement (one slot per player) |
 
 - Requires operator permission level 2; file names, categories, and pack ids all have
   tab-completion.
@@ -167,6 +227,8 @@ an administrator can install directly with the `/buildpack` command — put file
 
 ## Troubleshooting
 
+- **Nobody moves into my residential building** — homes only count **red bed**
+  (`minecraft:red_bed`) heads; other bed colors are decoration. The check-up reports this.
 - **Built with missing blocks / all air** — check for a "missing N block types" warning at
   install time; install the corresponding mod and reinstall.
 - **"Invalid build pack"** — the zip is missing `pack.json`, its format version is

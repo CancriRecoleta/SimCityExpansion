@@ -1,6 +1,7 @@
 package com.github.simcityexpansion.buildpack.model;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 
 import org.jetbrains.annotations.Nullable;
@@ -17,6 +18,8 @@ import org.jetbrains.annotations.Nullable;
  * @param hasStructure whether a same-base {@code .nbt} structure entry exists in the zip
  * @param hasJson whether a same-base SimuKraft native {@code .json} definition exists in the zip
  * @param skFields all key-value pairs parsed from the .sk entry
+ * @param poiLines all {@code poi:} lines parsed from the .sk entry, in file order (these repeat,
+ *     so they cannot live in the key-value map)
  * @param managed whether this mod owns the zip (its file name carries the managed prefix, or the
  *     zip is recorded in the build-pack registry) and may therefore modify or delete the building
  * @param packId pack id if installed by a zip build pack recorded in the registry; otherwise null
@@ -29,6 +32,7 @@ public record InstalledBuilding(
     boolean hasStructure,
     boolean hasJson,
     Map<String, String> skFields,
+    List<PoiLine> poiLines,
     boolean managed,
     @Nullable String packId) {
 

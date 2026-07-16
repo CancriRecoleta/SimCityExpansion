@@ -1,7 +1,10 @@
 package com.github.simcityexpansion.buildpack.ui;
 
+import java.util.List;
+
 import com.github.simcityexpansion.buildpack.convert.NbtStructure;
 import com.github.simcityexpansion.buildpack.ui.preview.StructureScene;
+import com.github.simcityexpansion.buildpack.validate.LayoutOverlay;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
@@ -11,6 +14,9 @@ import net.minecraft.network.chat.Component;
  * Full-screen 3D preview: full-size real block models; left-click to rotate, right-click to pan,
  * scroll to zoom, middle-click/button to reset, peel top to see the interior.
  * "Back" returns to the manager screen that opened this view (preserving the selection).
+ *
+ * <p>Optionally renders a functional-layout overlay ({@link LayoutOverlay}): colored see-through
+ * boxes over homes/POIs/definition coordinates, with a legend below the compass.
  */
 public final class StructurePreviewScreen extends Screen {
 
@@ -19,26 +25,37 @@ public final class StructurePreviewScreen extends Screen {
   private static final int GAP = 4;
   private static final int BUTTON_H = 20;
   private static final int BUTTON_W = 70;
+  private static final int LEGEND_TOP = 52;
+  private static final int LEGEND_ROW_H = 11;
 
   private final Screen previous;
   private final NbtStructure structure;
   private final StructureScene scene;
+  private final List<LayoutOverlay.Group> overlay;
 
-  private StructurePreviewScreen(Screen previous, NbtStructure structure, StructureScene scene) {
+  private StructurePreviewScreen(Screen previous, NbtStructure structure, StructureScene scene,
+      List<LayoutOverlay.Group> overlay) {
     super(Component.translatable("buildpack.preview.screen_title"));
     this.previous = previous;
     this.structure = structure;
     this.scene = scene;
+    this.overlay = overlay;
   }
 
   /** Opens the full-screen 3D preview (does nothing if the structure exceeds limits or cannot be rendered). */
   public static void open(NbtStructure structure) {
+    open(structure, List.of());
+  }
+
+  /** Opens the preview with a functional-layout overlay (colored marker groups + legend). */
+  public static void open(NbtStructure structure, List<LayoutOverlay.Group> overlay) {
     StructureScene scene = new StructureScene(0, 0, 0, 0, true);
     if (!scene.setStructure(structure)) {
       return;
     }
+    scene.setColoredMarkers(LayoutOverlay.markers(overlay));
     Minecraft mc = Minecraft.getInstance();
-    mc.setScreen(new StructurePreviewScreen(mc.screen, structure, scene));
+    mc.setScreen(new StructurePreviewScreen(mc.screen, structure, scene, overlay));
   }
 
   private int boxY() {
@@ -90,6 +107,20 @@ public final class StructurePreviewScreen extends Screen {
         hintX, height - PAD - BUTTON_H + (BUTTON_H - font.lineHeight) / 2,
         BuildPackTheme.HINT, true);
     super.render(g, mouseX, mouseY, partialTick);
+    renderLegend(g);
+  }
+
+  /** Legend for the layout overlay: one color chip + label per group, right-aligned below the compass. */
+  private void renderLegend(GuiGraphics g) {
+    int y = boxY() + LEGEND_TOP;
+    for (LayoutOverlay.Group group : overlay) {
+      Component label =
+          Component.translatable("buildpack.overlay." + group.key(), group.cells().size());
+      int textX = width - PAD - 6 - font.width(label);
+      g.fill(textX - 11, y, textX - 3, y + 8, group.color() | 0xFF000000);
+      g.drawString(font, label, textX, y, BuildPackTheme.VALUE, true);
+      y += LEGEND_ROW_H;
+    }
   }
 
   @Override

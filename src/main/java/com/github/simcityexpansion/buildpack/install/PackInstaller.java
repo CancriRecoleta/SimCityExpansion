@@ -21,6 +21,7 @@ import com.github.simcityexpansion.buildpack.I18nLog;
 import com.github.simcityexpansion.buildpack.LocalizedIOException;
 import com.github.simcityexpansion.buildpack.convert.StructureMaterializer;
 import com.github.simcityexpansion.buildpack.convert.StructureNbtWriter;
+import com.github.simcityexpansion.buildpack.convert.StructureTagOps;
 import com.github.simcityexpansion.buildpack.install.BuildingInstaller.InstallResult;
 import com.github.simcityexpansion.buildpack.integration.SimukraftBridge;
 import com.github.simcityexpansion.buildpack.model.BuildingCategory;
@@ -192,6 +193,10 @@ public final class PackInstaller {
     verifyHash(hashes, building.structureEntry(), structureBytes, messages);
     StructureMaterializer.Result result =
         StructureMaterializer.toVanilla(structureBytes, building.format(), messages);
+    int strippedVoid = StructureTagOps.stripStructureVoid(result.nbt());
+    if (strippedVoid > 0) {
+      messages.add(Component.translatable("buildpack.msg.void_stripped", strippedVoid));
+    }
     String nbtEntry = SimukraftZips.entryPath(category, finalName + ".nbt");
     entries.put(nbtEntry, StructureNbtWriter.toBytes(result.nbt()));
     installedFiles.add(nbtEntry);

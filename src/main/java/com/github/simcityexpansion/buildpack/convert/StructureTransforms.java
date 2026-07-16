@@ -3,28 +3,53 @@ package com.github.simcityexpansion.buildpack.convert;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.function.UnaryOperator;
 
 import com.github.simcityexpansion.buildpack.convert.NbtStructure.BlockEntry;
+import com.github.simcityexpansion.buildpack.convert.NbtStructure.EntityEntry;
 import com.github.simcityexpansion.buildpack.convert.NbtStructure.PaletteEntry;
 import net.minecraft.core.HolderGetter;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.DoubleTag;
+import net.minecraft.nbt.FloatTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtUtils;
+import net.minecraft.nbt.Tag;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.Property;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Whole-structure transforms: 90° rotation around the Y axis, mirroring, and whitespace cropping.
  * Coordinate remapping is paired with {@link BlockState#rotate}/{@link BlockState#mirror} to
  * rotate/mirror the state of stairs and other facing/orientation blocks, ensuring correct
  * orientation after the transform. Produces a new {@link NbtStructure}; the original is unchanged.
+ *
+ * <p>Entities are carried through every transform: their relative position (and the {@code Pos},
+ * {@code Rotation} yaw, and hanging-entity {@code TileX/Y/Z} tags) are remapped alongside the
+ * blocks; region operations drop or translate the entities the region covers.
  */
 public final class StructureTransforms {
   private StructureTransforms() {}
+
+  /** Continuous-coordinate remap for entity positions. */
+  @FunctionalInterface
+  private interface PosMap {
+    double[] apply(double x, double y, double z);
+  }
+
+  /** Block-cell remap for hanging-entity tile coordinates. */
+  @FunctionalInterface
+  private interface CellMap {
+    int[] apply(int x, int y, int z);
+  }
 
   /** Maximum bounding volume for the "fill" operation; larger structures are skipped to avoid excessive flood-fill time and memory use. */
   private static final int FILL_MAX_VOLUME = 2_000_000;
@@ -37,7 +62,11 @@ public final class StructureTransforms {
       // (x,z) -> (sizeZ-1-z, x)
       blocks.add(new BlockEntry(s.sizeZ - 1 - b.z(), b.y(), b.x(), b.stateIndex(), b.nbt()));
     }
-    return new NbtStructure(s.sizeZ, s.sizeY, s.sizeX, s.dataVersion, palette, blocks);
+    List<EntityEntry> entities = mapEntities(s.entities,
+        (x, y, z) -> new double[] {s.sizeZ - z, y, x},
+        (x, y, z) -> new int[] {s.sizeZ - 1 - z, y, x},
+        yaw -> yaw + 90.0f);
+    return new NbtStructure(s.sizeZ, s.sizeY, s.sizeX, s.dataVersion, palette, blocks, entities);
   }
 
   /** Mirrors along the X axis (left-right flip). */
@@ -47,7 +76,11 @@ public final class StructureTransforms {
     for (BlockEntry b : s.blocks) {
       blocks.add(new BlockEntry(s.sizeX - 1 - b.x(), b.y(), b.z(), b.stateIndex(), b.nbt()));
     }
-    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, palette, blocks);
+    List<EntityEntry> entities = mapEntities(s.entities,
+        (x, y, z) -> new double[] {s.sizeX - x, y, z},
+        (x, y, z) -> new int[] {s.sizeX - 1 - x, y, z},
+        yaw -> -yaw);
+    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, palette, blocks, entities);
   }
 
   /** Mirrors along the Z axis (front-back flip). */
@@ -57,7 +90,11 @@ public final class StructureTransforms {
     for (BlockEntry b : s.blocks) {
       blocks.add(new BlockEntry(b.x(), b.y(), s.sizeZ - 1 - b.z(), b.stateIndex(), b.nbt()));
     }
-    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, palette, blocks);
+    List<EntityEntry> entities = mapEntities(s.entities,
+        (x, y, z) -> new double[] {x, y, s.sizeZ - z},
+        (x, y, z) -> new int[] {x, y, s.sizeZ - 1 - z},
+        yaw -> 180.0f - yaw);
+    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, palette, blocks, entities);
   }
 
   /** Rotates 90° counter-clockwise around the Y axis (equivalent to three clockwise rotations). */
@@ -96,7 +133,156 @@ public final class StructureTransforms {
         blocks.add(b);
       }
     }
-    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, palette, blocks);
+    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, palette, blocks, s.entities);
+  }
+
+  /** Outcome of a family swap: the result plus how much changed and which targets were missing. */
+  public record SwapOutcome(NbtStructure structure, int changedBlocks, List<String> missingTargets) {}
+
+  /**
+   * Wood families whose names contain an underscore; guards the token matcher so swapping
+   * {@code oak} leaves {@code dark_oak} blocks alone.
+   */
+  private static final Set<String> COMPOUND_FAMILIES = Set.of("dark_oak", "pale_oak");
+
+  /**
+   * Family swap: replaces the token sequence {@code from} inside every block id path with
+   * {@code to} (e.g. {@code oak → spruce} maps planks/stairs/doors/fences in one step), keeping
+   * each block-state property the target block also supports. Ids whose swapped form is not
+   * registered are left unchanged and reported. With {@code mn}/{@code mx} non-null, only blocks
+   * inside that inclusive region are remapped.
+   */
+  public static SwapOutcome swapFamily(NbtStructure s, String from, String to,
+      @Nullable int[] mn, @Nullable int[] mx) {
+    String fromToken = from.trim().toLowerCase(Locale.ROOT).replace(' ', '_');
+    String toToken = to.trim().toLowerCase(Locale.ROOT).replace(' ', '_');
+    if (fromToken.isEmpty() || toToken.isEmpty() || fromToken.equals(toToken)) {
+      return new SwapOutcome(s, 0, List.of());
+    }
+    List<PaletteEntry> palette = new ArrayList<>(s.palette);
+    int[] mapping = new int[s.palette.size()];
+    List<String> missing = new ArrayList<>();
+    for (int i = 0; i < s.palette.size(); i++) {
+      mapping[i] = i;
+      PaletteEntry entry = s.palette.get(i);
+      if (entry.isAir()) {
+        continue;
+      }
+      String swappedId = swapIdTokens(entry.blockName(), fromToken, toToken);
+      if (swappedId == null) {
+        continue;
+      }
+      ResourceLocation id = ResourceLocation.tryParse(swappedId);
+      Block block = id == null ? null : BuiltInRegistries.BLOCK.getOptional(id).orElse(null);
+      if (block == null) {
+        if (!missing.contains(swappedId)) {
+          missing.add(swappedId);
+        }
+        continue;
+      }
+      PaletteEntry swapped = new PaletteEntry(swappedId,
+          retainSupportedProperties(block, entry.properties()));
+      int existing = -1;
+      for (int j = 0; j < palette.size(); j++) {
+        if (palette.get(j).canonicalKey().equals(swapped.canonicalKey())) {
+          existing = j;
+          break;
+        }
+      }
+      if (existing < 0) {
+        palette.add(swapped);
+        existing = palette.size() - 1;
+      }
+      mapping[i] = existing;
+    }
+    int changed = 0;
+    List<BlockEntry> blocks = new ArrayList<>(s.blocks.size());
+    for (BlockEntry b : s.blocks) {
+      int idx = b.stateIndex();
+      boolean inScope = mn == null || mx == null
+          || inRegion(b, mn[0], mn[1], mn[2], mx[0], mx[1], mx[2]);
+      if (inScope && idx >= 0 && idx < mapping.length && mapping[idx] != idx) {
+        blocks.add(new BlockEntry(b.x(), b.y(), b.z(), mapping[idx], b.nbt()));
+        changed++;
+      } else {
+        blocks.add(b);
+      }
+    }
+    return new SwapOutcome(
+        new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, palette, blocks, s.entities),
+        changed, missing);
+  }
+
+  /**
+   * Replaces the underscore-token sequence {@code from} inside the id's path with {@code to};
+   * returns null when nothing matches. A match that is really part of a compound family name
+   * (e.g. {@code oak} inside {@code dark_oak_planks}) is skipped.
+   */
+  @Nullable
+  static String swapIdTokens(String blockId, String from, String to) {
+    int colon = blockId.indexOf(':');
+    String namespace = colon >= 0 ? blockId.substring(0, colon + 1) : "";
+    String path = colon >= 0 ? blockId.substring(colon + 1) : blockId;
+    String[] tokens = path.split("_");
+    String[] fromTokens = from.split("_");
+    StringBuilder out = new StringBuilder();
+    boolean changed = false;
+    int i = 0;
+    while (i < tokens.length) {
+      if (matchesAt(tokens, i, fromTokens) && !partOfCompound(tokens, i, fromTokens.length, from)) {
+        if (out.length() > 0) {
+          out.append('_');
+        }
+        out.append(to);
+        i += fromTokens.length;
+        changed = true;
+      } else {
+        if (out.length() > 0) {
+          out.append('_');
+        }
+        out.append(tokens[i]);
+        i++;
+      }
+    }
+    return changed ? namespace + out : null;
+  }
+
+  private static boolean matchesAt(String[] tokens, int start, String[] want) {
+    if (start + want.length > tokens.length) {
+      return false;
+    }
+    for (int i = 0; i < want.length; i++) {
+      if (!tokens[start + i].equals(want[i])) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /** Whether the matched window extends into a known compound family name on either side. */
+  private static boolean partOfCompound(String[] tokens, int start, int length, String matched) {
+    if (start > 0 && COMPOUND_FAMILIES.contains(tokens[start - 1] + "_" + matched)) {
+      return true;
+    }
+    int end = start + length;
+    return end < tokens.length && COMPOUND_FAMILIES.contains(matched + "_" + tokens[end]);
+  }
+
+  /** Keeps only the properties the target block actually declares (with valid values). */
+  @Nullable
+  private static CompoundTag retainSupportedProperties(Block block, @Nullable CompoundTag props) {
+    if (props == null || props.isEmpty()) {
+      return null;
+    }
+    CompoundTag kept = new CompoundTag();
+    var definition = block.getStateDefinition();
+    for (String key : props.getAllKeys()) {
+      Property<?> property = definition.getProperty(key);
+      if (property != null && property.getValue(props.getString(key)).isPresent()) {
+        kept.putString(key, props.getString(key));
+      }
+    }
+    return kept.isEmpty() ? null : kept;
   }
 
   /** Hollows the structure: keeps only blocks that have at least one face adjacent to air or a boundary, removing fully interior blocks. */
@@ -120,7 +306,8 @@ public final class StructureTransforms {
         blocks.add(b);
       }
     }
-    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, s.palette, blocks);
+    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, s.palette, blocks,
+        s.entities);
   }
 
   private static boolean inBounds(BlockEntry b, NbtStructure s) {
@@ -154,7 +341,8 @@ public final class StructureTransforms {
       }
       blocks.add(b);
     }
-    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, s.palette, blocks);
+    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, s.palette, blocks,
+        s.entities);
   }
 
   /** Crops all-air margins and discards air blocks, tightening the bounding box to the non-air extent. */
@@ -190,8 +378,12 @@ public final class StructureTransforms {
       }
       blocks.add(new BlockEntry(b.x() - minX, b.y() - minY, b.z() - minZ, b.stateIndex(), b.nbt()));
     }
-    return new NbtStructure(maxX - minX + 1, maxY - minY + 1, maxZ - minZ + 1,
-        s.dataVersion, s.palette, blocks);
+    int newX = maxX - minX + 1;
+    int newY = maxY - minY + 1;
+    int newZ = maxZ - minZ + 1;
+    List<EntityEntry> entities = filterEntities(
+        translateEntities(s.entities, -minX, -minY, -minZ), newX, newY, newZ);
+    return new NbtStructure(newX, newY, newZ, s.dataVersion, s.palette, blocks, entities);
   }
 
   /** Mirrors along the Y axis (top-bottom flip). Note: vanilla Mirror has no vertical mirror, so facing/orientation block states (e.g., stair half) are not flipped. */
@@ -200,7 +392,11 @@ public final class StructureTransforms {
     for (BlockEntry b : s.blocks) {
       blocks.add(new BlockEntry(b.x(), s.sizeY - 1 - b.y(), b.z(), b.stateIndex(), b.nbt()));
     }
-    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, s.palette, blocks);
+    List<EntityEntry> entities = mapEntities(s.entities,
+        (x, y, z) -> new double[] {x, s.sizeY - y, z},
+        (x, y, z) -> new int[] {x, s.sizeY - 1 - y, z},
+        null);
+    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, s.palette, blocks, entities);
   }
 
   /** Rotates 90° around the X axis (tips forward). Note: vanilla block-state rotation only supports the Y axis, so facing/orientation block states remain unchanged. */
@@ -209,7 +405,11 @@ public final class StructureTransforms {
     for (BlockEntry b : s.blocks) {
       blocks.add(new BlockEntry(b.x(), s.sizeZ - 1 - b.z(), b.y(), b.stateIndex(), b.nbt()));
     }
-    return new NbtStructure(s.sizeX, s.sizeZ, s.sizeY, s.dataVersion, s.palette, blocks);
+    List<EntityEntry> entities = mapEntities(s.entities,
+        (x, y, z) -> new double[] {x, s.sizeZ - z, y},
+        (x, y, z) -> new int[] {x, s.sizeZ - 1 - z, y},
+        null);
+    return new NbtStructure(s.sizeX, s.sizeZ, s.sizeY, s.dataVersion, s.palette, blocks, entities);
   }
 
   /** Rotates 90° around the Z axis (tips sideways). Same caveat as {@link #rotateX}. */
@@ -218,7 +418,11 @@ public final class StructureTransforms {
     for (BlockEntry b : s.blocks) {
       blocks.add(new BlockEntry(s.sizeY - 1 - b.y(), b.x(), b.z(), b.stateIndex(), b.nbt()));
     }
-    return new NbtStructure(s.sizeY, s.sizeX, s.sizeZ, s.dataVersion, s.palette, blocks);
+    List<EntityEntry> entities = mapEntities(s.entities,
+        (x, y, z) -> new double[] {s.sizeY - y, x, z},
+        (x, y, z) -> new int[] {s.sizeY - 1 - y, x, z},
+        null);
+    return new NbtStructure(s.sizeY, s.sizeX, s.sizeZ, s.dataVersion, s.palette, blocks, entities);
   }
 
   /** Frame: keeps only blocks on the edges of the bounding box (at least two coordinates on a boundary). */
@@ -243,7 +447,8 @@ public final class StructureTransforms {
         blocks.add(b);
       }
     }
-    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, s.palette, blocks);
+    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, s.palette, blocks,
+        s.entities);
   }
 
   /** Fill: fills interior cavities unreachable from outside air with the most common solid block in the structure. */
@@ -318,7 +523,8 @@ public final class StructureTransforms {
         }
       }
     }
-    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, s.palette, blocks);
+    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, s.palette, blocks,
+        s.entities);
   }
 
   private static int flood(boolean[] solid, boolean[] reached, int[] stack, int sp,
@@ -340,7 +546,8 @@ public final class StructureTransforms {
     for (BlockEntry b : s.blocks) {
       blocks.add(new BlockEntry(b.x() + 1, b.y() + 1, b.z() + 1, b.stateIndex(), b.nbt()));
     }
-    return new NbtStructure(s.sizeX + 2, s.sizeY + 2, s.sizeZ + 2, s.dataVersion, s.palette, blocks);
+    return new NbtStructure(s.sizeX + 2, s.sizeY + 2, s.sizeZ + 2, s.dataVersion, s.palette,
+        blocks, translateEntities(s.entities, 1, 1, 1));
   }
 
   /** Deletes all blocks inside the region (inclusive, coordinates auto-normalized). */
@@ -358,7 +565,13 @@ public final class StructureTransforms {
         blocks.add(b);
       }
     }
-    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, s.palette, blocks);
+    List<EntityEntry> entities = new ArrayList<>();
+    for (EntityEntry e : s.entities) {
+      if (!cellInRegion(e, ax0, ay0, az0, ax1, ay1, az1)) {
+        entities.add(e);
+      }
+    }
+    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, s.palette, blocks, entities);
   }
 
   /** Crops to the region (inclusive, auto-normalized and clamped to structure bounds), translating content to the origin. */
@@ -377,8 +590,12 @@ public final class StructureTransforms {
             b.x() - ax0, b.y() - ay0, b.z() - az0, b.stateIndex(), b.nbt()));
       }
     }
-    return new NbtStructure(ax1 - ax0 + 1, ay1 - ay0 + 1, az1 - az0 + 1,
-        s.dataVersion, s.palette, blocks);
+    int newX = ax1 - ax0 + 1;
+    int newY = ay1 - ay0 + 1;
+    int newZ = az1 - az0 + 1;
+    List<EntityEntry> entities = filterEntities(
+        translateEntities(s.entities, -ax0, -ay0, -az0), newX, newY, newZ);
+    return new NbtStructure(newX, newY, newZ, s.dataVersion, s.palette, blocks, entities);
   }
 
   /** Fills the region with the specified block (auto-normalized and clamped; {@code blockId} is appended to the palette if absent). */
@@ -417,7 +634,7 @@ public final class StructureTransforms {
         }
       }
     }
-    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, palette, blocks);
+    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, palette, blocks, s.entities);
   }
 
   /** Set a single cell to {@code blockId} (appended to the palette if absent; clamped to bounds). */
@@ -499,7 +716,105 @@ public final class StructureTransforms {
       int mapped = idx >= 0 && idx < map.length ? map[idx] : 0;
       blocks.add(new BlockEntry(nx, ny, nz, mapped, b.nbt()));
     }
-    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, palette, blocks);
+    List<EntityEntry> entities = new ArrayList<>(s.entities);
+    entities.addAll(filterEntities(
+        translateEntities(clip.entities, atX, atY, atZ), s.sizeX, s.sizeY, s.sizeZ));
+    return new NbtStructure(s.sizeX, s.sizeY, s.sizeZ, s.dataVersion, palette, blocks, entities);
+  }
+
+  // ---- Entity remapping ----
+
+  /**
+   * Remaps every entity through the given coordinate maps: relative position (and the {@code Pos}
+   * tag), hanging-entity {@code TileX/Y/Z} cells, and — when {@code yaw} is non-null — the
+   * {@code Rotation} yaw.
+   */
+  private static List<EntityEntry> mapEntities(List<EntityEntry> entities, PosMap pos,
+      CellMap cell, @Nullable UnaryOperator<Float> yaw) {
+    if (entities.isEmpty()) {
+      return entities;
+    }
+    List<EntityEntry> out = new ArrayList<>(entities.size());
+    for (EntityEntry e : entities) {
+      double[] p = pos.apply(e.x(), e.y(), e.z());
+      CompoundTag nbt = e.nbt().copy();
+      writeEntityPos(nbt, p);
+      if (yaw != null && nbt.contains("Rotation", Tag.TAG_LIST)) {
+        ListTag rotation = nbt.getList("Rotation", Tag.TAG_FLOAT);
+        if (rotation.size() >= 2) {
+          ListTag mapped = new ListTag();
+          mapped.add(FloatTag.valueOf(wrapDegrees(yaw.apply(rotation.getFloat(0)))));
+          mapped.add(FloatTag.valueOf(rotation.getFloat(1)));
+          nbt.put("Rotation", mapped);
+        }
+      }
+      if (nbt.contains("TileX", Tag.TAG_INT)) {
+        int[] tile = cell.apply(nbt.getInt("TileX"), nbt.getInt("TileY"), nbt.getInt("TileZ"));
+        nbt.putInt("TileX", tile[0]);
+        nbt.putInt("TileY", tile[1]);
+        nbt.putInt("TileZ", tile[2]);
+      }
+      out.add(new EntityEntry(p[0], p[1], p[2], nbt));
+    }
+    return out;
+  }
+
+  /** Translates every entity (position, {@code Pos}, {@code TileX/Y/Z}) by whole blocks. */
+  private static List<EntityEntry> translateEntities(List<EntityEntry> entities,
+      int dx, int dy, int dz) {
+    if (entities.isEmpty() || (dx == 0 && dy == 0 && dz == 0)) {
+      return entities;
+    }
+    return mapEntities(entities,
+        (x, y, z) -> new double[] {x + dx, y + dy, z + dz},
+        (x, y, z) -> new int[] {x + dx, y + dy, z + dz},
+        null);
+  }
+
+  /** Keeps only entities inside the structure bounds {@code [0, size)} (with a lenient upper edge). */
+  private static List<EntityEntry> filterEntities(List<EntityEntry> entities,
+      int sizeX, int sizeY, int sizeZ) {
+    if (entities.isEmpty()) {
+      return entities;
+    }
+    List<EntityEntry> out = new ArrayList<>(entities.size());
+    for (EntityEntry e : entities) {
+      if (e.x() >= 0 && e.x() <= sizeX && e.y() >= 0 && e.y() <= sizeY
+          && e.z() >= 0 && e.z() <= sizeZ) {
+        out.add(e);
+      }
+    }
+    return out;
+  }
+
+  /** Whether the entity's block cell lies inside the inclusive region. */
+  private static boolean cellInRegion(EntityEntry e,
+      int x0, int y0, int z0, int x1, int y1, int z1) {
+    int cx = (int) Math.floor(e.x());
+    int cy = (int) Math.floor(e.y());
+    int cz = (int) Math.floor(e.z());
+    return cx >= x0 && cx <= x1 && cy >= y0 && cy <= y1 && cz >= z0 && cz <= z1;
+  }
+
+  private static void writeEntityPos(CompoundTag nbt, double[] p) {
+    if (nbt.contains("Pos", Tag.TAG_LIST)) {
+      ListTag pos = new ListTag();
+      pos.add(DoubleTag.valueOf(p[0]));
+      pos.add(DoubleTag.valueOf(p[1]));
+      pos.add(DoubleTag.valueOf(p[2]));
+      nbt.put("Pos", pos);
+    }
+  }
+
+  private static float wrapDegrees(float degrees) {
+    float wrapped = degrees % 360.0f;
+    if (wrapped >= 180.0f) {
+      wrapped -= 360.0f;
+    }
+    if (wrapped < -180.0f) {
+      wrapped += 360.0f;
+    }
+    return wrapped;
   }
 
   /** Parse {@code name} or {@code name[k=v,...]} into a palette entry. */

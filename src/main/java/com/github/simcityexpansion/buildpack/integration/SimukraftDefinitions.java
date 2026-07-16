@@ -268,6 +268,109 @@ public final class SimukraftDefinitions {
     return issues;
   }
 
+  /**
+   * Structure-aware checks that need the actual block data (run in addition to
+   * {@link #validate}): points/containers whose {@code type} is not {@code structure_pos} are
+   * silently ignored by SimuKraft, and container coordinates should point at a block that can
+   * hold items (air or a plain block means the NPC finds no container at runtime).
+   */
+  public static List<Issue> validateAgainstStructure(
+      String text, com.github.simcityexpansion.buildpack.convert.NbtStructure structure) {
+    List<Issue> issues = new ArrayList<>();
+    JsonObject root;
+    try {
+      JsonElement element = JsonParser.parseString(text);
+      if (!element.isJsonObject()) {
+        return issues;
+      }
+      root = element.getAsJsonObject();
+    } catch (RuntimeException e) {
+      return issues;
+    }
+    java.util.Map<String, String> blockAt = new java.util.HashMap<>();
+    for (var block : structure.blocks) {
+      var entry = block.stateIndex() >= 0 && block.stateIndex() < structure.palette.size()
+          ? structure.palette.get(block.stateIndex()) : null;
+      if (entry != null && !entry.isAir()) {
+        blockAt.put(block.x() + "," + block.y() + "," + block.z(), entry.blockName());
+      }
+    }
+    checkPosHolders(root, "points", blockAt, issues, false);
+    checkPosHolders(root, "containers", blockAt, issues, true);
+    return issues;
+  }
+
+  /** Walks one points/containers map: type check for all, target-block checks for containers. */
+  private static void checkPosHolders(JsonObject root, String mapKey,
+      java.util.Map<String, String> blockAt, List<Issue> issues, boolean requireContainer) {
+    if (!root.has(mapKey) || !root.get(mapKey).isJsonObject()) {
+      return;
+    }
+    for (var entry : root.getAsJsonObject(mapKey).entrySet()) {
+      if (!entry.getValue().isJsonObject()) {
+        continue;
+      }
+      JsonObject holder = entry.getValue().getAsJsonObject();
+      String type = str(holder, "type");
+      if (!type.isBlank() && !"structure_pos".equals(type)) {
+        issues.add(new Issue(false, Component.translatable(
+            "buildpack.definition.issue.pos_type", mapKey, entry.getKey(), type)));
+        continue;
+      }
+      if (!requireContainer) {
+        continue;
+      }
+      for (int[] pos : holderPositions(holder)) {
+        String key = pos[0] + "," + pos[1] + "," + pos[2];
+        String blockName = blockAt.get(key);
+        if (blockName == null) {
+          issues.add(new Issue(false, Component.translatable(
+              "buildpack.definition.issue.container_air", entry.getKey(), key)));
+        } else if (!blockHasEntity(blockName)) {
+          issues.add(new Issue(false, Component.translatable(
+              "buildpack.definition.issue.container_not_container",
+              entry.getKey(), key, blockName)));
+        }
+      }
+    }
+  }
+
+  /** All integer coordinates declared by a pos holder ({@code pos} and {@code positions}). */
+  private static List<int[]> holderPositions(JsonObject holder) {
+    List<int[]> positions = new ArrayList<>();
+    if (holder.has("pos")) {
+      addIntPos(positions, holder.get("pos"));
+    }
+    if (holder.has("positions") && holder.get("positions").isJsonArray()) {
+      for (JsonElement element : holder.getAsJsonArray("positions")) {
+        addIntPos(positions, element);
+      }
+    }
+    return positions;
+  }
+
+  private static void addIntPos(List<int[]> positions, JsonElement element) {
+    if (!element.isJsonArray() || element.getAsJsonArray().size() < 3) {
+      return;
+    }
+    JsonArray array = element.getAsJsonArray();
+    try {
+      positions.add(new int[] {
+          array.get(0).getAsInt(), array.get(1).getAsInt(), array.get(2).getAsInt()});
+    } catch (RuntimeException ignored) {
+      // Non-numeric coordinates are already reported by the shape checks in validate().
+    }
+  }
+
+  /** Whether the block id resolves and its default state has a block entity (container heuristic). */
+  private static boolean blockHasEntity(String blockName) {
+    ResourceLocation id = ResourceLocation.tryParse(blockName);
+    return id != null && BuiltInRegistries.BLOCK.getOptional(id)
+        .map(block -> block.defaultBlockState().hasBlockEntity())
+        // Unresolvable ids (mod not installed) cannot be judged; give the author the benefit.
+        .orElse(true);
+  }
+
   /** Stateful walk over one definition document, accumulating issues. */
   private static final class Validator {
     private final List<Issue> issues;

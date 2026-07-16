@@ -236,23 +236,32 @@ the originals are backed up to `simukraftbuilding/legacy_backup/`.
 ## Suggested workflow
 
 1.  In-game, select a building with Litematica and export `.litematic` (or export `.nbt`
-    with a structure block).
-2.  Drop it into the manager's import directory, install each one and **actually let
-    SimuKraft build it once**, confirming blocks, orientation, and chest contents; tune the
-    price/tags/job in the form while you are at it.
-3.  Installed tab -> "Export as Pack" to get a zip starting point (already containing the
+    with a structure block); the mod's `[` `]` `'` hotkeys capture a selection directly too.
+2.  Drop it into the manager's import directory and install each one; press "Check-up" on
+    each building to audit red beds, price format, air/structure-void, and POI landings, and
+    use "Layout preview" to verify homes and commercial/industrial coordinates. For a quick
+    look, `/buildpack testbuild installed/<category>/<base>` places it in the world
+    (`undo` restores).
+3.  Still **let SimuKraft actually build it once** in the end (chest contents are discarded
+    upstream and missing blocks become holes — the check-up warns about both); tune the
+    price/tags/job/POI in the form while you are at it.
+4.  Installed tab -> "Export as Pack" to get a zip starting point (already containing the
     converted .nbt and .sk, plus the same-name .json).
-4.  Unzip and edit `pack.json` (set your id/name/description), add native .json as needed,
+5.  Unzip and edit `pack.json` (set your id/name/description), add native .json as needed,
     and repack.
-5.  Put the finished zip back into the import directory and run a full
-    install -> build -> uninstall regression test.
+6.  Put the finished zip back into the import directory and run a full
+    install -> build -> uninstall regression test. Buildings tweaked in the world can be
+    written back via right-click -> "Update structure from selection" instead of a re-import.
 
 ## Release checklist
 
 - [ ] `pack.json` `id` is globally unique and `format: 2`
+- [ ] every building passes the check-up with no errors (red beds present for residential,
+      plain-number amount, no structure_void, POI landings as intended)
 - [ ] every structure installs with no "missing block" warning on the target version
       (1.21.1), or the mod dependency is noted in the description
 - [ ] buildings with trades/jobs: `job_type` (.sk) matches the job id in the native .json,
-      and container coordinates are verified against the converted structure
+      and container coordinates are verified against the converted structure (validation
+      checks they point at container blocks)
 - [ ] paths inside the zip use forward slashes `/`, file names avoid `\ / : * ? " < > |`
 - [ ] tested a full SimuKraft build once

@@ -26,8 +26,10 @@ import net.minecraft.world.phys.AABB;
  * reads block states cell by cell, deduplicates them into a palette (air is always at index 0),
  * and produces a complete grid blocks list.
  *
- * <p>Block entity data (chest contents, sign text, etc.) is not captured for now — building
- * blueprints typically want empty buildings; this can be added later.
+ * <p>Block entity data (chest contents, sign text, etc.) is captured when the caller opts in via
+ * {@code includeBlockEntities}; non-player entities are captured alongside when present. Note that
+ * SimuKraft's builder ignores block entity data when constructing — it matters for litematic /
+ * Create round-trips, not for in-game building.
  */
 public final class WorldCapture {
   private WorldCapture() {}

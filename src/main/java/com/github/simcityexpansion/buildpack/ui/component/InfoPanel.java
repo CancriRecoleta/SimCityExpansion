@@ -10,6 +10,7 @@ import com.github.simcityexpansion.buildpack.convert.NbtStructure;
 import com.github.simcityexpansion.buildpack.convert.StructureAnalysis;
 import com.github.simcityexpansion.buildpack.convert.StructureAnalysis.MaterialEntry;
 import com.github.simcityexpansion.buildpack.install.PackReader;
+import com.github.simcityexpansion.buildpack.install.SimukraftZips;
 import com.github.simcityexpansion.buildpack.integration.ActivePackProvider;
 import com.github.simcityexpansion.buildpack.model.BuildingMetadata;
 import com.github.simcityexpansion.buildpack.model.ImportFile;
@@ -18,6 +19,7 @@ import com.github.simcityexpansion.buildpack.model.PackArchive;
 import com.github.simcityexpansion.buildpack.model.StructureInfo;
 import com.github.simcityexpansion.buildpack.ui.BuildPackTheme;
 import com.github.simcityexpansion.buildpack.ui.DefinitionEditorScreen;
+import com.github.simcityexpansion.buildpack.ui.DoctorReportScreen;
 import com.github.simcityexpansion.buildpack.ui.MaterialListScreen;
 import com.github.simcityexpansion.buildpack.ui.PackBuildingSelection;
 import com.github.simcityexpansion.buildpack.ui.StructureEditorScreen;
@@ -29,6 +31,7 @@ import com.github.simcityexpansion.buildpack.ui.preview.PreviewSlot;
 import com.github.simcityexpansion.buildpack.ui.preview.StructurePreview;
 import com.github.simcityexpansion.buildpack.ui.preview.StructureScene;
 import com.github.simcityexpansion.buildpack.ui.preview.TopDownPreview;
+import com.github.simcityexpansion.buildpack.validate.BuildingDoctor;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -68,6 +71,7 @@ public final class InfoPanel {
 
   private PreviewSlot previewSlot;
   private ThemedButton materialButton;
+  private ThemedButton doctorButton;
   private ThemedButton editButton;
   private ThemedButton definitionButton;
 
@@ -77,6 +81,10 @@ public final class InfoPanel {
   private NbtStructure currentStructure;
   private InstalledBuilding currentBuilding;
   private List<MaterialEntry> currentMaterials = List.of();
+  /** Raw .sk {@code size:} field of the current installed building (null when generated/absent). */
+  private String currentSkSize;
+  /** Whether a native definition .json exists next to the building (null when unknown). */
+  private Boolean currentHasJson;
   private Runnable onDefinitionChanged = () -> {};
 
   public InfoPanel(MetadataForm form) {
@@ -105,12 +113,15 @@ public final class InfoPanel {
     materialButton = new ThemedButton(infoX, buttonsY, infoW, BUTTON_H,
         Component.translatable("buildpack.materials.open", 0),
         () -> MaterialListScreen.open(currentName, currentMaterials));
-    materialButton.visible = !currentMaterials.isEmpty();
     if (!currentMaterials.isEmpty()) {
       materialButton.setMessage(
           Component.translatable("buildpack.materials.open", currentMaterials.size()));
     }
     add.accept(materialButton);
+    doctorButton = new ThemedButton(infoX, buttonsY, infoW, BUTTON_H,
+        Component.translatable("buildpack.doctor.open"), this::runDoctor);
+    add.accept(doctorButton);
+    refreshMaterialRow();
 
     int editY = buttonsY + BUTTON_H + BUTTON_GAP;
     editButton = new ThemedButton(infoX, editY, infoW, BUTTON_H,
@@ -138,6 +149,67 @@ public final class InfoPanel {
     form.rebuild(font, infoX, formY, infoW, add);
   }
 
+  /** Lays out the materials/doctor row: side by side when both apply, full width otherwise. */
+  private void refreshMaterialRow() {
+    if (materialButton == null) {
+      return;
+    }
+    boolean materials = !currentMaterials.isEmpty();
+    boolean doctor = currentStructure != null;
+    materialButton.visible = materials;
+    doctorButton.visible = doctor;
+    if (materials && doctor) {
+      int half = (infoW - BUTTON_GAP) / 2;
+      materialButton.setWidth(half);
+      doctorButton.setX(infoX + half + BUTTON_GAP);
+      doctorButton.setWidth(infoW - half - BUTTON_GAP);
+    } else {
+      materialButton.setWidth(infoW);
+      doctorButton.setX(infoX);
+      doctorButton.setWidth(infoW);
+    }
+  }
+
+  /** Runs the pack doctor on the current structure + metadata and opens the report page. */
+  private void runDoctor() {
+    if (currentStructure == null) {
+      return;
+    }
+    BuildingMetadata meta = currentBuilding != null ? metaFrom(currentBuilding) : form.model();
+    DoctorReportScreen.open(currentName,
+        BuildingDoctor.examine(currentStructure, meta, currentSkSize, currentHasJson),
+        currentStructure, meta.poiLines, readDefinitionJson());
+  }
+
+  /** The current installed building's definition .json text, or null when absent/unreadable. */
+  private String readDefinitionJson() {
+    if (currentBuilding == null || currentBuilding.jsonEntry() == null) {
+      return null;
+    }
+    try {
+      return SimukraftZips.readEntry(currentBuilding.zipPath(), currentBuilding.jsonEntry())
+          .map(bytes -> new String(bytes, java.nio.charset.StandardCharsets.UTF_8))
+          .orElse(null);
+    } catch (IOException | RuntimeException e) {
+      I18nLog.warn(LOGGER, e, "buildpack.log.pack_entry_read_failed", currentBuilding.jsonEntry());
+      return null;
+    }
+  }
+
+  /** Builds a metadata model from an installed building's parsed .sk fields (including poi lines). */
+  private static BuildingMetadata metaFrom(InstalledBuilding building) {
+    BuildingMetadata meta = new BuildingMetadata();
+    meta.name = building.name();
+    meta.amount = building.skFields().getOrDefault("amount", "");
+    meta.author = building.skFields().getOrDefault("author", "");
+    meta.description = building.skFields().getOrDefault("description", "");
+    meta.tags = building.skFields().getOrDefault("tags", "");
+    meta.jobType = building.skFields().getOrDefault("job_type", "");
+    meta.category = building.category();
+    meta.poiLines.addAll(building.poiLines());
+    return meta;
+  }
+
   /** Lays out the editor/definition row: side by side when both apply, full width otherwise. */
   private void refreshEditRow() {
     if (editButton == null) {
@@ -163,6 +235,8 @@ public final class InfoPanel {
   /** Empty state: no entry is selected. */
   public void showEmpty() {
     currentBuilding = null;
+    currentSkSize = null;
+    currentHasJson = null;
     setRows(Component.translatable("buildpack.detail.empty"));
     clearExtras();
     form.setModel(new BuildingMetadata(), false);
@@ -172,6 +246,8 @@ public final class InfoPanel {
   public void showImport(
       ImportFile file, StructureInfo info, NbtStructure structure, BuildingMetadata model) {
     currentBuilding = null;
+    currentSkSize = null;
+    currentHasJson = null;
     List<Component> list = new ArrayList<>(List.of(
         row("buildpack.info.name", info.name() == null ? "-" : info.name()),
         row("buildpack.info.author", info.author() == null ? "-" : info.author()),
@@ -196,6 +272,8 @@ public final class InfoPanel {
   public void showPackBuilding(PackBuildingSelection selection, StructureInfo info,
       NbtStructure structure, BuildingMetadata model) {
     currentBuilding = null;
+    currentSkSize = null;
+    currentHasJson = selection.entry().simukraftJsonEntry() != null;
     List<Component> list = new ArrayList<>(List.of(
         row("buildpack.info.name", model.name.isBlank() ? selection.entry().name() : model.name),
         row("buildpack.info.author", model.author.isBlank() ? "-" : model.author),
@@ -219,6 +297,8 @@ public final class InfoPanel {
   /** Zip build pack: manifest summary (form shows pack info in read-only mode). */
   public void showPack(PackArchive pack, boolean installed) {
     currentBuilding = null;
+    currentSkSize = null;
+    currentHasJson = null;
     setRows(
         row("buildpack.info.name", pack.manifest().name()),
         row("buildpack.info.author",
@@ -258,6 +338,8 @@ public final class InfoPanel {
   /** Installed building: .sk fields displayed read-only + preview and material list (if the structure can be parsed). */
   public void showInstalled(InstalledBuilding building, StructureInfo info, NbtStructure structure) {
     currentBuilding = building;
+    currentSkSize = building.skFields().get("size");
+    currentHasJson = building.hasJson();
     setRows(
         row("buildpack.info.name", building.name()),
         row("buildpack.info.author", building.skFields().getOrDefault("author", "-")),
@@ -280,15 +362,7 @@ public final class InfoPanel {
       clearExtras();
     }
 
-    BuildingMetadata meta = new BuildingMetadata();
-    meta.name = building.name();
-    meta.amount = building.skFields().getOrDefault("amount", "");
-    meta.author = building.skFields().getOrDefault("author", "");
-    meta.description = building.skFields().getOrDefault("description", "");
-    meta.tags = building.skFields().getOrDefault("tags", "");
-    meta.jobType = building.skFields().getOrDefault("job_type", "");
-    meta.category = building.category();
-    form.setModel(meta, false);
+    form.setModel(metaFrom(building), false);
   }
 
   /** Preview (embedded thumbnail → real-block 3D → isometric → top-down → placeholder) and material/editor entry points. */
@@ -314,9 +388,9 @@ public final class InfoPanel {
       previewSlot.setChild(currentPreview);
     }
     if (materialButton != null) {
-      materialButton.visible = !currentMaterials.isEmpty();
       materialButton.setMessage(
           Component.translatable("buildpack.materials.open", currentMaterials.size()));
+      refreshMaterialRow();
     }
     refreshEditRow();
   }
@@ -329,7 +403,7 @@ public final class InfoPanel {
       previewSlot.setChild(null);
     }
     if (materialButton != null) {
-      materialButton.visible = false;
+      refreshMaterialRow();
     }
     refreshEditRow();
   }

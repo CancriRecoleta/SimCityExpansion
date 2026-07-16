@@ -21,6 +21,7 @@ import com.github.simcityexpansion.buildpack.install.InstallRegistry;
 import com.github.simcityexpansion.buildpack.install.LegacyMigration;
 import com.github.simcityexpansion.buildpack.install.PackInstaller;
 import com.github.simcityexpansion.buildpack.install.PackReader;
+import com.github.simcityexpansion.buildpack.install.SimukraftZips;
 import com.github.simcityexpansion.buildpack.integration.ActivePackProvider;
 import com.github.simcityexpansion.buildpack.integration.CreateSchematics;
 import com.github.simcityexpansion.buildpack.integration.PackActivationService;
@@ -30,6 +31,8 @@ import com.github.simcityexpansion.buildpack.model.BuildingMetadata;
 import com.github.simcityexpansion.buildpack.model.FileNames;
 import com.github.simcityexpansion.buildpack.model.ImportFile;
 import com.github.simcityexpansion.buildpack.model.ImportScanner;
+import com.github.simcityexpansion.buildpack.model.InstalledBuilding;
+import com.github.simcityexpansion.buildpack.model.InstalledScanner;
 import com.github.simcityexpansion.buildpack.model.PackArchive;
 import com.github.simcityexpansion.buildpack.model.StructureFormat;
 import com.mojang.brigadier.CommandDispatcher;
@@ -43,11 +46,14 @@ import net.minecraft.Util;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
+import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -137,7 +143,23 @@ public final class BuildPackCommands {
             .executes(context -> activeList(context.getSource())))
         .then(Commands.literal("migrate")
             .executes(context -> migrate(context.getSource())))
-        .then(captureNode()));
+        .then(captureNode())
+        .then(testBuildNode()));
+  }
+
+  /** {@code /buildpack testbuild <source> [at]} / {@code /buildpack testbuild undo} subcommand node. */
+  private static LiteralArgumentBuilder<CommandSourceStack> testBuildNode() {
+    return Commands.literal("testbuild")
+        .then(Commands.literal("undo")
+            .executes(context -> testBuildUndo(context.getSource())))
+        .then(Commands.argument("source", StringArgumentType.string())
+            .suggests(BuildPackCommands::suggestTestSources)
+            .executes(context -> testBuild(context.getSource(),
+                StringArgumentType.getString(context, "source"), null))
+            .then(Commands.argument("at", BlockPosArgument.blockPos())
+                .executes(context -> testBuild(context.getSource(),
+                    StringArgumentType.getString(context, "source"),
+                    BlockPosArgument.getLoadedBlockPos(context, "at")))));
   }
 
   /** {@code /buildpack capture <from> <to> [name] [format]} subcommand node. */
@@ -434,6 +456,103 @@ public final class BuildPackCommands {
     }
   }
 
+  // ---- Test placement ----
+
+  /** Places a structure at the player (or an explicit position) for a visual check, with one-slot undo. */
+  private static int testBuild(CommandSourceStack source, String ref, @Nullable BlockPos at)
+      throws CommandSyntaxException {
+    ServerPlayer player = source.getPlayerOrException();
+    ServerLevel level = source.getLevel();
+    NbtStructure structure;
+    try {
+      structure = loadTestStructure(ref);
+    } catch (IOException | RuntimeException e) {
+      I18nLog.warn(LOGGER, e, "buildpack.log.structure_parse_failed", ref);
+      source.sendFailure(Component.translatable(
+          "buildpack.msg.parse_failed", LocalizedIOException.messageOf(e)));
+      return 0;
+    }
+    if (structure == null) {
+      source.sendFailure(Component.translatable("buildpack.cmd.file_not_found", ref));
+      return 0;
+    }
+    if (structure.volume() > TestBuildService.MAX_VOLUME) {
+      source.sendFailure(Component.translatable(
+          "buildpack.cmd.testbuild.too_big", structure.volume(), TestBuildService.MAX_VOLUME));
+      return 0;
+    }
+    BlockPos origin = at != null ? at : player.blockPosition();
+    if (!TestBuildService.regionLoaded(level, origin, structure)) {
+      source.sendFailure(Component.translatable("buildpack.cmd.capture.unloaded"));
+      return 0;
+    }
+    TestBuildService.PlaceResult result =
+        TestBuildService.place(level, player.getUUID(), structure, origin);
+    source.sendSuccess(() -> Component.translatable("buildpack.cmd.testbuild.done",
+        result.placed(), origin.getX(), origin.getY(), origin.getZ()), true);
+    if (result.skippedMissing() > 0 || result.skippedOutOfWorld() > 0) {
+      source.sendSuccess(() -> Component.translatable("buildpack.cmd.testbuild.skipped",
+          result.skippedMissing(), result.skippedOutOfWorld()), false);
+    }
+    if (result.replacedSnapshot()) {
+      source.sendSuccess(() -> Component.translatable("buildpack.cmd.testbuild.replaced"), false);
+    }
+    source.sendSuccess(() -> Component.translatable("buildpack.cmd.testbuild.undo_hint"), false);
+    return Math.max(1, result.placed());
+  }
+
+  /** Restores the player's last test placement. */
+  private static int testBuildUndo(CommandSourceStack source) throws CommandSyntaxException {
+    ServerPlayer player = source.getPlayerOrException();
+    int restored = TestBuildService.undo(source.getLevel(), player.getUUID());
+    if (restored < 0) {
+      source.sendFailure(Component.translatable("buildpack.cmd.testbuild.no_snapshot"));
+      return 0;
+    }
+    int count = restored;
+    source.sendSuccess(() -> Component.translatable("buildpack.cmd.testbuild.undone", count), true);
+    return count;
+  }
+
+  /**
+   * Loads the test structure: {@code installed/<category>/<base>} reads the converted .nbt from
+   * the SimuKraft zip packages (later zips override earlier, matching catalog order); any other
+   * reference is an import-directory (or {@code schematics/}) file.
+   */
+  @Nullable
+  private static NbtStructure loadTestStructure(String ref) throws IOException {
+    String normalized = ref.replace('\\', '/');
+    if (normalized.startsWith("installed/")) {
+      String[] parts = normalized.split("/");
+      if (parts.length != 3) {
+        return null;
+      }
+      BuildingCategory category = BuildingCategory.byDirName(parts[1]).orElse(null);
+      if (category == null) {
+        return null;
+      }
+      String entry = SimukraftZips.entryPath(category, parts[2] + ".nbt");
+      byte[] bytes = null;
+      for (Path zip : SimukraftZips.listZips()) {
+        byte[] found = SimukraftZips.readEntry(zip, entry).orElse(null);
+        if (found != null) {
+          bytes = found;
+        }
+      }
+      return bytes == null ? null
+          : ParsedStructure.parse(bytes, StructureFormat.VANILLA_NBT).structure();
+    }
+    Path file = resolveImportFile(normalized);
+    if (file == null) {
+      return null;
+    }
+    StructureFormat format = StructureFormat.byFileName(file.getFileName().toString()).orElse(null);
+    if (format == null) {
+      return null;
+    }
+    return ParsedStructure.parse(file, format).structure();
+  }
+
   // ---- Utilities ----
 
   /**
@@ -554,6 +673,22 @@ public final class BuildPackCommands {
       CommandContext<CommandSourceStack> context,
       SuggestionsBuilder builder) {
     return SharedSuggestionProvider.suggest(List.of("nbt", "litematic", "both", "create"), builder);
+  }
+
+  private static CompletableFuture<Suggestions> suggestTestSources(
+      CommandContext<CommandSourceStack> context,
+      SuggestionsBuilder builder) {
+    Path importDir = ImportScanner.ensureImportDir();
+    List<String> names = new ArrayList<>(ImportScanner.scan().stream()
+        .map(file -> quoteIfNeeded(relativize(importDir, file.path())))
+        .toList());
+    for (InstalledBuilding building : InstalledScanner.scan(InstallRegistry.load())) {
+      if (building.hasStructure()) {
+        names.add(quoteIfNeeded(
+            "installed/" + building.category().dirName() + "/" + building.baseName()));
+      }
+    }
+    return SharedSuggestionProvider.suggest(names, builder);
   }
 
   /** Wraps suggestion entries that contain spaces in quotes, matching the parsing rules of {@link StringArgumentType#string()}. */

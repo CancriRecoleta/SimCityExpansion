@@ -74,9 +74,43 @@ public final class WorldSelection {
   /** Capture result: the display message and a success flag. */
   public record CaptureResult(Component message, boolean ok) {}
 
+  /** Synchronous capture result: the structure, or null with the failure message. */
+  public record StructureResult(@org.jetbrains.annotations.Nullable NbtStructure structure,
+      Component message) {}
+
   /** Returns whether both corner points have been set (used by GUI buttons to determine enabled state). */
   public static boolean hasSelection() {
     return cornerA != null && cornerB != null;
+  }
+
+  /**
+   * Captures the current selection synchronously into a structure (update-building flow). Unlike
+   * {@link #capture()} this blocks the render thread for the duration — callers should expect a
+   * short hitch on very large selections.
+   */
+  public static StructureResult captureStructure() {
+    Minecraft mc = Minecraft.getInstance();
+    if (mc.level == null || mc.player == null || cornerA == null || cornerB == null) {
+      return new StructureResult(null, Component.translatable("buildpack.select.need_corners"));
+    }
+    if (activeJob != null || writing) {
+      return new StructureResult(null, Component.translatable("buildpack.select.busy"));
+    }
+    BlockPos min = new BlockPos(Math.min(cornerA.getX(), cornerB.getX()),
+        Math.min(cornerA.getY(), cornerB.getY()), Math.min(cornerA.getZ(), cornerB.getZ()));
+    BlockPos max = new BlockPos(Math.max(cornerA.getX(), cornerB.getX()),
+        Math.max(cornerA.getY(), cornerB.getY()), Math.max(cornerA.getZ(), cornerB.getZ()));
+    long volume = (long) (max.getX() - min.getX() + 1) * (max.getY() - min.getY() + 1)
+        * (max.getZ() - min.getZ() + 1);
+    if (volume > MAX_VOLUME) {
+      return new StructureResult(null,
+          Component.translatable("buildpack.select.too_big", volume, MAX_VOLUME));
+    }
+    if (!WorldCapture.regionLoaded(mc.level, min, max)) {
+      return new StructureResult(null, Component.translatable("buildpack.select.unloaded"));
+    }
+    NbtStructure structure = WorldCapture.capture(mc.level, min, max, captureBlockEntities);
+    return new StructureResult(structure, Component.empty());
   }
 
   /** Clears both world-selection corners (removes the in-world box). */

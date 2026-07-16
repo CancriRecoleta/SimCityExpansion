@@ -117,8 +117,14 @@ public final class StructureScene extends AbstractWidget {
   private int lodGz;
   private VertexBuffer lodBuffer;
 
-  // Marker cells (coordinate picker): highlighted boxes rendered like the selection overlay.
-  private final List<BlockPos> markerCells = new ArrayList<>();
+  /** A highlighted cell with its overlay color (coordinate picker, layout overlay). */
+  public record Marker(BlockPos pos, int color) {}
+
+  /** Default marker color (coordinate picker green). */
+  private static final int MARKER_COLOR = 0x9050FF90;
+
+  // Marker cells: highlighted boxes rendered like the selection overlay.
+  private final List<Marker> markerCells = new ArrayList<>();
   private VertexBuffer markerBuffer;
 
   // Selection highlight (editor).
@@ -419,10 +425,15 @@ public final class StructureScene extends AbstractWidget {
     closeDecor();
   }
 
-  /** Highlights the given cells (coordinate picker); pass an empty list to clear. */
+  /** Highlights the given cells in the default picker color; pass an empty list to clear. */
   public void setMarkers(List<BlockPos> cells) {
+    setColoredMarkers(cells.stream().map(pos -> new Marker(pos, MARKER_COLOR)).toList());
+  }
+
+  /** Highlights cells with per-cell colors (layout overlay); pass an empty list to clear. */
+  public void setColoredMarkers(List<Marker> markers) {
     markerCells.clear();
-    markerCells.addAll(cells);
+    markerCells.addAll(markers);
     buildMarkerBuffer();
   }
 
@@ -439,9 +450,10 @@ public final class StructureScene extends AbstractWidget {
     try (ByteBufferBuilder bytes = new ByteBufferBuilder(16 * 1024)) {
       BufferBuilder b =
           new BufferBuilder(bytes, VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-      for (BlockPos pos : markerCells) {
+      for (Marker marker : markerCells) {
+        BlockPos pos = marker.pos();
         box(b, pos.getX() + 0.06f, pos.getY() + 0.06f, pos.getZ() + 0.06f,
-            pos.getX() + 0.94f, pos.getY() + 0.94f, pos.getZ() + 0.94f, 0x9050FF90);
+            pos.getX() + 0.94f, pos.getY() + 0.94f, pos.getZ() + 0.94f, marker.color());
       }
       MeshData mesh = b.build();
       if (mesh != null) {

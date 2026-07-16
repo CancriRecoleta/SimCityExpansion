@@ -97,9 +97,11 @@ public final class InstalledScanner {
       byte[] bytes = skBytes.get(mapEntry.getKey());
       Map<String, String> fields = bytes != null
           ? SkFileReader.parseFields(bytes) : new LinkedHashMap<>();
+      List<PoiLine> poiLines = bytes != null ? SkFileReader.parsePoiLines(bytes) : List.of();
       String name = fields.getOrDefault("name", entry.baseName);
       result.add(new InstalledBuilding(entry.category, name.isBlank() ? entry.baseName : name,
-          zip, entry.baseName, entry.hasStructure, entry.hasJson, fields, managed, packId));
+          zip, entry.baseName, entry.hasStructure, entry.hasJson, fields, poiLines,
+          managed, packId));
     }
   }
 

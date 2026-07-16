@@ -17,6 +17,7 @@ import com.github.simcityexpansion.buildpack.I18nLog;
 import com.github.simcityexpansion.buildpack.LocalizedIOException;
 import com.github.simcityexpansion.buildpack.convert.StructureMaterializer;
 import com.github.simcityexpansion.buildpack.convert.StructureNbtWriter;
+import com.github.simcityexpansion.buildpack.convert.StructureTagOps;
 import com.github.simcityexpansion.buildpack.install.BuildingInstaller;
 import com.github.simcityexpansion.buildpack.install.InstallRegistry;
 import com.github.simcityexpansion.buildpack.install.LegacyMigration;
@@ -200,6 +201,10 @@ public final class PackActivationService {
     byte[] structureBytes = PackReader.readEntryBytes(zipPath, building.structureEntry());
     StructureMaterializer.Result result =
         StructureMaterializer.toVanilla(structureBytes, building.format(), messages);
+    int strippedVoid = StructureTagOps.stripStructureVoid(result.nbt());
+    if (strippedVoid > 0) {
+      messages.add(Component.translatable("buildpack.msg.void_stripped", strippedVoid));
+    }
     entries.put(SimukraftZips.entryPath(category, finalName + ".nbt"),
         StructureNbtWriter.toBytes(result.nbt()));
 

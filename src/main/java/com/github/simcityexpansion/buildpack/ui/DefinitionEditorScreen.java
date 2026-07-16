@@ -23,6 +23,7 @@ import com.github.simcityexpansion.buildpack.ui.definition.JsonEditBox;
 import com.github.simcityexpansion.buildpack.ui.definition.VisualDefinitionEditor;
 import com.github.simcityexpansion.buildpack.ui.definition.VisualDefinitionEditor.DefinitionNode;
 import com.github.simcityexpansion.buildpack.ui.tree.TreeNode;
+import com.github.simcityexpansion.buildpack.validate.LayoutOverlay;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
@@ -265,11 +266,13 @@ public final class DefinitionEditorScreen extends Screen
       addRenderableWidget(new ThemedButton(MARGIN, buttonsY, bw, BUTTON_H,
           Component.translatable("buildpack.definition.validate"), this::runValidate));
       addRenderableWidget(new ThemedButton(MARGIN + bw + GAP, buttonsY, bw, BUTTON_H,
+          Component.translatable("buildpack.definition.overlay"), this::openLayoutPreview));
+      addRenderableWidget(new ThemedButton(MARGIN + (bw + GAP) * 2, buttonsY, bw, BUTTON_H,
           Component.translatable("buildpack.prompt.cancel"), this::onClose));
       return;
     }
     boolean templates = mode == Mode.JSON;
-    int count = templates ? 6 : 4;
+    int count = templates ? 7 : 5;
     int bw = (w - GAP * (count - 1)) / count;
     int x = MARGIN;
     if (templates) {
@@ -281,6 +284,8 @@ public final class DefinitionEditorScreen extends Screen
       x += bw + GAP;
     }
     bottomButton(x, buttonsY, bw, "buildpack.definition.validate", this::runValidate);
+    x += bw + GAP;
+    bottomButton(x, buttonsY, bw, "buildpack.definition.overlay", this::openLayoutPreview);
     x += bw + GAP;
     bottomButton(x, buttonsY, bw, "buildpack.definition.save", this::save);
     x += bw + GAP;
@@ -374,6 +379,19 @@ public final class DefinitionEditorScreen extends Screen
     if (mode == Mode.VISUAL && visual.root() != null) {
       text = GSON.toJson(visual.root());
     }
+  }
+
+  /** Opens the 3D layout overlay (homes / POI landings / this definition's coordinates). */
+  private void openLayoutPreview() {
+    NbtStructure structure = pickStructure();
+    if (structure == null) {
+      setMessage(Component.translatable("buildpack.definition.msg.no_structure"),
+          BuildPackTheme.MESSAGE_WARN);
+      return;
+    }
+    syncTextFromVisual();
+    StructurePreviewScreen.open(structure,
+        LayoutOverlay.compute(structure, building.poiLines(), text));
   }
 
   private void onTreeSelect(Object content) {
@@ -499,6 +517,12 @@ public final class DefinitionEditorScreen extends Screen
     clearPendings();
     syncTextFromVisual();
     issues = SimukraftDefinitions.validate(text, sizeX, sizeY, sizeZ);
+    NbtStructure structure = pickStructure();
+    if (structure != null) {
+      List<Issue> merged = new java.util.ArrayList<>(issues);
+      merged.addAll(SimukraftDefinitions.validateAgainstStructure(text, structure));
+      issues = merged;
+    }
     if (issues.isEmpty()) {
       Kind kind = SimukraftDefinitions.detect(text);
       setMessage(Component.translatable("buildpack.definition.msg.valid",

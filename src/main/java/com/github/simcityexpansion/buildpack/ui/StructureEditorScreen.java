@@ -23,6 +23,7 @@ import com.github.simcityexpansion.buildpack.model.ImportFile;
 import com.github.simcityexpansion.buildpack.model.ImportScanner;
 import com.github.simcityexpansion.buildpack.model.InstalledBuilding;
 import com.github.simcityexpansion.buildpack.model.StructureFormat;
+import com.github.simcityexpansion.buildpack.ui.preview.LayerGridView;
 import com.github.simcityexpansion.buildpack.ui.preview.StructureScene;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -34,6 +35,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.Property;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
@@ -91,6 +94,10 @@ public final class StructureEditorScreen extends Screen {
   private NbtStructure clipboard;
   private int symmetryAxis;
   private EditBox nameField;
+  private ThemedButton symmetryButton;
+  /** Top-down 2D layer editing mode: the grid view replaces the 3D scene. */
+  private boolean gridMode;
+  private LayerGridView grid;
   private final long origBlocks;
   private long workBlocks;
 
@@ -158,6 +165,15 @@ public final class StructureEditorScreen extends Screen {
     scene.setSelectCallback(this::onSelectCorners);
     scene.setEditMode(tool != EditTool.NONE && tool != EditTool.SELECT);
     scene.setSelectMode(tool == EditTool.SELECT);
+    scene.visible = !gridMode;
+
+    grid = new LayerGridView(PAD + 1, bodyY() + 1, leftW - 2, bodyHeight() - 2);
+    grid.setCellAction(this::onGridCell);
+    grid.visible = gridMode;
+    if (gridMode) {
+      grid.setStructure(work);
+    }
+    addRenderableWidget(grid);
 
     int x = toolX() + 4;
     int y = bodyY() + 4;
@@ -180,9 +196,10 @@ public final class StructureEditorScreen extends Screen {
         "buildpack.editor.expand", () -> apply(StructureTransforms.expand(work)));
 
     y = section("buildpack.editor.group.edit", x, y);
-    y = row2(x, y,
+    y = row3(x, y,
         "buildpack.editor.remove", () -> openRemove(),
-        "buildpack.editor.replace", () -> openReplace());
+        "buildpack.editor.replace", () -> openReplace(),
+        "buildpack.editor.swap", () -> openSwap());
     int toolGap = 3;
     int toolW = (TOOL_INNER - toolGap * 2) / 3;
     addRenderableWidget(new ThemedButton(x, y, toolW, BTN_H,
@@ -197,12 +214,20 @@ public final class StructureEditorScreen extends Screen {
         .selected(() -> tool == EditTool.PICK));
     y += ROW_H;
     paintRowY = y;
-    y = row1(x, y, "buildpack.editor.paint", () -> openPaint());
+    y = row2(x, y,
+        "buildpack.editor.paint", () -> openPaint(),
+        "buildpack.editor.paint_props", () -> openPaintProps());
 
     y = section("buildpack.editor.group.region", x, y);
-    addRenderableWidget(new ThemedButton(x, y, TOOL_INNER, BTN_H,
+    int selW = (TOOL_INNER - 6) / 3;
+    addRenderableWidget(new ThemedButton(x, y, selW, BTN_H,
         Component.translatable("buildpack.editor.region_select"), () -> setTool(EditTool.SELECT))
         .selected(() -> tool == EditTool.SELECT));
+    addRenderableWidget(new ThemedButton(x + selW + 3, y, selW, BTN_H,
+        Component.translatable("buildpack.editor.region_array"), () -> openArray()));
+    symmetryButton = new ThemedButton(x + (selW + 3) * 2, y, TOOL_INNER - (selW + 3) * 2, BTN_H,
+        symmetryLabel(), () -> cycleSymmetry());
+    addRenderableWidget(symmetryButton);
     y += ROW_H;
     y = row3(x, y,
         "buildpack.editor.region_all", () -> selectAll(),
@@ -216,6 +241,10 @@ public final class StructureEditorScreen extends Screen {
         "buildpack.editor.region_replace", () -> regionReplace(),
         "buildpack.editor.region_hollow", () -> regionHollow(),
         "buildpack.editor.region_frame", () -> regionFrame());
+    y = row3(x, y,
+        "buildpack.editor.copy_btn", () -> copyRegion(),
+        "buildpack.editor.cut_btn", () -> cutRegion(),
+        "buildpack.editor.paste_btn", () -> pasteClipboard());
 
     y = section("buildpack.editor.group.history", x, y);
     y = row3(x, y,
@@ -228,6 +257,11 @@ public final class StructureEditorScreen extends Screen {
         "buildpack.preview.peel", () -> scene.peelTop(),
         "buildpack.preview.unpeel", () -> scene.unpeelTop(),
         "buildpack.preview.reset", () -> scene.resetView());
+    ThemedButton gridButton = new ThemedButton(x, y, TOOL_INNER, BTN_H,
+        Component.translatable("buildpack.editor.grid_toggle"), () -> toggleGrid());
+    gridButton.selected(() -> gridMode);
+    addRenderableWidget(gridButton);
+    y += ROW_H;
 
     y = section("buildpack.editor.group.save", x, y);
     nameField = new EditBox(font, x, y, TOOL_INNER, BTN_H, Component.empty());
@@ -293,6 +327,7 @@ public final class StructureEditorScreen extends Screen {
     work = result;
     workBlocks = work.countNonAir();
     scene.setStructure(result, false);
+    refreshGrid();
     resetSelectionState();
   }
 
@@ -309,6 +344,7 @@ public final class StructureEditorScreen extends Screen {
     work = result;
     workBlocks = work.countNonAir();
     scene.setStructure(result, false);
+    refreshGrid();
     resetSelectionState();
   }
 
@@ -318,6 +354,7 @@ public final class StructureEditorScreen extends Screen {
       work = undo.pop();
       workBlocks = work.countNonAir();
       scene.setStructure(work, false);
+      refreshGrid();
       resetSelectionState();
     }
   }
@@ -328,7 +365,47 @@ public final class StructureEditorScreen extends Screen {
       work = redo.pop();
       workBlocks = work.countNonAir();
       scene.setStructure(work, false);
+      refreshGrid();
       resetSelectionState();
+    }
+  }
+
+  /** Rebinds the 2D layer view after an edit (only while it is showing; rebinding scans all blocks). */
+  private void refreshGrid() {
+    if (grid != null && gridMode) {
+      grid.setStructure(work);
+    }
+  }
+
+  /** Toggles between the 3D scene and the top-down 2D layer editor. */
+  private void toggleGrid() {
+    gridMode = !gridMode;
+    scene.visible = !gridMode;
+    if (grid != null) {
+      grid.visible = gridMode;
+      if (gridMode) {
+        grid.setStructure(work);
+      }
+    }
+    statusError = false;
+    status = Component.translatable(
+        gridMode ? "buildpack.editor.grid_on" : "buildpack.editor.grid_off");
+  }
+
+  /** Tool application from the 2D layer view (cell on the current layer). */
+  private void onGridCell(BlockPos p) {
+    switch (tool) {
+      case PLACE, REPLACE -> cubeFill(p, brushRadius, paintBlock);
+      case BREAK -> cubeBreak(p, brushRadius);
+      case PICK -> {
+        String id = scene.blockStateAt(p);
+        if (id != null) {
+          paintBlock = id;
+          statusError = false;
+          status = Component.translatable("buildpack.editor.picked", id);
+        }
+      }
+      default -> { }
     }
   }
 
@@ -497,6 +574,83 @@ public final class StructureEditorScreen extends Screen {
     });
   }
 
+  /** Family swap: replace a word root across all block ids (oak → spruce style). */
+  private void openSwap() {
+    boolean hasSelection = selectionShown;
+    FamilySwapScreen.open(hasSelection, (from, to, selectionOnly) -> {
+      StructureTransforms.SwapOutcome outcome = StructureTransforms.swapFamily(work, from, to,
+          selectionOnly ? selMin.clone() : null, selectionOnly ? selMax.clone() : null);
+      if (outcome.changedBlocks() == 0) {
+        statusError = true;
+        status = outcome.missingTargets().isEmpty()
+            ? Component.translatable("buildpack.editor.swap_none", from)
+            : Component.translatable("buildpack.editor.swap_missing",
+                String.join(", ", limit(outcome.missingTargets(), 3)));
+        return;
+      }
+      apply(outcome.structure());
+      statusError = false;
+      status = outcome.missingTargets().isEmpty()
+          ? Component.translatable("buildpack.editor.swap_done", outcome.changedBlocks())
+          : Component.translatable("buildpack.editor.swap_done_missing", outcome.changedBlocks(),
+              String.join(", ", limit(outcome.missingTargets(), 3)));
+    });
+  }
+
+  private static List<String> limit(List<String> list, int max) {
+    return list.size() <= max ? list : list.subList(0, max);
+  }
+
+  /** Array copy: clone the selection N times at a fixed offset. */
+  private void openArray() {
+    if (!requireSelection()) {
+      return;
+    }
+    int defaultDx = selMax[0] - selMin[0] + 1;
+    int[] mn = selMin.clone();
+    int[] mx = selMax.clone();
+    ArrayRepeatScreen.open(defaultDx, 0, 0, (count, dx, dy, dz) -> {
+      NbtStructure clip = StructureTransforms.cropToRegion(work,
+          mn[0], mn[1], mn[2], mx[0], mx[1], mx[2]);
+      NbtStructure result = work;
+      for (int i = 1; i <= count; i++) {
+        result = StructureTransforms.pasteRegion(result, clip,
+            mn[0] + dx * i, mn[1] + dy * i, mn[2] + dz * i);
+      }
+      apply(result);
+      statusError = false;
+      status = Component.translatable("buildpack.editor.array_done", count);
+    });
+  }
+
+  /** Moves the selection contents by one cell (Alt+arrows); the box follows the blocks. */
+  private void moveRegion(int dx, int dy, int dz) {
+    if (!requireSelection()) {
+      return;
+    }
+    int spanX = selMax[0] - selMin[0];
+    int spanY = selMax[1] - selMin[1];
+    int spanZ = selMax[2] - selMin[2];
+    int nx = clampInt(selMin[0] + dx, 0, work.sizeX - 1 - spanX);
+    int ny = clampInt(selMin[1] + dy, 0, work.sizeY - 1 - spanY);
+    int nz = clampInt(selMin[2] + dz, 0, work.sizeZ - 1 - spanZ);
+    if (nx == selMin[0] && ny == selMin[1] && nz == selMin[2]) {
+      return;
+    }
+    NbtStructure clip = StructureTransforms.cropToRegion(work,
+        selMin[0], selMin[1], selMin[2], selMax[0], selMax[1], selMax[2]);
+    NbtStructure cleared = StructureTransforms.deleteRegion(work,
+        selMin[0], selMin[1], selMin[2], selMax[0], selMax[1], selMax[2]);
+    apply(StructureTransforms.pasteRegion(cleared, clip, nx, ny, nz));
+    selMin[0] = nx;
+    selMin[1] = ny;
+    selMin[2] = nz;
+    selMax[0] = nx + spanX;
+    selMax[1] = ny + spanY;
+    selMax[2] = nz + spanZ;
+    pushSelection();
+  }
+
   private void openReplace() {
     BlockPickerScreen.open(work, from ->
         BlockPaletteScreen.open(to -> {
@@ -539,6 +693,44 @@ public final class StructureEditorScreen extends Screen {
       minecraft.setScreen(this);
       setEditStatus();
     });
+  }
+
+  /** Opens the block-state property editor for the paint block (facing/half/shape/...). */
+  private void openPaintProps() {
+    boolean opened = BlockStatePropertyScreen.open(paintBlock, spec -> {
+      paintBlock = spec;
+      setEditStatus();
+    });
+    if (!opened) {
+      statusError = true;
+      status = Component.translatable("buildpack.editor.props_unresolved", paintBlock);
+    }
+  }
+
+  /** Cycles the paint block's {@code facing} property (hotkey 5), if it has one. */
+  private void cyclePaintFacing() {
+    BlockState state = BlockStatePropertyScreen.parseSpec(paintBlock);
+    if (state == null) {
+      return;
+    }
+    for (Property<?> property : state.getProperties()) {
+      if ("facing".equals(property.getName())) {
+        paintBlock = BlockStatePropertyScreen.formatSpec(
+            BlockStatePropertyScreen.cycleProperty(state, property));
+        setEditStatus();
+        return;
+      }
+    }
+  }
+
+  private Component symmetryLabel() {
+    String axis = switch (symmetryAxis) {
+      case 1 -> "X";
+      case 2 -> "Y";
+      case 3 -> "Z";
+      default -> "-";
+    };
+    return Component.translatable("buildpack.editor.symmetry_btn", axis);
   }
 
   private void onEdit(StructureScene.Hit hit) {
@@ -608,6 +800,9 @@ public final class StructureEditorScreen extends Screen {
     status = symmetryAxis == 0
         ? Component.translatable("buildpack.editor.symmetry_off")
         : Component.translatable("buildpack.editor.symmetry_on", axis);
+    if (symmetryButton != null) {
+      symmetryButton.setMessage(symmetryLabel());
+    }
   }
 
   private void copyRegion() {
@@ -839,7 +1034,8 @@ public final class StructureEditorScreen extends Screen {
     super.render(g, mouseX, mouseY, partialTick);
     ItemStack paint = paintStack();
     if (!paint.isEmpty()) {
-      g.renderItem(paint, toolX() + 4 + TOOL_INNER - 18, paintRowY - 1);
+      // The paint row is split with the properties button; pin the icon to the left half's end.
+      g.renderItem(paint, toolX() + 4 + (TOOL_INNER - 3) / 2 - 18, paintRowY - 1);
     }
     String hint = Component.translatable("buildpack.editor.legend_hint").getString();
     g.drawString(font, hint, PAD + leftW - font.width(hint) - 3,
@@ -855,6 +1051,10 @@ public final class StructureEditorScreen extends Screen {
 
   @Override
   public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+    if (button != 0 && gridMode && grid != null && grid.isMouseOver(mouseX, mouseY)) {
+      grid.applyPan(dragX, dragY);
+      return true;
+    }
     if (button != 0 && scene.isMouseOver(mouseX, mouseY)) {
       scene.applyDrag(button, dragX, dragY);
       return true;
@@ -907,29 +1107,55 @@ public final class StructureEditorScreen extends Screen {
       return true;
     }
     if (!ctrl && selectionShown) {
+      // Alt moves the selection contents (blocks travel with the box); plain arrows move the box.
+      boolean alt = Screen.hasAltDown();
       switch (keyCode) {
         case GLFW.GLFW_KEY_LEFT -> {
-          nudgeSelection(-1, 0, 0, shift);
+          if (alt) {
+            moveRegion(-1, 0, 0);
+          } else {
+            nudgeSelection(-1, 0, 0, shift);
+          }
           return true;
         }
         case GLFW.GLFW_KEY_RIGHT -> {
-          nudgeSelection(1, 0, 0, shift);
+          if (alt) {
+            moveRegion(1, 0, 0);
+          } else {
+            nudgeSelection(1, 0, 0, shift);
+          }
           return true;
         }
         case GLFW.GLFW_KEY_UP -> {
-          nudgeSelection(0, 0, -1, shift);
+          if (alt) {
+            moveRegion(0, 0, -1);
+          } else {
+            nudgeSelection(0, 0, -1, shift);
+          }
           return true;
         }
         case GLFW.GLFW_KEY_DOWN -> {
-          nudgeSelection(0, 0, 1, shift);
+          if (alt) {
+            moveRegion(0, 0, 1);
+          } else {
+            nudgeSelection(0, 0, 1, shift);
+          }
           return true;
         }
         case GLFW.GLFW_KEY_PAGE_UP -> {
-          nudgeSelection(0, 1, 0, shift);
+          if (alt) {
+            moveRegion(0, 1, 0);
+          } else {
+            nudgeSelection(0, 1, 0, shift);
+          }
           return true;
         }
         case GLFW.GLFW_KEY_PAGE_DOWN -> {
-          nudgeSelection(0, -1, 0, shift);
+          if (alt) {
+            moveRegion(0, -1, 0);
+          } else {
+            nudgeSelection(0, -1, 0, shift);
+          }
           return true;
         }
         default -> {
@@ -953,6 +1179,10 @@ public final class StructureEditorScreen extends Screen {
         }
         case GLFW.GLFW_KEY_4 -> {
           setTool(EditTool.REPLACE);
+          return true;
+        }
+        case GLFW.GLFW_KEY_5 -> {
+          cyclePaintFacing();
           return true;
         }
         case GLFW.GLFW_KEY_LEFT_BRACKET -> {

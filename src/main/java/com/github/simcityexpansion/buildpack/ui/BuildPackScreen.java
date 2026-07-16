@@ -621,8 +621,9 @@ public final class BuildPackScreen extends Screen {
       PackBuildingSelection selection, ParsedStructure parsed) throws IOException {
     BuildingMetadata meta;
     if (selection.entry().skEntry() != null) {
-      var fields = SkFileReader.parseFields(PackReader.readEntryBytes(
-          selection.pack().zipPath(), selection.entry().skEntry()));
+      byte[] skBytes = PackReader.readEntryBytes(
+          selection.pack().zipPath(), selection.entry().skEntry());
+      var fields = SkFileReader.parseFields(skBytes);
       meta = new BuildingMetadata();
       meta.name = fields.getOrDefault("name", "");
       meta.amount = fields.getOrDefault("amount", "");
@@ -630,6 +631,7 @@ public final class BuildPackScreen extends Screen {
       meta.description = fields.getOrDefault("description", "");
       meta.tags = fields.getOrDefault("tags", "");
       meta.jobType = fields.getOrDefault("job_type", "");
+      meta.poiLines.addAll(SkFileReader.parsePoiLines(skBytes));
     } else if (selection.entry().metaJsonEntry() != null) {
       meta = PackInstaller.readJsonMeta(PackReader.readEntryBytes(
           selection.pack().zipPath(), selection.entry().metaJsonEntry()));
@@ -1008,6 +1010,23 @@ public final class BuildPackScreen extends Screen {
     }
   }
 
+  /**
+   * Replaces an installed building's structure with the current in-world selection (metadata and
+   * definitions untouched) — the tight "build → tweak in world → recapture" iteration loop.
+   */
+  private void runUpdateFromSelection(InstalledBuilding building) {
+    if (busy) {
+      return;
+    }
+    WorldSelection.StructureResult captured = WorldSelection.captureStructure();
+    if (captured.structure() == null) {
+      setMessage(captured.message(), true);
+      return;
+    }
+    NbtStructure structure = captured.structure();
+    runAsyncInstall(() -> BuildingInstaller.updateStructure(building, structure));
+  }
+
   /** "Dedupe" callback (requires a second click to confirm): deletes redundant copies with identical content, keeping one per group. */
   private void runCleanDuplicates() {
     List<Path> redundant = ImportIndex.redundantDuplicates(importFiles);
@@ -1073,6 +1092,12 @@ public final class BuildPackScreen extends Screen {
       if (building.managed() || building.hasJson()) {
         items.add(new ContextMenu.Item(Component.translatable("buildpack.menu.definition"),
             () -> DefinitionEditorScreen.open(building, this::refresh)));
+      }
+      // Recapture: replace the structure from the in-world selection, keeping .sk and .json.
+      if (building.managed() && building.hasStructure() && minecraft.level != null) {
+        items.add(new ContextMenu.Item(
+            Component.translatable("buildpack.menu.update_from_selection"),
+            () -> runUpdateFromSelection(building)));
       }
       items.add(new ContextMenu.Item(Component.translatable("buildpack.menu.reveal"),
           () -> reveal(building.zipPath())));

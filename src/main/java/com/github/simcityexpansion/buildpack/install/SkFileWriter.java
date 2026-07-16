@@ -37,6 +37,12 @@ public final class SkFileWriter {
     putLine(lines, "description", meta.description.replace('\r', ' ').replace('\n', ' '));
     putLine(lines, "tags", meta.tags);
     putLine(lines, "job_type", meta.jobType);
+    for (var poi : meta.poiLines) {
+      // Only lines SimuKraft would accept are written (type + integer capacity are mandatory).
+      if (!poi.type().isBlank() && !poi.capacity().isBlank()) {
+        lines.add("poi:" + poi.format());
+      }
+    }
     return (String.join("\n", lines) + "\n").getBytes(StandardCharsets.UTF_8);
   }
 

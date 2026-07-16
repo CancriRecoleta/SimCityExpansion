@@ -8,6 +8,7 @@ import java.util.function.Consumer;
 import com.github.simcityexpansion.buildpack.model.BuildingCategory;
 import com.github.simcityexpansion.buildpack.model.BuildingMetadata;
 import com.github.simcityexpansion.buildpack.ui.BuildPackTheme;
+import com.github.simcityexpansion.buildpack.ui.PoiEditScreen;
 import com.github.simcityexpansion.buildpack.ui.ThemedButton;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -48,6 +49,7 @@ public final class MetadataForm {
   private EditBox descriptionField;
   private EditBox tagsField;
   private EditBox jobTypeField;
+  private ThemedButton poiButton;
   private Checkbox overwriteCheckbox;
 
   /** Rebuilds and positions all form widgets (called once per screen init); returns the bottom y of the content. */
@@ -79,6 +81,13 @@ public final class MetadataForm {
     tagsField = field("tags", x, controlX, cursor, controlW, add, (m, v) -> m.tags = v);
     cursor += ROW_H + ROW_GAP;
     jobTypeField = field("job_type", x, controlX, cursor, controlW, add, (m, v) -> m.jobType = v);
+    cursor += ROW_H + ROW_GAP;
+
+    // POI declarations always open the editor; rows are editable only on the import tab.
+    poiButton = new ThemedButton(controlX, cursor, controlW, ROW_H,
+        poiLabel(), () -> PoiEditScreen.open(model.poiLines, editable, this::applyModel));
+    add.accept(poiButton);
+    labels.add(new FieldLabel(Component.translatable("buildpack.form.poi"), x, cursor));
     cursor += ROW_H + ROW_GAP;
 
     overwriteCheckbox = Checkbox.builder(Component.translatable("buildpack.form.overwrite"), font)
@@ -121,6 +130,7 @@ public final class MetadataForm {
     descriptionField.setValue(model.description);
     tagsField.setValue(model.tags);
     jobTypeField.setValue(model.jobType);
+    poiButton.setMessage(poiLabel());
 
     categoryButton.active = editable;
     setEditable(nameField);
@@ -130,6 +140,11 @@ public final class MetadataForm {
     setEditable(tagsField);
     setEditable(jobTypeField);
     overwriteCheckbox.active = editable;
+  }
+
+  private Component poiLabel() {
+    return Component.translatable(
+        editable ? "buildpack.form.poi_edit" : "buildpack.form.poi_view", model.poiLines.size());
   }
 
   private void setEditable(EditBox field) {

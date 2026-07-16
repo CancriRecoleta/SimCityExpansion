@@ -1,11 +1,14 @@
 package com.github.simcityexpansion.buildpack.model;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Mutable form model for a building's .sk metadata (intended for two-way UI binding).
  *
  * <p>Fields correspond one-to-one with SimuKraft's .sk keys: name / size / amount / author /
- * description / tags / job_type. The size is computed automatically from the structure file
- * and is read-only in the UI.
+ * description / tags / job_type, plus zero or more {@code poi:} lines. The size is computed
+ * automatically from the structure file and is read-only in the UI.
  */
 public final class BuildingMetadata {
   public String name = "";
@@ -16,6 +19,8 @@ public final class BuildingMetadata {
   public String tags = "";
   public String jobType = "";
   public BuildingCategory category = BuildingCategory.OTHER;
+  /** {@code poi:} lines (SimuKraft point-of-interest declarations), in file order. */
+  public final List<PoiLine> poiLines = new ArrayList<>();
 
   public int sizeX;
   public int sizeY;
@@ -43,6 +48,7 @@ public final class BuildingMetadata {
     copy.sizeX = sizeX;
     copy.sizeY = sizeY;
     copy.sizeZ = sizeZ;
+    copy.poiLines.addAll(poiLines);
     return copy;
   }
 
