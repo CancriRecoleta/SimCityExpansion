@@ -10,17 +10,20 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
-/** Block-type picker screen: paginates all block types in the structure; clicking one returns its id to the caller (used for removal or replacement). */
+/** Block-type picker screen: lists all block types in the structure (filterable, sortable); clicking one returns its id to the caller (used for removal or replacement). */
 public final class BlockPickerScreen extends Screen {
 
   private static final int PAD = 10;
   private static final int TITLE_H = 12;
   private static final int GAP = 4;
   private static final int BUTTON_H = 20;
+  private static final int FILTER_W = 150;
+  private static final int FILTER_H = 14;
 
   private final Screen previous;
   private final NbtStructure structure;
   private final Consumer<String> onPick;
+  private String filterText = "";
 
   private BlockPickerScreen(Screen previous, NbtStructure structure, Consumer<String> onPick) {
     super(Component.translatable("buildpack.editor.remove_title"));
@@ -46,10 +49,22 @@ public final class BlockPickerScreen extends Screen {
   @Override
   protected void init() {
     MaterialListView list =
-        new MaterialListView(PAD + 2, boxY() + 2, width - PAD * 2 - 4, boxHeight() - 4);
+        new MaterialListView(PAD + 3, boxY() + 3, width - PAD * 2 - 6, boxHeight() - 6);
     list.setMaterials(StructureAnalysis.materials(structure));
+    list.setFilter(filterText);
     list.setOnSelect(entry -> onPick.accept(entry.blockId()));
     addRenderableWidget(list);
+
+    ThemedEditBox filter = new ThemedEditBox(font, width - PAD - FILTER_W, PAD - 3, FILTER_W,
+        FILTER_H, Component.translatable("buildpack.materials.filter"));
+    filter.setHint(Component.translatable("buildpack.materials.filter"));
+    filter.setMaxLength(64);
+    filter.setValue(filterText);
+    filter.setResponder(text -> {
+      filterText = text;
+      list.setFilter(text);
+    });
+    addRenderableWidget(filter);
 
     addRenderableWidget(new ThemedButton(PAD, height - PAD - BUTTON_H, 80, BUTTON_H,
         Component.translatable("buildpack.action.back"), this::onClose));

@@ -10,8 +10,11 @@ import java.util.function.Consumer;
 
 import com.github.simcityexpansion.buildpack.convert.NbtStructure;
 import com.github.simcityexpansion.buildpack.convert.StructureAnalysis;
+import com.github.simcityexpansion.buildpack.ui.BuildPackTheme;
 import com.github.simcityexpansion.buildpack.ui.StructurePreviewScreen;
 import com.github.simcityexpansion.buildpack.ui.UiScale;
+import com.github.simcityexpansion.buildpack.ui.style.Anim;
+import com.github.simcityexpansion.buildpack.ui.style.Shapes;
 import com.mojang.blaze3d.platform.Lighting;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
@@ -44,6 +47,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtUtils;
 import net.minecraft.network.chat.Component;
+import net.minecraft.util.Mth;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.RenderShape;
@@ -1593,15 +1597,42 @@ public final class StructureScene extends AbstractWidget {
         drawHover(g, x, y, w, h, scale, mc);
       }
     }
+    // Overlays (hints, compass) always sit above the blocks: clear depth inside the widget only.
+    g.flush();
+    UiScale.enableScissor(g, x, y, x + w, y + h);
+    RenderSystem.clear(GL11.GL_DEPTH_BUFFER_BIT, false);
+    g.disableScissor();
     drawHints(g, x, y, w, h, mc);
-    drawCompass(g, x, y, w, h, mc);
+    drawCompass(g, x, y, w, h, mc, mouseX, mouseY);
   }
 
   /** Cardinal directions in structure space: north = -Z, east = +X, south = +Z, west = -X. */
   private static final String[] COMPASS_KEYS = {"north", "east", "south", "west"};
   private static final int[][] COMPASS_DIRECTIONS = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}};
-  private static final int COMPASS_DISC_RADIUS = 20;
-  private static final int COMPASS_LABEL_RADIUS = 14;
+  /** Camera yaw that puts each cardinal side toward the viewer (viewer dir = (-sin yaw, cos yaw)). */
+  private static final float[] COMPASS_FACE_YAW = {180.0f, 270.0f, 0.0f, 90.0f};
+  private static final int COMPASS_DISC_RADIUS = 22;
+  private static final float COMPASS_LABEL_RADIUS = 16.0f;
+  private static final float COMPASS_RING_RADIUS = 11.0f;
+  private static final float COMPASS_LABEL_HIT = 6.5f;
+  private static final float COMPASS_CENTER_HIT = 4.5f;
+  private static final int COMPASS_RING_SEGMENTS = 48;
+
+  // Scratch geometry for the compass (render thread only).
+  private static final float[] RING_X = new float[COMPASS_RING_SEGMENTS + 1];
+  private static final float[] RING_Y = new float[COMPASS_RING_SEGMENTS + 1];
+  private static final float[] TICK_X = new float[2];
+  private static final float[] TICK_Y = new float[2];
+
+  private final Anim compassAnim = new Anim();
+  /** Compass center of the last frame ({@code NaN} when hidden), used for click hit-testing. */
+  private float compassCenterX = Float.NaN;
+  private float compassCenterY;
+  private final float[] compassLabelX = new float[4];
+  private final float[] compassLabelY = new float[4];
+  private final boolean[] compassLabelShown = new boolean[4];
+  /** A left click that started on the compass: its drag and release are swallowed. */
+  private boolean compassClick;
 
   /** Whether the corner compass is drawn (used by hints to keep the top-right corner clear). */
   private boolean compassVisible(int w, int h) {
@@ -1609,63 +1640,149 @@ public final class StructureScene extends AbstractWidget {
   }
 
   /**
-   * Compass rose in the top-right corner: a translucent disc with a north needle and cardinal
-   * labels, projected through the same yaw/pitch as the structure, so "north" always points
-   * where -Z actually is on screen (structure-local directions, matching the definition docs).
+   * Screen-space direction of a horizontal structure-space direction {@code (dx, dz)}: the view
+   * rotation Rx(pitch) * Ry(yaw) followed by the scene's y-flip, so screen x follows the rotated x
+   * and screen y the rotated z foreshortened by sin(pitch).
    */
-  private void drawCompass(GuiGraphics g, int x, int y, int w, int h, Minecraft mc) {
-    if (!compassVisible(w, h)) {
-      return;
-    }
-    Font font = mc.font;
-    int centerX = x + w - COMPASS_DISC_RADIUS - 4;
-    int centerY = y + COMPASS_DISC_RADIUS + 4;
-
-    // Translucent disc backdrop (row spans; radius is small, so this stays cheap).
-    for (int row = -COMPASS_DISC_RADIUS; row <= COMPASS_DISC_RADIUS; row++) {
-      int span = (int) Math.floor(Math.sqrt(
-          (double) COMPASS_DISC_RADIUS * COMPASS_DISC_RADIUS - (double) row * row));
-      g.fill(centerX - span, centerY + row, centerX + span + 1, centerY + row + 1, 0x58000000);
-    }
-
+  private void projectHorizontal(double dx, double dz, double[] out) {
     double yawRad = Math.toRadians(yaw);
     double pitchRad = Math.toRadians(pitch);
-    double[] screenX = new double[4];
-    double[] screenY = new double[4];
-    double[] lengths = new double[4];
-    for (int i = 0; i < COMPASS_KEYS.length; i++) {
-      double dx = COMPASS_DIRECTIONS[i][0];
-      double dz = COMPASS_DIRECTIONS[i][1];
-      // View rotation Rx(pitch) * Ry(yaw) applied to the horizontal direction, then the scene's
-      // y-flip: screenX ∝ rotated x, screenY ∝ rotated z * sin(pitch).
-      screenX[i] = dx * Math.cos(yawRad) + dz * Math.sin(yawRad);
-      screenY[i] = (-dx * Math.sin(yawRad) + dz * Math.cos(yawRad)) * Math.sin(pitchRad);
-      lengths[i] = Math.sqrt(screenX[i] * screenX[i] + screenY[i] * screenY[i]);
+    out[0] = dx * Math.cos(yawRad) + dz * Math.sin(yawRad);
+    out[1] = (-dx * Math.sin(yawRad) + dz * Math.cos(yawRad)) * Math.sin(pitchRad);
+  }
+
+  /**
+   * Compass rose in the top-right corner, projected through the same yaw/pitch as the structure so
+   * "north" always points where -Z actually is on screen (structure-local directions, matching the
+   * definition docs). A themed disc holds the tilted ground ring with eight ticks, a two-tone
+   * needle, and the cardinal labels on the rim. In interactive views, clicking a label turns the
+   * camera to look at that side and clicking the hub restores the default angle.
+   */
+  private void drawCompass(GuiGraphics g, int x, int y, int w, int h, Minecraft mc, int mouseX,
+      int mouseY) {
+    if (!compassVisible(w, h)) {
+      compassCenterX = Float.NaN;
+      return;
+    }
+    compassAnim.frame();
+    Font font = mc.font;
+    float r = COMPASS_DISC_RADIUS;
+    float cx = x + w - r - 4;
+    float cy = y + r + 4;
+    compassCenterX = cx;
+    compassCenterY = cy;
+    double mouseDist = Math.hypot(mouseX - cx, mouseY - cy);
+    boolean hoverDisc = interactive && mouseDist <= r;
+    float discHover = compassAnim.hover("disc", hoverDisc);
+
+    Shapes.circle(g, cx, cy, r,
+        BuildPackTheme.withAlpha(BuildPackTheme.popupBg(), 0xB0 + (int) (0x38 * discHover)));
+    Shapes.roundRectStroke(g, cx - r, cy - r, r * 2, r * 2, r, Shapes.stroke(),
+        BuildPackTheme.lerpColor(BuildPackTheme.withAlpha(BuildPackTheme.popupBorder(), 0xA0),
+            BuildPackTheme.accent(), discHover * 0.7f));
+
+    // Ground ring: the horizontal circle seen through the camera (an ellipse when tilted).
+    double[] p = new double[2];
+    int ringColor = BuildPackTheme.withAlpha(BuildPackTheme.textMuted(), 0x90);
+    for (int k = 0; k <= COMPASS_RING_SEGMENTS; k++) {
+      double angle = Math.PI * 2 * k / COMPASS_RING_SEGMENTS;
+      projectHorizontal(Math.cos(angle), Math.sin(angle), p);
+      RING_X[k] = (float) (cx + p[0] * COMPASS_RING_RADIUS);
+      RING_Y[k] = (float) (cy + p[1] * COMPASS_RING_RADIUS);
+    }
+    Shapes.polyline(g, RING_X, RING_Y, 0, COMPASS_RING_SEGMENTS + 1, 1.0f, ringColor);
+    // Ticks every 45°, longer on the cardinals (angle 0 = east, so even steps are cardinals).
+    for (int d = 0; d < 8; d++) {
+      double angle = Math.PI / 4 * d;
+      projectHorizontal(Math.cos(angle), Math.sin(angle), p);
+      float inner = d % 2 == 0 ? 0.62f : 0.80f;
+      TICK_X[0] = (float) (cx + p[0] * COMPASS_RING_RADIUS * inner);
+      TICK_Y[0] = (float) (cy + p[1] * COMPASS_RING_RADIUS * inner);
+      TICK_X[1] = (float) (cx + p[0] * COMPASS_RING_RADIUS);
+      TICK_Y[1] = (float) (cy + p[1] * COMPASS_RING_RADIUS);
+      Shapes.polyline(g, TICK_X, TICK_Y, 0, 2, d % 2 == 0 ? 1.2f : 0.8f, ringColor);
     }
 
-    // North needle (red) with a short gray south tail, rotated via the pose stack.
-    if (lengths[0] >= 0.08) {
-      float angle = (float) Math.atan2(screenY[0], screenX[0]);
-      g.pose().pushPose();
-      g.pose().translate(centerX, centerY, 0.0f);
-      g.pose().mulPose(Axis.ZP.rotation(angle));
-      g.fill(2, -1, COMPASS_LABEL_RADIUS - 4, 1, 0xFFFF5555);
-      g.fill(-(COMPASS_LABEL_RADIUS - 8), -1, -2, 1, 0xA0E0E0E0);
-      g.pose().popPose();
+    // Needle: red diamond half toward north, muted half toward south.
+    projectHorizontal(0, -1, p);
+    double northLen = Math.hypot(p[0], p[1]);
+    if (northLen >= 0.08) {
+      float ux = (float) (p[0] / northLen);
+      float uy = (float) (p[1] / northLen);
+      float len = (float) (northLen * (COMPASS_RING_RADIUS - 1.0f));
+      float half = 2.4f;
+      float px = -uy * half;
+      float py = ux * half;
+      Shapes.triangle(g, cx + ux * len, cy + uy * len, cx + px, cy + py, cx - px, cy - py,
+          BuildPackTheme.messageError());
+      Shapes.triangle(g, cx - ux * len, cy - uy * len, cx + px, cy + py, cx - px, cy - py,
+          BuildPackTheme.withAlpha(BuildPackTheme.textSecondary(), 0xC0));
     }
-    g.fill(centerX - 1, centerY - 1, centerX + 1, centerY + 1, 0xFFFFFFFF);
+    boolean hoverCenter = interactive && mouseDist <= COMPASS_CENTER_HIT;
+    float centerHover = compassAnim.hover("center", hoverCenter);
+    Shapes.circle(g, cx, cy, 1.8f + centerHover * 1.2f,
+        BuildPackTheme.lerpColor(BuildPackTheme.textPrimary(), BuildPackTheme.accent(),
+            centerHover));
 
+    // Cardinal labels on the rim; the hovered one gets an accent bubble.
     for (int i = 0; i < COMPASS_KEYS.length; i++) {
-      if (lengths[i] < 0.08) {
+      projectHorizontal(COMPASS_DIRECTIONS[i][0], COMPASS_DIRECTIONS[i][1], p);
+      double len = Math.hypot(p[0], p[1]);
+      if (len < 0.08) {
+        compassLabelShown[i] = false;
         continue;
       }
+      float lx = (float) (cx + p[0] / len * COMPASS_LABEL_RADIUS);
+      float ly = (float) (cy + p[1] / len * COMPASS_LABEL_RADIUS);
+      compassLabelX[i] = lx;
+      compassLabelY[i] = ly;
+      compassLabelShown[i] = true;
+      boolean hoverLabel =
+          interactive && Math.hypot(mouseX - lx, mouseY - ly) <= COMPASS_LABEL_HIT;
+      float labelHover = compassAnim.hover("label." + i, hoverLabel);
+      if (labelHover > 0.01f) {
+        Shapes.circle(g, lx, ly, 6.0f,
+            BuildPackTheme.withAlpha(BuildPackTheme.accent(), (int) (0x70 * labelHover)));
+      }
+      int base = i == 0 ? BuildPackTheme.messageError() : BuildPackTheme.textSecondary();
+      int color = BuildPackTheme.lerpColor(base, BuildPackTheme.textPrimary(), labelHover);
       String label = Component.translatable("buildpack.preview." + COMPASS_KEYS[i]).getString();
-      int labelX = (int) Math.round(centerX + screenX[i] / lengths[i] * COMPASS_LABEL_RADIUS)
-          - font.width(label) / 2;
-      int labelY = (int) Math.round(centerY + screenY[i] / lengths[i] * COMPASS_LABEL_RADIUS)
-          - font.lineHeight / 2;
-      g.drawString(font, label, labelX, labelY, i == 0 ? 0xFFFF5555 : 0xD0E0E0E0, true);
+      g.drawString(font, label, Math.round(lx - font.width(label) / 2.0f),
+          Math.round(ly - font.lineHeight / 2.0f) + 1, color, false);
     }
+
+    if (hoverDisc && mc.screen != null) {
+      mc.screen.setTooltipForNextRenderPass(
+          font.split(Component.translatable("buildpack.preview.compass.tip"), 200));
+    }
+  }
+
+  /**
+   * Handles a left click on the compass: a label turns the camera to face that side (keeping the
+   * pitch unless it is steeper than 60°), the hub restores the default angle. Returns whether the
+   * click landed on the compass disc at all.
+   */
+  private boolean clickCompass(double mouseX, double mouseY) {
+    if (Float.isNaN(compassCenterX)) {
+      return false;
+    }
+    double dist = Math.hypot(mouseX - compassCenterX, mouseY - compassCenterY);
+    if (dist > COMPASS_DISC_RADIUS) {
+      return false;
+    }
+    if (dist <= COMPASS_CENTER_HIT) {
+      setView(yaw + Mth.wrapDegrees(DEFAULT_YAW - yaw), DEFAULT_PITCH);
+      return true;
+    }
+    for (int i = 0; i < COMPASS_KEYS.length; i++) {
+      if (compassLabelShown[i] && Math.hypot(mouseX - compassLabelX[i],
+          mouseY - compassLabelY[i]) <= COMPASS_LABEL_HIT) {
+        float newPitch = Math.abs(targetPitch) > 60.0f ? DEFAULT_PITCH : targetPitch;
+        setView(yaw + Mth.wrapDegrees(COMPASS_FACE_YAW[i] - yaw), newPitch);
+        return true;
+      }
+    }
+    return true;
   }
 
   private static final float PERSPECTIVE_FOV = (float) Math.toRadians(45.0);
@@ -1974,6 +2091,10 @@ public final class StructureScene extends AbstractWidget {
       }
       return false;
     }
+    if (button == 0 && clickCompass(mouseX, mouseY)) {
+      compassClick = true;
+      return true;
+    }
     if (button == 2) {
       resetView();
     }
@@ -1990,6 +2111,9 @@ public final class StructureScene extends AbstractWidget {
   public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
     if (!interactive) {
       return false;
+    }
+    if (compassClick && button == 0) {
+      return true;
     }
     if (selectMode && dragFace >= 0 && button == 0) {
       dragged = true;
@@ -2045,6 +2169,10 @@ public final class StructureScene extends AbstractWidget {
 
   @Override
   public boolean mouseReleased(double mouseX, double mouseY, int button) {
+    if (compassClick && button == 0) {
+      compassClick = false;
+      return true;
+    }
     if (interactive && editMode && button == 0 && !dragged && onEdit != null
         && isMouseOver(mouseX, mouseY)) {
       Hit hit = raycast(mouseX, mouseY);

@@ -89,6 +89,14 @@ v directory tree           | [preview: embedded thumbnail or top-down]
 - **Open Folder** — context-aware: the Installed tab opens `simukraftbuilding/`, the others
   open the import directory.
 - **Sort** — by name, by modified time (newest first), or by size (largest first).
+- **Material list** (the Materials button in the info panel) — one row per block type with its
+  icon, share bar, percentage, stack breakdown (`12×64 + 5`), and count; click a column header
+  to sort, type in the filter box to narrow it down, hover a row for details (including shulker
+  boxes needed), and use **Copy List** to put the filtered list on the clipboard. Missing blocks
+  stay on top in red.
+- **Compass** (top-right of the 3D preview) — the ring tilts with the camera and the red needle
+  points north. In the full preview and the editor, click a direction to view that side, or the
+  center to restore the default angle.
 - **Settings** (the ⚙ button next to Guide) — dark or light theme, panel opacity, manager UI
   scale (also Ctrl + mouse wheel), whether captures include block-entity contents, the
   selection HUD, and a shortcut to the key bindings. Changes apply immediately and are saved
