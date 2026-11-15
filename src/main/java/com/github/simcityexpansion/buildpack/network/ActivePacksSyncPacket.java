@@ -23,7 +23,7 @@ public record ActivePacksSyncPacket(List<Entry> buildings) implements CustomPack
 
   /** Metadata for one active building (mirrors what SimuKraft's build menu needs). */
   public record Entry(String packId, String category, String displayName, String size,
-      String amount, String author, String description, String metaFileName,
+      String amount, String author, String description, int unlockLevel, String metaFileName,
       String structureFileName) {}
 
   public static final Type<ActivePacksSyncPacket> TYPE =
@@ -47,6 +47,7 @@ public record ActivePacksSyncPacket(List<Entry> buildings) implements CustomPack
       buffer.writeUtf(entry.amount(), 64);
       buffer.writeUtf(entry.author(), 128);
       buffer.writeUtf(entry.description(), 512);
+      buffer.writeVarInt(entry.unlockLevel());
       buffer.writeUtf(entry.metaFileName(), 256);
       buffer.writeUtf(entry.structureFileName(), 256);
     }
@@ -58,7 +59,7 @@ public record ActivePacksSyncPacket(List<Entry> buildings) implements CustomPack
     for (int i = 0; i < count; i++) {
       entries.add(new Entry(buffer.readUtf(256), buffer.readUtf(64), buffer.readUtf(256),
           buffer.readUtf(64), buffer.readUtf(64), buffer.readUtf(128), buffer.readUtf(512),
-          buffer.readUtf(256), buffer.readUtf(256)));
+          buffer.readVarInt(), buffer.readUtf(256), buffer.readUtf(256)));
     }
     return new ActivePacksSyncPacket(entries);
   }

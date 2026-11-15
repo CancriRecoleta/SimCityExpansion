@@ -16,18 +16,14 @@ public class SimcityExpansion {
   public static final String MODID = "simcity_expansion";
 
   public SimcityExpansion(IEventBus modEventBus, ModContainer modContainer) {
-    // The /buildpack admin command is side-neutral (available in both singleplayer and on a dedicated server).
+
     NeoForge.EVENT_BUS.addListener(BuildPackCommands::onRegisterCommands);
 
-    // Re-apply persisted active build packs when the server (integrated or dedicated) starts, so
-    // they are served to SimuKraft without being installed into its building directory.
     NeoForge.EVENT_BUS.addListener(PackActivationService::onServerStarting);
 
-    // Sync the active building set to players (so dedicated-server clients see and can build them).
     modEventBus.addListener(BuildPackNetwork::register);
     NeoForge.EVENT_BUS.addListener(BuildPackNetwork::onPlayerJoin);
 
-    // The management screen and key mappings are client-only features, registered only in a client environment.
     if (FMLEnvironment.dist == Dist.CLIENT) {
       BuildPackClientBootstrap.register(modEventBus, modContainer);
     }

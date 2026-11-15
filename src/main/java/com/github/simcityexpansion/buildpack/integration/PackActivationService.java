@@ -213,6 +213,7 @@ public final class PackActivationService {
     String amount;
     String author;
     String description;
+    int unlockLevel;
     byte[] skBytes;
     if (building.skEntry() != null) {
       // Preserve the author's .sk (it may carry POI or job definitions SimuKraft reads). SimuKraft
@@ -223,6 +224,7 @@ public final class PackActivationService {
       amount = orDefault(fields.get("amount"), "");
       author = orDefault(fields.get("author"), "");
       description = orDefault(fields.get("description"), orDefault(fields.get("desc"), ""));
+      unlockLevel = SkFileReader.parseUnlockLevel(fields);
       if (renamed) {
         skBytes = rewriteSkFileReferences(skBytes, finalName);
       }
@@ -242,6 +244,7 @@ public final class PackActivationService {
       amount = meta.amount;
       author = meta.author;
       description = meta.description;
+      unlockLevel = 0;
     }
     entries.put(SimukraftZips.entryPath(category, finalName + ".sk"), skBytes);
 
@@ -251,13 +254,13 @@ public final class PackActivationService {
     }
 
     return new ActiveBuilding(packId, category.dirName(), displayName, size, amount, author,
-        description, finalName + ".sk", finalName + ".nbt");
+        description, unlockLevel, finalName + ".sk", finalName + ".nbt");
   }
 
   /**
    * Rewrites the .sk fields that reference sibling files by name ({@code structure}/{@code file}
-   * point at the structure, {@code commercial}/{@code industrial} at the job definition JSON) so
-   * they follow the building's renamed entry base name.
+   * point at the structure, {@code commercial}/{@code industrial}/{@code medical}/{@code drilling}
+   * at the job definition JSON) so they follow the building's renamed entry base name.
    */
   private static byte[] rewriteSkFileReferences(byte[] skBytes, String finalName) {
     StringBuilder out = new StringBuilder(skBytes.length + 64);
@@ -273,7 +276,8 @@ public final class PackActivationService {
               .append('\n');
           continue;
         }
-        if (!value.isEmpty() && (key.equals("commercial") || key.equals("industrial"))) {
+        if (!value.isEmpty() && (key.equals("commercial") || key.equals("industrial")
+            || key.equals("medical") || key.equals("drilling"))) {
           out.append(key).append(':').append(finalName).append(".json").append('\n');
           continue;
         }
@@ -306,7 +310,8 @@ public final class PackActivationService {
         buildings.add(new ActiveBuilding(packId, category.dirName(),
             orDefault(fields.get("name"), base), orDefault(fields.get("size"), "-"),
             orDefault(fields.get("amount"), ""), orDefault(fields.get("author"), ""),
-            orDefault(fields.get("description"), ""), base + ".sk", base + ".nbt"));
+            orDefault(fields.get("description"), ""), SkFileReader.parseUnlockLevel(fields),
+            base + ".sk", base + ".nbt"));
       }
     } catch (IOException e) {
       I18nLog.warn(LOGGER, e, "buildpack.log.activate_failed", cacheZip);

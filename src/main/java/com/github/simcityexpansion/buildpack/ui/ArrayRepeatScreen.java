@@ -74,7 +74,7 @@ public final class ArrayRepeatScreen extends Screen {
   }
 
   private EditBox intField(int x, int y, int w, String initial) {
-    EditBox box = new EditBox(font, x, y, w, 18, Component.empty());
+    EditBox box = new ThemedEditBox(font, x, y, w, 18, Component.empty());
     box.setMaxLength(6);
     box.setValue(initial);
     box.setFilter(text -> text.isEmpty() || text.equals("-") || text.matches("-?\\d+"));
@@ -121,16 +121,15 @@ public final class ArrayRepeatScreen extends Screen {
 
   @Override
   public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-    g.fill(0, 0, width, height, 0xC0000000);
-    BuildPackTheme.fillPanel(g, left(), top(), W, H, 0xF0101010);
+    BuildPackTheme.dialog(g, width, height, left(), top(), W, H);
     g.drawString(font, Component.translatable("buildpack.array.heading"),
-        left() + 10, top() + 10, BuildPackTheme.VALUE, true);
+        left() + 10, top() + 10, BuildPackTheme.VALUE, false);
     g.drawString(font, Component.translatable("buildpack.array.count"),
-        left() + 10, top() + 31, BuildPackTheme.LABEL, true);
+        left() + 10, top() + 31, BuildPackTheme.LABEL, false);
     g.drawString(font, Component.translatable("buildpack.array.offset"),
-        left() + 10, top() + 55, BuildPackTheme.LABEL, true);
+        left() + 10, top() + 55, BuildPackTheme.LABEL, false);
     g.drawString(font, Component.translatable("buildpack.array.hint"),
-        left() + 10, top() + 76, BuildPackTheme.HINT, true);
+        left() + 10, top() + 76, BuildPackTheme.HINT, false);
     super.render(g, mouseX, mouseY, partialTick);
   }
 

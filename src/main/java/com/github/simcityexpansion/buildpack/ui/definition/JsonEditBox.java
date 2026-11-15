@@ -7,6 +7,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.function.Consumer;
 
+import com.github.simcityexpansion.buildpack.ui.BuildPackTheme;
+import com.github.simcityexpansion.buildpack.ui.style.Anim;
+import com.github.simcityexpansion.buildpack.ui.style.Shapes;
 import net.minecraft.Util;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -41,19 +44,19 @@ import org.lwjgl.glfw.GLFW;
  */
 public final class JsonEditBox extends AbstractScrollWidget {
 
-  private static final int CURSOR_COLOR = 0xFFD0D0D0;
-  private static final int PLACEHOLDER_COLOR = 0xCCE0E0E0;
+  private static final int CURSOR_COLOR = BuildPackTheme.TEXT_PRIMARY;
+  private static final int PLACEHOLDER_COLOR = BuildPackTheme.TEXT_MUTED;
   private static final int LINE_HEIGHT = 9;
   private static final int CURSOR_BLINK_INTERVAL_MS = 300;
   /** Width of the line-number gutter (fits four digits). */
   private static final int GUTTER_W = 26;
-  private static final int GUTTER_TEXT = 0xFF707070;
-  private static final int GUTTER_TEXT_CURRENT = 0xFFC0C0C0;
-  private static final int CURRENT_LINE_BG = 0x14FFFFFF;
-  private static final int ERROR_LINE_BG = 0x38FF4040;
-  private static final int BRACKET_BG = 0x6032A0C8;
-  private static final int MATCH_BG = 0x50B08828;
-  private static final int MATCH_CURRENT_BG = 0x80D89A20;
+  private static final int GUTTER_TEXT = 0xFF6E7681;
+  private static final int GUTTER_TEXT_CURRENT = BuildPackTheme.TEXT_SECONDARY;
+  private static final int CURRENT_LINE_BG = 0x1458A6FF;
+  private static final int ERROR_LINE_BG = 0x38F85149;
+  private static final int BRACKET_BG = 0x5058A6FF;
+  private static final int MATCH_BG = 0x50D29922;
+  private static final int MATCH_CURRENT_BG = 0x90D29922;
   /** Undo history depth. */
   private static final int MAX_HISTORY = 200;
   /** Consecutive small edits within this window coalesce into one undo step. */
@@ -67,6 +70,7 @@ public final class JsonEditBox extends AbstractScrollWidget {
   private final Font font;
   private final Component placeholder;
   private final MultilineTextField textField;
+  private final Anim.Value focusAnim = new Anim.Value();
   private long focusedTime = Util.getMillis();
 
   private String scannedText = "";
@@ -621,7 +625,7 @@ public final class JsonEditBox extends AbstractScrollWidget {
         }
         g.drawString(font,
             JsonHighlighter.styled(text, scannedColors, line.beginIndex(), line.endIndex()),
-            lineX, lineY, JsonHighlighter.DEFAULT);
+            lineX, lineY, JsonHighlighter.DEFAULT, false);
         if (blinkOn && cursorInside && cursorLine) {
           int cursorX = lineX + font.width(text.substring(line.beginIndex(), cursor));
           g.fill(cursorX, lineY - 1, cursorX + 1, lineY + 1 + LINE_HEIGHT, CURSOR_COLOR);
@@ -637,7 +641,7 @@ public final class JsonEditBox extends AbstractScrollWidget {
       if (withinContentAreaTopBottom(endY, endY + LINE_HEIGHT)) {
         MultilineTextField.StringView lastLine = textField.getLineView(lastIndex);
         int endX = lineX + font.width(text.substring(lastLine.beginIndex(), lastLine.endIndex()));
-        g.drawString(font, "_", endX, endY, CURSOR_COLOR);
+        g.drawString(font, "_", endX, endY, CURSOR_COLOR, false);
       }
     }
 
@@ -762,6 +766,33 @@ public final class JsonEditBox extends AbstractScrollWidget {
       }
     }
     return -1;
+  }
+
+  // ---- Frame (BuildPack theme) ----
+
+  /** Rounded dark input frame whose border fades to the accent while focused. */
+  @Override
+  protected void renderBorder(GuiGraphics g, int x, int y, int w, int h) {
+    float focus = focusAnim.approach(isFocused() ? 1F : 0F, 14F);
+    int border = BuildPackTheme.lerpColor(
+        BuildPackTheme.withAlpha(BuildPackTheme.WIDGET_BORDER, 0xC0), BuildPackTheme.ACCENT, focus);
+    Shapes.roundRect(g, x, y, w, h, BuildPackTheme.CONTROL_RADIUS, BuildPackTheme.INPUT_BG);
+    Shapes.roundRectStroke(g, x, y, w, h, BuildPackTheme.CONTROL_RADIUS, Shapes.stroke(), border);
+    // Gutter separator.
+    Shapes.vline(g, x + innerPadding() + GUTTER_W - 4, y + 3, y + h - 3, BuildPackTheme.DIVIDER);
+  }
+
+  /** Slim pill scrollbar just outside the right edge (vanilla draws an 8 px sprite there). */
+  @Override
+  protected void renderDecorations(GuiGraphics g) {
+    if (!scrollbarVisible() || getMaxScrollAmount() <= 0) {
+      return;
+    }
+    int h = getHeight();
+    int barH = Math.max(12, Math.min(h, (int) ((float) (h * h) / (getInnerHeight() + 4))));
+    int barY = Math.max(getY(),
+        (int) scrollAmount() * (h - barH) / getMaxScrollAmount() + getY());
+    BuildPackTheme.scrollbar(g, getX() + getWidth() + 2, getY(), h, barY, barH);
   }
 
   // ---- Plumbing (vanilla parity) ----

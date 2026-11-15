@@ -11,7 +11,7 @@ buildings, and install, uninstall, and export zip packs with one click.
 | --- | --- |
 | Minecraft | 1.21.1 |
 | NeoForge | 21.1.233+ |
-| SimuKraft (New-Simukraft) | 2.0.0-pre-5+ |
+| SimuKraft (New-Simukraft) | 2.3.0+ |
 
 The manager is built on Minecraft's own GUI toolkit, so it needs no extra UI library.
 Integration with SimuKraft is a file-system convention with no compile-time dependency.

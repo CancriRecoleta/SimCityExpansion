@@ -49,7 +49,7 @@ public final class TextPromptScreen extends Screen {
 
   @Override
   protected void init() {
-    input = new EditBox(font, left() + 10, top() + 32, W - 20, 18, Component.empty());
+    input = new ThemedEditBox(font, left() + 10, top() + 32, W - 20, 18, Component.empty());
     input.setMaxLength(256);
     input.setValue(initial == null ? "" : initial);
     addRenderableWidget(input);
@@ -87,9 +87,8 @@ public final class TextPromptScreen extends Screen {
 
   @Override
   public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-    g.fill(0, 0, width, height, 0xC0000000);
-    BuildPackTheme.fillPanel(g, left(), top(), W, H, 0xF0101010);
-    g.drawString(font, prompt, left() + 10, top() + 12, BuildPackTheme.VALUE, true);
+    BuildPackTheme.dialog(g, width, height, left(), top(), W, H);
+    g.drawString(font, prompt, left() + 10, top() + 12, BuildPackTheme.VALUE, false);
     super.render(g, mouseX, mouseY, partialTick);
   }
 

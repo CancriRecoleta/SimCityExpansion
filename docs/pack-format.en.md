@@ -148,6 +148,7 @@ job_type:breadShopOwner
 | `amount` | Build cost, SimuKraft's built-in notation such as `8.64元` |
 | `tags` | Comma-separated; common built-in values: `price_low/price_high`, `material_low/material_high`, `stage_early/stage_late` |
 | `job_type` | The job id this building provides (matching the job in the native .json) |
+| `unlockLevel` | City level required before the building can be built (SimuKraft 2.2+); omit for no requirement. This mod does not generate it but **keeps it as-is** |
 | `poi:` lines | SimuKraft's point-of-interest extension; this mod does not generate it but **keeps it as-is** |
 
 ### 2. `<name>.meta.json` — rewritten to .sk by the manager

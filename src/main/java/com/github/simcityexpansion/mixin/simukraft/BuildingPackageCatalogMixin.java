@@ -7,7 +7,7 @@ import java.util.List;
 import com.github.simcityexpansion.buildpack.integration.ActivePackProvider;
 import com.llamalad7.mixinextras.injector.ModifyReturnValue;
 import com.llamalad7.mixinextras.sugar.Local;
-import common.cn.kafei.simukraft.building.BuildingPackageCatalog;
+import common.cn.nsimu.simukraft.building.BuildingPackageCatalog;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 

@@ -13,21 +13,22 @@ import net.minecraft.network.chat.TextColor;
  * an unterminated string simply colors to the end of the text, everything else falls back to the
  * default color. Colors follow a common dark-editor palette and read well on the mod's panels.
  */
+/* Colors follow GitHub's dark syntax theme, matching the Primer palette of the UI. */
 public final class JsonHighlighter {
   private JsonHighlighter() {}
 
   /** Default text (unclassified characters). */
-  public static final int DEFAULT = 0xFFE6E6E6;
+  public static final int DEFAULT = 0xFFC9D1D9;
   /** Object key strings. */
-  public static final int KEY = 0xFF7EC8F2;
+  public static final int KEY = 0xFF7EE787;
   /** String values. */
-  public static final int STRING = 0xFFCE9178;
+  public static final int STRING = 0xFFA5D6FF;
   /** Numbers. */
-  public static final int NUMBER = 0xFFB5CEA8;
+  public static final int NUMBER = 0xFF79C0FF;
   /** {@code true} / {@code false} / {@code null}. */
-  public static final int KEYWORD = 0xFF569CD6;
+  public static final int KEYWORD = 0xFFFF7B72;
   /** Braces, brackets, colons, commas. */
-  public static final int PUNCTUATION = 0xFF909090;
+  public static final int PUNCTUATION = 0xFF8B949E;
 
   /** Scans the whole text and returns one color per character. */
   public static int[] scan(String text) {

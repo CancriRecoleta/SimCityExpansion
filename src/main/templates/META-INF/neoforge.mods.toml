@@ -75,12 +75,14 @@ side = "BOTH"
 # SimuKraft is an OPTIONAL integration: when present, our mixins splice active build packs into its
 # zip package scan (no files written to simukraftbuilding/). 'optional' keeps this mod loadable
 # without it; 'AFTER' ensures SimuKraft's classes are available when our mixin config is processed.
-# The integration targets the SimuKraft 2.0+ zip package architecture (BuildingPackageCatalog);
-# on older SimuKraft versions the mixins disable themselves.
+# The lower bound is 2.3.0 because that release moved SimuKraft's packages from cn.kafei.simukraft
+# to cn.nsimu.simukraft, which is what our mixins and bridge are compiled against — on 2.2.x and
+# older the mixin targets do not exist, and a version screen at startup beats a silently disabled
+# integration (2.2.0 is also where the build-menu metadata record gained unlockLevel).
 [[dependencies."${mod_id}"]]
 modId = "simukraft"
 type = "optional"
-versionRange = "[2.0.1,)"
+versionRange = "[2.3.0,)"
 ordering = "AFTER"
 side = "BOTH"
 

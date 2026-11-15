@@ -51,7 +51,10 @@ import com.github.simcityexpansion.buildpack.model.StructureInfo;
 import com.github.simcityexpansion.buildpack.ui.component.InfoPanel;
 import com.github.simcityexpansion.buildpack.ui.component.MetadataForm;
 import com.github.simcityexpansion.buildpack.ui.component.TreeView;
+import com.github.simcityexpansion.buildpack.ui.style.Anim;
+import com.github.simcityexpansion.buildpack.ui.style.Shapes;
 import com.github.simcityexpansion.buildpack.ui.tree.TreeNode;
+import net.minecraft.ChatFormatting;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -155,6 +158,8 @@ public final class BuildPackScreen extends Screen {
   private boolean messageError;
   private Component count = Component.empty();
 
+  /** Eases the sliding tab underline. */
+  private final Anim anim = new Anim();
   private TreeView treeView;
   private ContextMenu contextMenu;
   private ThemedButton sortButton;
@@ -239,14 +244,14 @@ public final class BuildPackScreen extends Screen {
     for (int i = 0; i < tabs.length; i++) {
       SourceTab tab = tabs[i];
       ThemedButton button = new ThemedButton(leftX + i * (tabW + GAP), tabsY, tabW, TAB_H,
-          tab.displayName(), () -> switchTab(tab));
+          tab.displayName(), () -> switchTab(tab)).tab().selected(() -> currentTab == tab);
       button.setTooltip(Tooltip.create(tab.tooltip()));
       tabButtons[i] = button;
       addRenderableWidget(button);
     }
 
     // Search + sort
-    EditBox searchBox = new EditBox(font, leftX, searchY, leftW - SORT_W - GAP, SEARCH_H,
+    EditBox searchBox = new ThemedEditBox(font, leftX, searchY, leftW - SORT_W - GAP, SEARCH_H,
         Component.translatable("buildpack.search.placeholder"));
     searchBox.setHint(Component.translatable("buildpack.search.placeholder"));
     searchBox.setMaxLength(128);
@@ -274,7 +279,7 @@ public final class BuildPackScreen extends Screen {
     int actionCount = 7;
     int actionW = (viewW() - PAD * 2 - GAP * (actionCount - 1)) / actionCount;
     int ax = PAD;
-    installButton = action("install", ax, row1Y, actionW, this::runInstall);
+    installButton = action("install", ax, row1Y, actionW, this::runInstall).primary();
     ax += actionW + GAP;
     batchButton = action("batch", ax, row1Y, actionW, this::runBatchInstall);
     ax += actionW + GAP;
@@ -341,33 +346,39 @@ public final class BuildPackScreen extends Screen {
     g.pose().scale(uiScale, uiScale, 1.0f);
     try {
       computeLayout();
-      g.fill(0, 0, viewW() + 2, viewH() + 2, BuildPackTheme.ROOT_BG);
+      anim.frame();
+      // Krypton-style floating panel over a light world dim, with rounded cards inside.
+      BuildPackTheme.backdrop(g, viewW() + 2, viewH() + 2);
+      BuildPackTheme.surface(g, PAD / 2, PAD / 2, viewW() - PAD, viewH() - PAD);
       BuildPackTheme.panel(g, leftX, treeY, leftW, bodyBottom - treeY);
       BuildPackTheme.panel(g, rightX, searchY, INFO_W, bodyBottom - searchY);
-      g.drawString(font, Component.translatable("buildpack.title"), leftX + 2, PAD,
-          BuildPackTheme.TITLE, true);
+      g.drawString(font, Component.translatable("buildpack.title").withStyle(ChatFormatting.BOLD),
+          leftX + 2, PAD, BuildPackTheme.TITLE, false);
+      BuildPackTheme.divider(g, leftX, leftX + leftW, tabsY + TAB_H - 0.5F);
 
       infoPanel.renderText(g);
 
       int statusY = row2Y + (BTN_H - font.lineHeight) / 2;
       int textX = statusX;
-      g.drawString(font, count, textX, statusY, BuildPackTheme.COUNT, true);
+      g.drawString(font, count, textX, statusY, BuildPackTheme.COUNT, false);
       textX += font.width(count.getString()) + 8;
       if (scanning) {
         Component scan = Component.translatable("buildpack.status.scanning");
-        g.drawString(font, scan, textX, statusY, BuildPackTheme.HINT, true);
+        g.drawString(font, scan, textX, statusY, BuildPackTheme.HINT, false);
         textX += font.width(scan.getString()) + 8;
       }
       if (!message.getString().isEmpty()) {
         g.drawString(font, message, textX, statusY,
-            messageError ? BuildPackTheme.MESSAGE_ERROR : BuildPackTheme.MESSAGE_OK, true);
+            messageError ? BuildPackTheme.MESSAGE_ERROR : BuildPackTheme.MESSAGE_OK, false);
       }
 
       super.render(g, lmx, lmy, partialTick);
 
-      // Active-tab underline (drawn on top of the tab buttons).
+      // Active-tab underline (drawn on top of the tab buttons); it slides between tabs.
       int activeX = leftX + currentTab.ordinal() * (tabW + GAP);
-      g.fill(activeX, tabsY + TAB_H, activeX + tabW, tabsY + TAB_H + 1, BuildPackTheme.ACCENT);
+      float underlineX = anim.approach("tab.underline.x", activeX + 4, 18F);
+      float underlineW = anim.approach("tab.underline.w", tabW - 8, 18F);
+      Shapes.pill(g, underlineX, tabsY + TAB_H - 2.5F, underlineW, 2.5F, BuildPackTheme.ACCENT);
 
       if (contextMenu != null) {
         contextMenu.render(g, lmx, lmy);

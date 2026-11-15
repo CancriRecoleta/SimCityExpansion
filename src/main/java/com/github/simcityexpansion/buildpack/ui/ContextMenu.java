@@ -2,6 +2,8 @@ package com.github.simcityexpansion.buildpack.ui;
 
 import java.util.List;
 
+import com.github.simcityexpansion.buildpack.ui.style.Anim;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -18,16 +20,21 @@ public final class ContextMenu {
   /** A single menu item. */
   public record Item(Component label, Runnable action) {}
 
-  private static final int ROW_H = 12;
-  private static final int PAD = 3;
+  private static final int ROW_H = 13;
+  private static final int PAD = 4;
 
   private final List<Item> items;
   private final int x;
   private final int y;
   private final int width;
+  private final Anim.Value[] hoverAnims;
 
   public ContextMenu(int x, int y, List<Item> items) {
     this.items = items;
+    this.hoverAnims = new Anim.Value[items.size()];
+    for (int i = 0; i < hoverAnims.length; i++) {
+      hoverAnims[i] = new Anim.Value();
+    }
     Font font = Minecraft.getInstance().font;
     int w = 50;
     for (Item item : items) {
@@ -44,20 +51,27 @@ public final class ContextMenu {
     return items.size() * ROW_H + PAD * 2;
   }
 
-  /** Renders the menu on top of all other content. */
+  /** Renders the menu on top of all other content (Krypton popup look). */
   public void render(GuiGraphics g, int mouseX, int mouseY) {
-    BuildPackTheme.fillPanel(g, x, y, width, height(), 0xF0101010);
+    g.pose().pushPose();
+    g.pose().translate(0, 0, 400);
+    BuildPackTheme.popup(g, x, y, width, height());
     Font font = Minecraft.getInstance().font;
     for (int i = 0; i < items.size(); i++) {
       int rowY = y + PAD + i * ROW_H;
       boolean hovered = mouseX >= x && mouseX < x + width
           && mouseY >= rowY && mouseY < rowY + ROW_H;
-      if (hovered) {
-        g.fill(x + 1, rowY, x + width - 1, rowY + ROW_H, 0x40FFFFFF);
+      float hover = hoverAnims[i].approach(hovered ? 1F : 0F, 16F);
+      if (hover > 0.01F) {
+        BuildPackTheme.rowHighlight(g, x + 2, rowY, width - 4, ROW_H,
+            BuildPackTheme.withAlpha(BuildPackTheme.ACCENT, (int) (0x30 * hover)));
       }
-      g.drawString(font, items.get(i).label(), x + PAD + 2,
-          rowY + (ROW_H - font.lineHeight) / 2 + 1, BuildPackTheme.BUTTON_TEXT, true);
+      int color = BuildPackTheme.lerpColor(BuildPackTheme.TEXT_SECONDARY,
+          BuildPackTheme.TEXT_PRIMARY, hover);
+      g.drawString(font, items.get(i).label(), x + PAD + 3,
+          rowY + (ROW_H - font.lineHeight) / 2 + 1, color, false);
     }
+    g.pose().popPose();
   }
 
   /** Handles a click: executes the action of the hit item, if any. The host should close the menu regardless of whether an item was hit. */

@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.function.Consumer;
 
 import com.github.simcityexpansion.buildpack.convert.StructureAnalysis.MaterialEntry;
+import com.github.simcityexpansion.buildpack.ui.BuildPackTheme;
 import com.github.simcityexpansion.buildpack.ui.UiFormats;
 import com.github.simcityexpansion.buildpack.ui.UiScale;
 import net.minecraft.client.Minecraft;
@@ -25,15 +26,14 @@ public final class MaterialListView extends AbstractWidget {
   private static final int ROW_HEIGHT = 12;
   private static final int PAD_LEFT = 4;
   private static final int PAGE_BAR_H = 13;
-  private static final int ROW_COLOR = 0xFFE0E0E0;
-  private static final int MISSING_COLOR = 0xFFFF6060;
-  private static final int COUNT_COLOR = 0xFFFFFFFF;
-  private static final int ALT_ROW_BG = 0x18FFFFFF;
-  private static final int PAGE_SEP_COLOR = 0x60FFFFFF;
-  private static final int PAGE_INFO_COLOR = 0xFFC0C0C0;
-  private static final int PAGE_BTN_COLOR = 0xFFFFFFFF;
-  private static final int PAGE_BTN_DISABLED = 0xFF808080;
-  private static final int HOVER_COLOR = 0x40FFFFFF;
+  private static final int ROW_COLOR = BuildPackTheme.TEXT_SECONDARY;
+  private static final int MISSING_COLOR = BuildPackTheme.MESSAGE_ERROR;
+  private static final int COUNT_COLOR = BuildPackTheme.TEXT_PRIMARY;
+  private static final int ALT_ROW_BG = BuildPackTheme.ROW_ALT;
+  private static final int PAGE_INFO_COLOR = BuildPackTheme.TEXT_MUTED;
+  private static final int PAGE_BTN_COLOR = BuildPackTheme.ACCENT_LIGHT;
+  private static final int PAGE_BTN_DISABLED = BuildPackTheme.WIDGET_BORDER_HOVER & 0x80FFFFFF;
+  private static final int HOVER_COLOR = BuildPackTheme.ROW_HOVER;
 
   private List<MaterialEntry> materials = List.of();
   private int page;
@@ -92,16 +92,16 @@ public final class MaterialListView extends AbstractWidget {
       boolean hovered = onSelect != null && mouseX >= x && mouseX < x + w
           && mouseY >= rowY && mouseY < rowY + ROW_HEIGHT;
       if (hovered) {
-        g.fill(x, rowY, x + w, rowY + ROW_HEIGHT, HOVER_COLOR);
+        BuildPackTheme.rowHighlight(g, x + 1, rowY, w - 2, ROW_HEIGHT, HOVER_COLOR);
       } else if ((i & 1) == 1) {
-        g.fill(x, rowY, x + w, rowY + ROW_HEIGHT, ALT_ROW_BG);
+        BuildPackTheme.rowHighlight(g, x + 1, rowY, w - 2, ROW_HEIGHT, ALT_ROW_BG);
       }
       int textY = rowY + (ROW_HEIGHT - font.lineHeight) / 2 + 1;
       String count = UiFormats.integer(m.count());
-      g.drawString(font, count, x + PAD_LEFT, textY, COUNT_COLOR, true);
+      g.drawString(font, count, x + PAD_LEFT, textY, COUNT_COLOR, false);
       int nameX = x + PAD_LEFT + font.width("00000") + 6;
       String name = m.missing() ? m.blockId() : m.displayName().getString();
-      g.drawString(font, name, nameX, textY, m.missing() ? MISSING_COLOR : ROW_COLOR, true);
+      g.drawString(font, name, nameX, textY, m.missing() ? MISSING_COLOR : ROW_COLOR, false);
     }
     g.disableScissor();
 
@@ -111,15 +111,15 @@ public final class MaterialListView extends AbstractWidget {
   }
 
   private void drawPageBar(GuiGraphics g, Font font, int x, int barY, int w, int pages) {
-    g.fill(x, barY, x + w, barY + 1, PAGE_SEP_COLOR);
+    BuildPackTheme.divider(g, x + 2, x + w - 2, barY);
     int textY = barY + (PAGE_BAR_H - font.lineHeight) / 2 + 1;
     String prev = Component.translatable("buildpack.tree.prev_page").getString();
     String next = Component.translatable("buildpack.tree.next_page").getString();
     String info = Component.translatable("buildpack.tree.page_info", page + 1, pages).getString();
-    g.drawString(font, prev, x + 2, textY, page > 0 ? PAGE_BTN_COLOR : PAGE_BTN_DISABLED, true);
+    g.drawString(font, prev, x + 2, textY, page > 0 ? PAGE_BTN_COLOR : PAGE_BTN_DISABLED, false);
     g.drawString(font, next, x + w - font.width(next) - 2, textY,
-        page < pages - 1 ? PAGE_BTN_COLOR : PAGE_BTN_DISABLED, true);
-    g.drawString(font, info, x + (w - font.width(info)) / 2, textY, PAGE_INFO_COLOR, true);
+        page < pages - 1 ? PAGE_BTN_COLOR : PAGE_BTN_DISABLED, false);
+    g.drawString(font, info, x + (w - font.width(info)) / 2, textY, PAGE_INFO_COLOR, false);
   }
 
   // ---- Interaction (pagination + optional row selection) ----

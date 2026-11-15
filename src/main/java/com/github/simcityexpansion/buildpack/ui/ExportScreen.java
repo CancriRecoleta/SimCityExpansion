@@ -24,7 +24,6 @@ import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -60,9 +59,9 @@ public final class ExportScreen extends Screen {
   private EditBox versionField;
   private EditBox authorField;
   private EditBox descField;
-  private Checkbox includeSk;
-  private Checkbox includeJson;
-  private Checkbox includeIcon;
+  private ThemedCheckbox includeSk;
+  private ThemedCheckbox includeJson;
+  private ThemedCheckbox includeIcon;
   private EditBox iconPathField;
   private PreviewSlot iconSlot;
   private @Nullable byte[] autoIconCache;
@@ -102,19 +101,19 @@ public final class ExportScreen extends Screen {
     authorField = field(x, top() + 70, fw, defaultAuthor());
     descField = field(x, top() + 92, fw, "");
 
-    includeSk = Checkbox.builder(Component.translatable("buildpack.export.include_sk"), font)
+    includeSk = ThemedCheckbox.builder(Component.translatable("buildpack.export.include_sk"), font)
         .pos(left() + 10, top() + CHECK_SK).selected(true).build();
     addRenderableWidget(includeSk);
-    includeJson = Checkbox.builder(Component.translatable("buildpack.export.include_json"), font)
+    includeJson = ThemedCheckbox.builder(Component.translatable("buildpack.export.include_json"), font)
         .pos(left() + 10, top() + CHECK_JSON).selected(true).build();
     addRenderableWidget(includeJson);
-    includeIcon = Checkbox.builder(Component.translatable("buildpack.export.include_icon"), font)
+    includeIcon = ThemedCheckbox.builder(Component.translatable("buildpack.export.include_icon"), font)
         .pos(left() + 10, top() + CHECK_ICON).selected(true)
         .onValueChange((checkbox, value) -> updateIcon()).build();
     addRenderableWidget(includeIcon);
 
     int boxX = iconBoxX();
-    iconPathField = new EditBox(font, x, top() + ICON_ROW, boxX - 6 - x, 18, Component.empty());
+    iconPathField = new ThemedEditBox(font, x, top() + ICON_ROW, boxX - 6 - x, 18, Component.empty());
     iconPathField.setMaxLength(512);
     iconPathField.setHint(Component.translatable("buildpack.export.icon_hint"));
     iconPathField.setResponder(value -> updateIcon());
@@ -134,7 +133,7 @@ public final class ExportScreen extends Screen {
   }
 
   private EditBox field(int x, int y, int w, String initial) {
-    EditBox box = new EditBox(font, x, y, w, 18, Component.empty());
+    EditBox box = new ThemedEditBox(font, x, y, w, 18, Component.empty());
     box.setMaxLength(256);
     box.setValue(initial);
     addRenderableWidget(box);
@@ -243,10 +242,9 @@ public final class ExportScreen extends Screen {
 
   @Override
   public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-    g.fill(0, 0, width, height, 0xC0000000);
-    BuildPackTheme.fillPanel(g, left(), top(), W, H, 0xF0101010);
+    BuildPackTheme.dialog(g, width, height, left(), top(), W, H);
     g.drawString(font, Component.translatable("buildpack.export.heading", buildings.size()),
-        left() + 10, top() + 10, BuildPackTheme.TITLE, true);
+        left() + 10, top() + 10, BuildPackTheme.TITLE, false);
     label(g, "buildpack.export.field.name", top() + 26);
     label(g, "buildpack.export.field.version", top() + 48);
     label(g, "buildpack.export.field.author", top() + 70);
@@ -256,18 +254,17 @@ public final class ExportScreen extends Screen {
     // Icon preview frame, drawn behind the slot widget.
     int boxX = iconBoxX();
     int boxY = top() + ICON_BOX_Y;
-    g.fill(boxX - 1, boxY - 1, boxX + ICON_BOX + 1, boxY + ICON_BOX + 1, 0xFF000000);
-    g.fill(boxX, boxY, boxX + ICON_BOX, boxY + ICON_BOX, 0xFF1A1A1A);
+    BuildPackTheme.previewPanel(g, boxX - 1, boxY - 1, ICON_BOX + 2, ICON_BOX + 2);
 
     if (!status.getString().isEmpty()) {
-      g.drawString(font, status, left() + 10, top() + H - 40, BuildPackTheme.MESSAGE_ERROR, true);
+      g.drawString(font, status, left() + 10, top() + H - 40, BuildPackTheme.MESSAGE_ERROR, false);
     }
     super.render(g, mouseX, mouseY, partialTick);
   }
 
   private void label(GuiGraphics g, String key, int y) {
     g.drawString(font, Component.translatable(key), left() + 10,
-        y + (18 - font.lineHeight) / 2, BuildPackTheme.LABEL, true);
+        y + (18 - font.lineHeight) / 2, BuildPackTheme.LABEL, false);
   }
 
   @Override

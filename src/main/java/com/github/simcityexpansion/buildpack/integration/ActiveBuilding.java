@@ -18,6 +18,7 @@ package com.github.simcityexpansion.buildpack.integration;
  * @param amount construction price string SimuKraft parses (e.g. {@code 8.64元})
  * @param author author credit
  * @param description short description shown in the build menu
+ * @param unlockLevel city level required to build; {@code 0} means no requirement
  * @param metaFileName the {@code .sk} entry name SimuKraft keys the building by (must be unique)
  * @param structureFileName the structure entry name (e.g. {@code <packId>__<name>.nbt})
  */
@@ -29,5 +30,6 @@ public record ActiveBuilding(
     String amount,
     String author,
     String description,
+    int unlockLevel,
     String metaFileName,
     String structureFileName) {}

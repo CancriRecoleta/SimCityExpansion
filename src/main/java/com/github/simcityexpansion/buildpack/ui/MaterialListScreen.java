@@ -59,11 +59,11 @@ public final class MaterialListScreen extends Screen {
 
   @Override
   public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-    g.fill(0, 0, width, height, BuildPackTheme.ROOT_BG);
+    BuildPackTheme.screenSurface(g, width, height);
     BuildPackTheme.panel(g, PAD, boxY(), width - PAD * 2, boxHeight());
     g.drawString(font, Component.translatable(
         "buildpack.materials.screen_heading", buildingName, materials.size()),
-        PAD + 10, PAD, BuildPackTheme.TITLE, true);
+        PAD + 10, PAD, BuildPackTheme.TITLE, false);
     super.render(g, mouseX, mouseY, partialTick);
   }
 

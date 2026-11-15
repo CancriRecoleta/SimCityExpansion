@@ -54,14 +54,14 @@ public final class PackGuideScreen extends Screen {
 
   @Override
   public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-    g.fill(0, 0, width, height, 0xF2101010);
+    BuildPackTheme.screenSurface(g, width, height);
   }
 
   @Override
   public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
     BuildPackTheme.panel(g, MARGIN, areaTop(), width - MARGIN * 2, areaBottom() - areaTop());
     super.render(g, mouseX, mouseY, partialTick);
-    g.drawString(font, title, MARGIN, MARGIN - 6, BuildPackTheme.TITLE, true);
+    g.drawString(font, title, MARGIN, MARGIN - 6, BuildPackTheme.TITLE, false);
 
     int textX = MARGIN + PAD;
     int textW = width - (MARGIN + PAD) * 2;
@@ -69,12 +69,12 @@ public final class PackGuideScreen extends Screen {
     g.enableScissor(MARGIN + 1, areaTop() + 1, width - MARGIN - 1, areaBottom() - 1);
     for (int step = 1; step <= STEPS; step++) {
       g.drawString(font, Component.translatable("buildpack.guide.s" + step + ".title"),
-          textX, y, BuildPackTheme.ACCENT, true);
+          textX, y, BuildPackTheme.ACCENT, false);
       y += font.lineHeight + TITLE_GAP;
       List<FormattedCharSequence> lines =
           font.split(Component.translatable("buildpack.guide.s" + step + ".body"), textW);
       for (FormattedCharSequence line : lines) {
-        g.drawString(font, line, textX, y, BuildPackTheme.LABEL, true);
+        g.drawString(font, line, textX, y, BuildPackTheme.LABEL, false);
         y += font.lineHeight + 1;
       }
       y += SECTION_GAP;
@@ -87,8 +87,7 @@ public final class PackGuideScreen extends Screen {
       int track = areaBottom() - areaTop() - 2;
       int thumb = Math.max(12, track * track / Math.max(track, contentHeight));
       int thumbY = areaTop() + 1 + (int) ((track - thumb) * (scroll / maxScroll()));
-      g.fill(width - MARGIN - 3, areaTop() + 1, width - MARGIN - 1, areaBottom() - 1, 0x30FFFFFF);
-      g.fill(width - MARGIN - 3, thumbY, width - MARGIN - 1, thumbY + thumb, 0xA0FFFFFF);
+      BuildPackTheme.scrollbar(g, width - MARGIN - 4, areaTop() + 1, track, thumbY, thumb);
     }
   }
 

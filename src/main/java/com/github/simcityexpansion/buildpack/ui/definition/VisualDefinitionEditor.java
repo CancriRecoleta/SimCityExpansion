@@ -11,6 +11,7 @@ import com.github.simcityexpansion.buildpack.ui.BuildPackTheme;
 import com.github.simcityexpansion.buildpack.ui.ContextMenu;
 import com.github.simcityexpansion.buildpack.ui.TextPromptScreen;
 import com.github.simcityexpansion.buildpack.ui.ThemedButton;
+import com.github.simcityexpansion.buildpack.ui.ThemedEditBox;
 import com.github.simcityexpansion.buildpack.ui.tree.TreeNode;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -414,7 +415,7 @@ public final class VisualDefinitionEditor {
     }
     for (FieldLabel label : labels) {
       g.drawString(font, label.text(), label.x(),
-          label.y() + (ROW_H - font.lineHeight) / 2, BuildPackTheme.LABEL, true);
+          label.y() + (ROW_H - font.lineHeight) / 2, BuildPackTheme.LABEL, false);
     }
   }
 
@@ -1372,7 +1373,7 @@ public final class VisualDefinitionEditor {
   }
 
   private EditBox textField(int x, int width, String value, Consumer<String> setter) {
-    EditBox box = new EditBox(font, x, cursorY, width, ROW_H, Component.empty());
+    EditBox box = new ThemedEditBox(font, x, cursorY, width, ROW_H, Component.empty());
     box.setMaxLength(256);
     box.setValue(value);
     box.setResponder(v -> {
@@ -1386,7 +1387,7 @@ public final class VisualDefinitionEditor {
   /** A small field with a placeholder hint (used for compact multi-field rows). */
   private void hintedField(int x, int width, String value, String hintKey,
       Consumer<String> setter) {
-    EditBox box = new EditBox(font, x, cursorY, width, ROW_H, Component.empty());
+    EditBox box = new ThemedEditBox(font, x, cursorY, width, ROW_H, Component.empty());
     box.setMaxLength(16);
     box.setHint(Component.translatable(hintKey));
     box.setValue(value);

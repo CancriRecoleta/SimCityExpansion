@@ -7,8 +7,8 @@ import com.github.simcityexpansion.buildpack.integration.ActiveBuilding;
 import com.github.simcityexpansion.buildpack.integration.ActivePackProvider;
 import com.llamalad7.mixinextras.injector.ModifyReturnValue;
 import com.llamalad7.mixinextras.sugar.Local;
-import client.cn.kafei.simukraft.client.buildbox.BuildingCacheService;
-import client.cn.kafei.simukraft.client.buildbox.BuildingCacheService.BuildingMeta;
+import client.cn.nsimu.simukraft.client.buildbox.BuildingCacheService;
+import client.cn.nsimu.simukraft.client.buildbox.BuildingCacheService.BuildingMeta;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 
@@ -38,8 +38,8 @@ abstract class BuildingCacheServiceMixin {
       if (!clash) {
         merged.add(new BuildingMeta(
             building.category(), building.displayName(), building.size(), building.amount(),
-            building.author(), building.description(), building.metaFileName(),
-            building.structureFileName(), building.packId()));
+            building.author(), building.description(), building.unlockLevel(),
+            building.metaFileName(), building.structureFileName(), building.packId()));
       }
     }
     return merged;

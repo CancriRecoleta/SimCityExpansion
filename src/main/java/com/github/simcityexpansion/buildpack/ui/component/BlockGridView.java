@@ -3,6 +3,8 @@ package com.github.simcityexpansion.buildpack.ui.component;
 import java.util.List;
 import java.util.function.Consumer;
 
+import com.github.simcityexpansion.buildpack.ui.BuildPackTheme;
+import com.github.simcityexpansion.buildpack.ui.style.Shapes;
 import com.mojang.blaze3d.platform.Lighting;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -31,12 +33,11 @@ public final class BlockGridView extends AbstractWidget {
 
   private static final int CELL = 18;
   private static final int PAGE_BAR_H = 13;
-  private static final int SLOT_BG = 0x20FFFFFF;
-  private static final int HOVER_BG = 0x60FFFFFF;
-  private static final int PAGE_SEP_COLOR = 0x60FFFFFF;
-  private static final int PAGE_INFO_COLOR = 0xFFC0C0C0;
-  private static final int PAGE_BTN_COLOR = 0xFFFFFFFF;
-  private static final int PAGE_BTN_DISABLED = 0xFF808080;
+  private static final int SLOT_BG = BuildPackTheme.withAlpha(BuildPackTheme.WIDGET_BG, 0xC0);
+  private static final int HOVER_BG = BuildPackTheme.withAlpha(BuildPackTheme.ACCENT, 0x50);
+  private static final int PAGE_INFO_COLOR = BuildPackTheme.TEXT_MUTED;
+  private static final int PAGE_BTN_COLOR = BuildPackTheme.ACCENT_LIGHT;
+  private static final int PAGE_BTN_DISABLED = BuildPackTheme.WIDGET_BORDER_HOVER & 0x80FFFFFF;
 
   private List<Entry> entries = List.of();
   private int page;
@@ -103,7 +104,7 @@ public final class BlockGridView extends AbstractWidget {
       int cx = x + offsetX + (rel % cols) * CELL;
       int cy = y + (rel / cols) * CELL;
       boolean hover = mouseX >= cx && mouseX < cx + CELL && mouseY >= cy && mouseY < cy + CELL;
-      g.fill(cx + 1, cy + 1, cx + CELL - 1, cy + CELL - 1, hover ? HOVER_BG : SLOT_BG);
+      Shapes.roundRect(g, cx + 1, cy + 1, CELL - 2, CELL - 2, 3F, hover ? HOVER_BG : SLOT_BG);
       Entry entry = entries.get(i);
       if (!entry.stack().isEmpty()) {
         g.renderItem(entry.stack(), cx + 1, cy + 1);
@@ -143,15 +144,15 @@ public final class BlockGridView extends AbstractWidget {
   }
 
   private void drawPageBar(GuiGraphics g, Font font, int x, int barY, int w, int pages) {
-    g.fill(x, barY, x + w, barY + 1, PAGE_SEP_COLOR);
+    BuildPackTheme.divider(g, x + 2, x + w - 2, barY);
     int textY = barY + (PAGE_BAR_H - font.lineHeight) / 2 + 1;
     String prev = Component.translatable("buildpack.tree.prev_page").getString();
     String next = Component.translatable("buildpack.tree.next_page").getString();
     String info = Component.translatable("buildpack.tree.page_info", page + 1, pages).getString();
-    g.drawString(font, prev, x + 2, textY, page > 0 ? PAGE_BTN_COLOR : PAGE_BTN_DISABLED, true);
+    g.drawString(font, prev, x + 2, textY, page > 0 ? PAGE_BTN_COLOR : PAGE_BTN_DISABLED, false);
     g.drawString(font, next, x + w - font.width(next) - 2, textY,
-        page < pages - 1 ? PAGE_BTN_COLOR : PAGE_BTN_DISABLED, true);
-    g.drawString(font, info, x + (w - font.width(info)) / 2, textY, PAGE_INFO_COLOR, true);
+        page < pages - 1 ? PAGE_BTN_COLOR : PAGE_BTN_DISABLED, false);
+    g.drawString(font, info, x + (w - font.width(info)) / 2, textY, PAGE_INFO_COLOR, false);
   }
 
   @Override

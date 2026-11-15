@@ -252,7 +252,7 @@ public final class DefinitionEditorScreen extends Screen
       int actions = smallW * 2 + GAP * 2 + 16 + GAP + (editable ? (actionW + GAP) * 2 : 0);
       int fieldW = Math.max(80, (w - actions - GAP) / (editable ? 2 : 1));
       int fx = MARGIN;
-      findBox = new EditBox(font, fx, contentY, fieldW, BUTTON_H,
+      findBox = new ThemedEditBox(font, fx, contentY, fieldW, BUTTON_H,
           Component.translatable("buildpack.definition.find.placeholder"));
       findBox.setHint(Component.translatable("buildpack.definition.find.placeholder"));
       findBox.setMaxLength(256);
@@ -266,7 +266,7 @@ public final class DefinitionEditorScreen extends Screen
       addRenderableWidget(findBox);
       fx += fieldW + GAP;
       if (editable) {
-        replaceBox = new EditBox(font, fx, contentY, fieldW, BUTTON_H,
+        replaceBox = new ThemedEditBox(font, fx, contentY, fieldW, BUTTON_H,
             Component.translatable("buildpack.definition.replace.placeholder"));
         replaceBox.setHint(Component.translatable("buildpack.definition.replace.placeholder"));
         replaceBox.setMaxLength(256);
@@ -829,7 +829,7 @@ public final class DefinitionEditorScreen extends Screen
 
   @Override
   public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-    g.fill(0, 0, width, height, 0xF2101010);
+    BuildPackTheme.screenSurface(g, width, height);
   }
 
   @Override
@@ -840,11 +840,11 @@ public final class DefinitionEditorScreen extends Screen
           width - MARGIN * 2 - treeW - GAP, contentBottom - contentY);
     }
     super.render(g, mouseX, mouseY, partialTick);
-    g.drawString(font, title, MARGIN, MARGIN - 4, BuildPackTheme.TITLE, true);
+    g.drawString(font, title, MARGIN, MARGIN - 4, BuildPackTheme.TITLE, false);
     if (!editable) {
       Component readonly = Component.translatable("buildpack.definition.readonly");
       g.drawString(font, readonly, width - MARGIN - font.width(readonly), MARGIN - 4,
-          BuildPackTheme.MESSAGE_WARN, true);
+          BuildPackTheme.MESSAGE_WARN, false);
     }
 
     if (mode == Mode.VISUAL && visual.root() != null) {
@@ -852,12 +852,12 @@ public final class DefinitionEditorScreen extends Screen
         visual.renderLabels(g);
       } else {
         g.drawString(font, Component.translatable("buildpack.definition.visual.select_hint"),
-            formX(), contentY + 6, BuildPackTheme.HINT, true);
+            formX(), contentY + 6, BuildPackTheme.HINT, false);
       }
     } else if (mode == Mode.VISUAL) {
       Component hint = Component.translatable("buildpack.definition.visual.empty");
       g.drawString(font, hint, (width - font.width(hint)) / 2,
-          contentY + (contentBottom - contentY) / 2 - BUTTON_H - 14, BuildPackTheme.LABEL, true);
+          contentY + (contentBottom - contentY) / 2 - BUTTON_H - 14, BuildPackTheme.LABEL, false);
     }
 
     int statusY = height - MARGIN - BUTTON_H - GAP - STATUS_ROWS * ROW_H;
@@ -873,11 +873,11 @@ public final class DefinitionEditorScreen extends Screen
       }
       Component clipped = clip(info, (width - MARGIN * 2) / 2);
       int infoWidth = font.width(clipped);
-      g.drawString(font, clipped, width - MARGIN - infoWidth, rowY, BuildPackTheme.HINT, true);
+      g.drawString(font, clipped, width - MARGIN - infoWidth, rowY, BuildPackTheme.HINT, false);
       messageWidth -= infoWidth + 8;
     }
     if (message != null) {
-      g.drawString(font, clip(message, messageWidth), MARGIN, rowY, messageColor, true);
+      g.drawString(font, clip(message, messageWidth), MARGIN, rowY, messageColor, false);
     }
     rowY += ROW_H;
     int shown = 0;
@@ -892,7 +892,7 @@ public final class DefinitionEditorScreen extends Screen
           : issue.text();
       int color = last ? BuildPackTheme.LABEL
           : issue.error() ? BuildPackTheme.MESSAGE_ERROR : BuildPackTheme.MESSAGE_WARN;
-      g.drawString(font, clip(line, width - MARGIN * 2), MARGIN, rowY, color, true);
+      g.drawString(font, clip(line, width - MARGIN * 2), MARGIN, rowY, color, false);
       rowY += ROW_H;
       shown++;
     }

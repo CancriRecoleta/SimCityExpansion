@@ -62,13 +62,13 @@ public final class BlockPickerScreen extends Screen {
 
   @Override
   public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-    g.fill(0, 0, width, height, BuildPackTheme.ROOT_BG);
+    BuildPackTheme.screenSurface(g, width, height);
     BuildPackTheme.panel(g, PAD, boxY(), width - PAD * 2, boxHeight());
     g.drawString(font, Component.translatable("buildpack.editor.remove_title"),
-        PAD + 10, PAD, BuildPackTheme.TITLE, true);
+        PAD + 10, PAD, BuildPackTheme.TITLE, false);
     g.drawString(font, Component.translatable("buildpack.editor.remove_hint"),
         PAD + 90, height - PAD - BUTTON_H + (BUTTON_H - font.lineHeight) / 2,
-        BuildPackTheme.HINT, true);
+        BuildPackTheme.HINT, false);
     super.render(g, mouseX, mouseY, partialTick);
   }
 

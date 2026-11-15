@@ -88,7 +88,7 @@ public final class SelectionScreen extends Screen {
   }
 
   private EditBox field(int x, int y, int w, int value) {
-    EditBox box = new EditBox(font, x, y, w, 16, Component.empty());
+    EditBox box = new ThemedEditBox(font, x, y, w, 16, Component.empty());
     box.setMaxLength(8);
     box.setValue(Integer.toString(value));
     addRenderableWidget(box);
@@ -130,16 +130,15 @@ public final class SelectionScreen extends Screen {
 
   @Override
   public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-    g.fill(0, 0, width, height, 0xC0000000);
-    BuildPackTheme.fillPanel(g, left(), top(), W, H, 0xF0101010);
+    BuildPackTheme.dialog(g, width, height, left(), top(), W, H);
     g.drawString(font, Component.translatable("buildpack.selection.title"),
-        left() + 10, top() + 10, BuildPackTheme.TITLE, true);
+        left() + 10, top() + 10, BuildPackTheme.TITLE, false);
     int colW = (W - 20 - LABEL_W * 2) / 2;
     g.drawString(font, Component.translatable("buildpack.selection.min"),
-        left() + 10 + LABEL_W + (colW - font.width("min")) / 2, top() + 20, BuildPackTheme.LABEL, true);
+        left() + 10 + LABEL_W + (colW - font.width("min")) / 2, top() + 20, BuildPackTheme.LABEL, false);
     g.drawString(font, Component.translatable("buildpack.selection.max"),
         left() + 10 + LABEL_W * 2 + colW + (colW - font.width("max")) / 2, top() + 20,
-        BuildPackTheme.LABEL, true);
+        BuildPackTheme.LABEL, false);
     int y = top() + 28;
     rowLabel(g, "X", y);
     y += 22;
@@ -160,7 +159,7 @@ public final class SelectionScreen extends Screen {
     String text = Component.translatable("buildpack.preview.sel",
         dx + "×" + dy + "×" + dz, (long) dx * dy * dz).getString();
     g.drawString(font, text, left() + 10, top() + H - 40,
-        valid ? BuildPackTheme.VALUE : BuildPackTheme.MESSAGE_ERROR, true);
+        valid ? BuildPackTheme.VALUE : BuildPackTheme.MESSAGE_ERROR, false);
   }
 
   private boolean isValid(EditBox box) {
@@ -173,7 +172,7 @@ public final class SelectionScreen extends Screen {
   }
 
   private void rowLabel(GuiGraphics g, String axis, int y) {
-    g.drawString(font, axis, left() + 12, y + 4, BuildPackTheme.VALUE, true);
+    g.drawString(font, axis, left() + 12, y + 4, BuildPackTheme.VALUE, false);
   }
 
   @Override

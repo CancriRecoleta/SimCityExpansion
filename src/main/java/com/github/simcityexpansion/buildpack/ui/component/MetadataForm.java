@@ -10,17 +10,18 @@ import com.github.simcityexpansion.buildpack.model.BuildingMetadata;
 import com.github.simcityexpansion.buildpack.ui.BuildPackTheme;
 import com.github.simcityexpansion.buildpack.ui.PoiEditScreen;
 import com.github.simcityexpansion.buildpack.ui.ThemedButton;
+import com.github.simcityexpansion.buildpack.ui.ThemedCheckbox;
+import com.github.simcityexpansion.buildpack.ui.ThemedEditBox;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
-import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.network.chat.Component;
 
 /**
  * .sk metadata editing form: category (click-to-cycle {@link ThemedButton}) +
  * name/price/author/description/tags/job-type input fields ({@link EditBox}) +
- * "overwrite building with same name" checkbox ({@link Checkbox}), two-way bound
+ * "overwrite building with same name" checkbox ({@link ThemedCheckbox}), two-way bound
  * to a {@link BuildingMetadata} model. Widgets are created and registered by the
  * host screen in {@link #rebuild}; label text is drawn by {@link #renderLabels}.
  */
@@ -50,7 +51,7 @@ public final class MetadataForm {
   private EditBox tagsField;
   private EditBox jobTypeField;
   private ThemedButton poiButton;
-  private Checkbox overwriteCheckbox;
+  private ThemedCheckbox overwriteCheckbox;
 
   /** Rebuilds and positions all form widgets (called once per screen init); returns the bottom y of the content. */
   public int rebuild(Font font, int x, int y, int width, Consumer<AbstractWidget> add) {
@@ -90,7 +91,7 @@ public final class MetadataForm {
     labels.add(new FieldLabel(Component.translatable("buildpack.form.poi"), x, cursor));
     cursor += ROW_H + ROW_GAP;
 
-    overwriteCheckbox = Checkbox.builder(Component.translatable("buildpack.form.overwrite"), font)
+    overwriteCheckbox = ThemedCheckbox.builder(Component.translatable("buildpack.form.overwrite"), font)
         .pos(x, cursor)
         .selected(overwrite)
         .onValueChange((checkbox, value) -> overwrite = value)
@@ -104,7 +105,7 @@ public final class MetadataForm {
 
   private EditBox field(String key, int labelX, int controlX, int y, int controlW,
       Consumer<AbstractWidget> add, BiConsumer<BuildingMetadata, String> writer) {
-    EditBox box = new EditBox(font, controlX, y, controlW, ROW_H, Component.empty());
+    EditBox box = new ThemedEditBox(font, controlX, y, controlW, ROW_H, Component.empty());
     box.setMaxLength(256);
     box.setResponder(value -> writer.accept(model, value));
     add.accept(box);
@@ -174,10 +175,10 @@ public final class MetadataForm {
       return;
     }
     g.drawString(font, Component.translatable("buildpack.form.title"),
-        titleX, titleY, BuildPackTheme.TITLE, true);
+        titleX, titleY, BuildPackTheme.TITLE, false);
     for (FieldLabel label : labels) {
       g.drawString(font, label.text(), label.x(),
-          label.y() + (ROW_H - font.lineHeight) / 2, BuildPackTheme.LABEL, true);
+          label.y() + (ROW_H - font.lineHeight) / 2, BuildPackTheme.LABEL, false);
     }
   }
 }

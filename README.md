@@ -101,7 +101,7 @@ automatically.
 | --- | --- |
 | Minecraft | 1.21.1 |
 | NeoForge | 21.1.233 or newer |
-| New-Simukraft (optional) | 2.0.1 or newer (the zip building-package architecture) |
+| New-Simukraft (optional) | 2.3.0 or newer (the `cn.nsimu.simukraft` package layout) |
 
 Place the jar in your `mods/` folder — there are no other mod dependencies. The in-game
 manager works out of the box on a client; on a dedicated server the jar loads headless and

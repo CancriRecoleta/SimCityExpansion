@@ -264,7 +264,7 @@ public final class StructureEditorScreen extends Screen {
     y += ROW_H;
 
     y = section("buildpack.editor.group.save", x, y);
-    nameField = new EditBox(font, x, y, TOOL_INNER, BTN_H, Component.empty());
+    nameField = new ThemedEditBox(font, x, y, TOOL_INNER, BTN_H, Component.empty());
     nameField.setMaxLength(128);
     nameField.setValue(outName);
     nameField.setResponder(value -> outName = value);
@@ -993,17 +993,17 @@ public final class StructureEditorScreen extends Screen {
     int ph = lines.length * lineH + 16;
     int px = (width - pw) / 2;
     int py = (height - ph) / 2;
-    BuildPackTheme.fillPanel(g, px, py, pw, ph, 0xF0101010);
+    BuildPackTheme.popup(g, px, py, pw, ph);
     int ly = py + 9;
     for (String line : lines) {
       if (line.startsWith("#")) {
-        g.drawString(font, line.substring(1), px + 12, ly, 0xFFFFCC55, true);
+        g.drawString(font, line.substring(1), px + 12, ly, BuildPackTheme.MESSAGE_WARN, false);
       } else {
         int eq = line.indexOf('=');
         String key = eq < 0 ? line : line.substring(0, eq);
         String desc = eq < 0 ? "" : line.substring(eq + 1);
-        g.drawString(font, key, px + 12, ly, 0xFF8AD8FF, true);
-        g.drawString(font, desc, px + 12 + keyW + gap, ly, BuildPackTheme.VALUE, true);
+        g.drawString(font, key, px + 12, ly, BuildPackTheme.ACCENT_LIGHT, false);
+        g.drawString(font, desc, px + 12 + keyW + gap, ly, BuildPackTheme.VALUE, false);
       }
       ly += lineH;
     }
@@ -1018,18 +1018,18 @@ public final class StructureEditorScreen extends Screen {
 
   @Override
   public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-    g.fill(0, 0, width, height, BuildPackTheme.ROOT_BG);
+    BuildPackTheme.screenSurface(g, width, height);
     int leftW = toolX() - GAP - PAD;
     BuildPackTheme.previewPanel(g, PAD, bodyY(), leftW, bodyHeight());
     BuildPackTheme.panel(g, toolX(), bodyY(), TOOL_W, bodyHeight());
     g.drawString(font, Component.translatable("buildpack.editor.title"),
-        PAD + 10, PAD, BuildPackTheme.TITLE, true);
+        PAD + 10, PAD, BuildPackTheme.TITLE, false);
     String stats = Component.translatable("buildpack.editor.stats",
         work.sizeX + "×" + work.sizeY + "×" + work.sizeZ, workBlocks, deltaText(),
         undo.size()).getString();
-    g.drawString(font, stats, width - PAD - font.width(stats), PAD, BuildPackTheme.LABEL, true);
+    g.drawString(font, stats, width - PAD - font.width(stats), PAD, BuildPackTheme.LABEL, false);
     for (SectionLabel label : sections) {
-      g.drawString(font, label.text(), label.x(), label.y(), BuildPackTheme.TITLE, true);
+      g.drawString(font, label.text(), label.x(), label.y(), BuildPackTheme.TITLE, false);
     }
     super.render(g, mouseX, mouseY, partialTick);
     ItemStack paint = paintStack();
@@ -1039,10 +1039,10 @@ public final class StructureEditorScreen extends Screen {
     }
     String hint = Component.translatable("buildpack.editor.legend_hint").getString();
     g.drawString(font, hint, PAD + leftW - font.width(hint) - 3,
-        bodyY() + bodyHeight() - font.lineHeight - 2, BuildPackTheme.HINT, true);
+        bodyY() + bodyHeight() - font.lineHeight - 2, BuildPackTheme.HINT, false);
     if (!status.getString().isEmpty()) {
       g.drawString(font, status, PAD, height - PAD - STATUS_H,
-          statusError ? BuildPackTheme.MESSAGE_ERROR : BuildPackTheme.MESSAGE_OK, true);
+          statusError ? BuildPackTheme.MESSAGE_ERROR : BuildPackTheme.MESSAGE_OK, false);
     }
     if (showLegend) {
       drawLegend(g);

@@ -2,7 +2,6 @@ package com.github.simcityexpansion.buildpack.ui;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -53,17 +52,17 @@ public final class FamilySwapScreen extends Screen {
 
   @Override
   protected void init() {
-    fromBox = new EditBox(font, left() + 70, top() + 26, W - 80, 18, Component.empty());
+    fromBox = new ThemedEditBox(font, left() + 70, top() + 26, W - 80, 18, Component.empty());
     fromBox.setMaxLength(64);
     addRenderableWidget(fromBox);
     setInitialFocus(fromBox);
 
-    toBox = new EditBox(font, left() + 70, top() + 48, W - 80, 18, Component.empty());
+    toBox = new ThemedEditBox(font, left() + 70, top() + 48, W - 80, 18, Component.empty());
     toBox.setMaxLength(64);
     addRenderableWidget(toBox);
 
     if (offerSelection) {
-      addRenderableWidget(Checkbox.builder(
+      addRenderableWidget(ThemedCheckbox.builder(
               Component.translatable("buildpack.swap.selection_only"), font)
           .pos(left() + 10, top() + 72)
           .selected(selectionOnly)
@@ -104,16 +103,15 @@ public final class FamilySwapScreen extends Screen {
 
   @Override
   public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-    g.fill(0, 0, width, height, 0xC0000000);
-    BuildPackTheme.fillPanel(g, left(), top(), W, H, 0xF0101010);
+    BuildPackTheme.dialog(g, width, height, left(), top(), W, H);
     g.drawString(font, Component.translatable("buildpack.swap.heading"),
-        left() + 10, top() + 10, BuildPackTheme.VALUE, true);
+        left() + 10, top() + 10, BuildPackTheme.VALUE, false);
     g.drawString(font, Component.translatable("buildpack.swap.from"),
-        left() + 10, top() + 31, BuildPackTheme.LABEL, true);
+        left() + 10, top() + 31, BuildPackTheme.LABEL, false);
     g.drawString(font, Component.translatable("buildpack.swap.to"),
-        left() + 10, top() + 53, BuildPackTheme.LABEL, true);
+        left() + 10, top() + 53, BuildPackTheme.LABEL, false);
     g.drawString(font, Component.translatable("buildpack.swap.hint"),
-        left() + 10, top() + H - 40, BuildPackTheme.HINT, true);
+        left() + 10, top() + H - 40, BuildPackTheme.HINT, false);
     super.render(g, mouseX, mouseY, partialTick);
   }
 

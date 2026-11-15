@@ -21,11 +21,11 @@ import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 public final class SimuKraftMixinPlugin implements IMixinConfigPlugin {
   private static final Logger LOGGER = LoggerFactory.getLogger("simcity_expansion/mixin");
 
-  // SimuKraft's package is literally common.cn.kafei.simukraft.*, so the class resource path keeps
-  // that "common/" prefix. BuildingPackageCatalog exists since SimuKraft 2.0 (the zip package
-  // architecture this mod targets); older SimuKraft versions therefore leave the mixins disabled.
+  // SimuKraft's package is literally common.cn.nsimu.simukraft.* (renamed from cn.kafei in 2.3.0),
+  // so the class resource path keeps that "common/" prefix. SimuKraft releases before 2.3.0 use the
+  // old package, so the probe misses and the mixins stay disabled instead of failing to apply.
   private static final String PROBE_CLASS =
-      "common/cn/kafei/simukraft/building/BuildingPackageCatalog.class";
+      "common/cn/nsimu/simukraft/building/BuildingPackageCatalog.class";
 
   private boolean simukraftPresent;
 
@@ -33,7 +33,7 @@ public final class SimuKraftMixinPlugin implements IMixinConfigPlugin {
   public void onLoad(String mixinPackage) {
     simukraftPresent =
         SimuKraftMixinPlugin.class.getClassLoader().getResource(PROBE_CLASS) != null;
-    LOGGER.info("SimCity Expansion: SimuKraft 2.0+ {}; building-package mixins {}.",
+    LOGGER.info("SimCity Expansion: SimuKraft 2.3+ {}; building-package mixins {}.",
         simukraftPresent ? "detected" : "not found",
         simukraftPresent ? "enabled" : "disabled (zip install only)");
   }

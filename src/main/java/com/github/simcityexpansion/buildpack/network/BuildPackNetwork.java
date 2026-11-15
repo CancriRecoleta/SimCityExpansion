@@ -18,8 +18,9 @@ public final class BuildPackNetwork {
 
   /** modEventBus: register the sync payload (optional so clients without this mod can still connect). */
   public static void register(RegisterPayloadHandlersEvent event) {
-    // Version 2: entries carry packId + description (SimuKraft 2.0 build menu shows both).
-    PayloadRegistrar registrar = event.registrar("2").optional();
+    // Version 3: entries carry packId + description + unlockLevel (what SimuKraft 2.2's build menu
+    // shows and gates on).
+    PayloadRegistrar registrar = event.registrar("3").optional();
     registrar.playToClient(ActivePacksSyncPacket.TYPE, ActivePacksSyncPacket.STREAM_CODEC,
         ActivePacksSyncPacket::handle);
   }
@@ -44,7 +45,7 @@ public final class BuildPackNetwork {
     List<Entry> entries = ActivePackProvider.allActive().stream()
         .map(building -> new Entry(building.packId(), building.category(), building.displayName(),
             building.size(), building.amount(), building.author(), building.description(),
-            building.metaFileName(), building.structureFileName()))
+            building.unlockLevel(), building.metaFileName(), building.structureFileName()))
         .toList();
     return new ActivePacksSyncPacket(entries);
   }

@@ -23,7 +23,7 @@ public final class ActivePacksClientSync {
     List<ActiveBuilding> remote = packet.buildings().stream()
         .map(entry -> new ActiveBuilding(entry.packId(), entry.category(), entry.displayName(),
             entry.size(), entry.amount(), entry.author(), entry.description(),
-            entry.metaFileName(), entry.structureFileName()))
+            entry.unlockLevel(), entry.metaFileName(), entry.structureFileName()))
         .toList();
     ActivePackProvider.replaceRemote(remote);
   }

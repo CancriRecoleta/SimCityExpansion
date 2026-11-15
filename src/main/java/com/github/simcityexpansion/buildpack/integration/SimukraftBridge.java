@@ -12,8 +12,8 @@ import org.slf4j.LoggerFactory;
  * The only place this mod calls into SimuKraft 2.0 directly. Whenever the zip packages under
  * {@code simukraftbuilding/} change (install, uninstall, migration, pack activation), SimuKraft's
  * caches must be refreshed the same way its own {@code /simukraft reload} command does:
- * re-scan the package catalog, drop the commercial/industrial definition caches, and tell connected
- * clients to rebuild their build-menu cache.
+ * re-scan the package catalog, drop the commercial/industrial/drilling/medical definition caches,
+ * and tell connected clients to rebuild their build-menu cache.
  *
  * <p>SimuKraft is an <b>optional</b> dependency: the SimuKraft imports live in nested holder
  * classes that are only class-loaded after the presence probe succeeds, so this class itself is
@@ -24,14 +24,14 @@ public final class SimukraftBridge {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(SimukraftBridge.class);
 
-  /** Class-resource probe for SimuKraft 2.0's zip package catalog (also used by the mixin plugin). */
+  /** Class-resource probe for SimuKraft 2.3+'s zip package catalog (also used by the mixin plugin). */
   public static final String PROBE_CLASS =
-      "common/cn/kafei/simukraft/building/BuildingPackageCatalog.class";
+      "common/cn/nsimu/simukraft/building/BuildingPackageCatalog.class";
 
   private static final boolean PRESENT =
       SimukraftBridge.class.getClassLoader().getResource(PROBE_CLASS) != null;
 
-  /** Whether SimuKraft 2.0 (zip package architecture) is installed. */
+  /** Whether SimuKraft 2.3+ (cn.nsimu package, zip package architecture) is installed. */
   public static boolean present() {
     return PRESENT;
   }
@@ -61,13 +61,15 @@ public final class SimukraftBridge {
   /** Server/common side: catalog + definition caches, then notify connected clients. */
   private static final class CommonHolder {
     static void reload() {
-      common.cn.kafei.simukraft.building.BuildingCatalog.reload();
-      common.cn.kafei.simukraft.commercial.CommercialDefinitionLoader.clearCache();
-      common.cn.kafei.simukraft.industrial.IndustrialDefinitionLoader.clearCache();
+      common.cn.nsimu.simukraft.building.BuildingCatalog.reload();
+      common.cn.nsimu.simukraft.commercial.CommercialDefinitionLoader.clearCache();
+      common.cn.nsimu.simukraft.industrial.IndustrialDefinitionLoader.clearCache();
+      common.cn.nsimu.simukraft.mineraldrilling.MineralDrillingDefinitionLoader.clearCache();
+      common.cn.nsimu.simukraft.medical.MedicalDefinitionLoader.clearCache();
       MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
       if (server != null) {
         server.execute(() -> PacketDistributor.sendToAllPlayers(
-            new common.cn.kafei.simukraft.network.building.BuildingCacheReloadPacket()));
+            new common.cn.nsimu.simukraft.network.building.BuildingCacheReloadPacket()));
       }
     }
   }
@@ -80,7 +82,7 @@ public final class SimukraftBridge {
   private static final class ClientHolder {
     static void reload() {
       net.minecraft.client.Minecraft.getInstance().execute(
-          client.cn.kafei.simukraft.client.buildbox.BuildingCacheService::reload);
+          client.cn.nsimu.simukraft.client.buildbox.BuildingCacheService::reload);
     }
   }
 }

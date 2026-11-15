@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 import com.github.simcityexpansion.buildpack.ui.component.BlockGridView;
+import com.github.simcityexpansion.buildpack.ui.style.Shapes;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -83,7 +84,7 @@ public final class BlockPaletteScreen extends Screen {
       buildTabs();
     }
 
-    search = new EditBox(font, PAD + 2, searchY(), width - PAD * 2 - 4, SEARCH_H, Component.empty());
+    search = new ThemedEditBox(font, PAD + 2, searchY(), width - PAD * 2 - 4, SEARCH_H, Component.empty());
     search.setHint(Component.translatable("buildpack.search.placeholder"));
     search.setResponder(this::filter);
     addRenderableWidget(search);
@@ -200,10 +201,10 @@ public final class BlockPaletteScreen extends Screen {
 
   @Override
   public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-    g.fill(0, 0, width, height, BuildPackTheme.ROOT_BG);
+    BuildPackTheme.screenSurface(g, width, height);
     BuildPackTheme.panel(g, PAD, boxY(), width - PAD * 2, boxHeight());
     g.drawString(font, Component.translatable("buildpack.palette.title"),
-        PAD + 10, PAD, BuildPackTheme.TITLE, true);
+        PAD + 10, PAD, BuildPackTheme.TITLE, false);
 
     tabHover = null;
     int ty = tabRowY();
@@ -211,9 +212,12 @@ public final class BlockPaletteScreen extends Screen {
       int tx = PAD + i * TAB_CELL;
       boolean active = i == activeTab;
       boolean hover = mouseX >= tx && mouseX < tx + 18 && mouseY >= ty && mouseY < ty + 18;
-      g.fill(tx, ty, tx + 18, ty + 18, active ? 0x60FFFFFF : 0x20FFFFFF);
+      Shapes.roundRect(g, tx, ty, 18, 18, 4F, active
+          ? BuildPackTheme.withAlpha(BuildPackTheme.ACCENT, 0x50)
+          : BuildPackTheme.withAlpha(BuildPackTheme.WIDGET_BG, 0xC0));
       if (active || hover) {
-        BuildPackTheme.border(g, tx, ty, 18, 18, active ? 0xFFFFCC55 : 0xFFFFFFFF);
+        BuildPackTheme.border(g, tx, ty, 18, 18,
+            active ? BuildPackTheme.ACCENT : BuildPackTheme.WIDGET_BORDER_HOVER);
       }
       g.renderItem(tabs.get(i).icon(), tx + 1, ty + 1);
       if (hover) {

@@ -135,12 +135,12 @@ public final class DoctorReportScreen extends Screen {
 
   @Override
   public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-    g.fill(0, 0, width, height, BuildPackTheme.ROOT_BG);
+    BuildPackTheme.screenSurface(g, width, height);
     BuildPackTheme.panel(g, PAD, boxY(), width - PAD * 2, boxHeight());
     int[] counts = BuildingDoctor.counts(findings);
     g.drawString(font, Component.translatable(
             "buildpack.doctor.screen_heading", buildingName, counts[0], counts[1]),
-        PAD + 2, PAD, BuildPackTheme.TITLE, true);
+        PAD + 2, PAD, BuildPackTheme.TITLE, false);
 
     g.enableScissor(PAD + 1, boxY() + 1, width - PAD - 1, boxY() + boxHeight() - 1);
     int y = boxY() + 4 - (int) scroll;
@@ -151,7 +151,7 @@ public final class DoctorReportScreen extends Screen {
       }
       firstLine = false;
       if (y > boxY() - font.lineHeight && y < boxY() + boxHeight()) {
-        g.drawString(font, line.text(), PAD + 8, y, line.color(), true);
+        g.drawString(font, line.text(), PAD + 8, y, line.color(), false);
       }
       y += font.lineHeight + LINE_GAP;
     }

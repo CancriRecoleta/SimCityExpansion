@@ -134,6 +134,7 @@ job_type:breadShopOwner
 | `amount` | 造价，SimuKraft 内置写法如 `8.64元` |
 | `tags` | 逗号分隔，内置常见值：`price_low/price_high`、`material_low/material_high`、`stage_early/stage_late` |
 | `job_type` | 该建筑提供的职业 id（与原生 .json 中的职业对应） |
+| `unlockLevel` | 建造所需城市等级（SimuKraft 2.2+），不写表示不限制；本模组不生成但**原样保留** |
 | `poi:` 行 | SimuKraft 支持的兴趣点扩展；本模组不生成但**原样保留** |
 
 ### 2. `<名>.meta.json` —— 由管理器转写为 .sk

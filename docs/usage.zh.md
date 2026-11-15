@@ -8,7 +8,7 @@
 |---|---|
 | Minecraft | 1.21.1 |
 | NeoForge | 21.1.233+ |
-| SimuKraft（New-Simukraft） | 2.0.0-pre-5+ |
+| SimuKraft（New-Simukraft） | 2.3.0+ |
 
 本模组为**纯客户端**模组，与 SimuKraft 之间通过文件目录约定集成，无编译依赖。
 

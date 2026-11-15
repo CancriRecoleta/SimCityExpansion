@@ -115,7 +115,7 @@ public final class PositionPickerScreen extends Screen {
 
   @Override
   public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-    g.fill(0, 0, width, height, 0xF2101010);
+    BuildPackTheme.screenSurface(g, width, height);
   }
 
   @Override
@@ -123,15 +123,15 @@ public final class PositionPickerScreen extends Screen {
     BuildPackTheme.previewPanel(g, MARGIN, MARGIN + 14, width - MARGIN * 2,
         height - MARGIN - BUTTON_H - 14 - MARGIN * 2);
     super.render(g, mouseX, mouseY, partialTick);
-    g.drawString(font, title, MARGIN, MARGIN, BuildPackTheme.TITLE, true);
+    g.drawString(font, title, MARGIN, MARGIN, BuildPackTheme.TITLE, false);
     Component count = Component.translatable("buildpack.picker.count", picked.size());
     g.drawString(font, count, width - MARGIN - font.width(count), MARGIN,
-        BuildPackTheme.VALUE, true);
+        BuildPackTheme.VALUE, false);
     Component hint = Component.translatable(scene.supportsPicking()
         ? "buildpack.picker.hint" : "buildpack.picker.too_large");
     g.drawString(font, hint, (width - font.width(hint)) / 2,
         height - MARGIN - BUTTON_H - 12,
-        scene.supportsPicking() ? BuildPackTheme.HINT : BuildPackTheme.MESSAGE_WARN, true);
+        scene.supportsPicking() ? BuildPackTheme.HINT : BuildPackTheme.MESSAGE_WARN, false);
   }
 
   @Override

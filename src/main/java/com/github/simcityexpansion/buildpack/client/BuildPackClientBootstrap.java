@@ -1,12 +1,15 @@
 package com.github.simcityexpansion.buildpack.client;
 
 import com.github.simcityexpansion.buildpack.ui.BuildPackScreen;
+import com.github.simcityexpansion.buildpack.ui.BuildPackTheme;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
+import net.neoforged.neoforge.client.event.RenderTooltipEvent;
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import net.neoforged.neoforge.common.NeoForge;
 
@@ -28,6 +31,7 @@ public final class BuildPackClientBootstrap {
     NeoForge.EVENT_BUS.addListener(BuildPackClientBootstrap::onClientTick);
     NeoForge.EVENT_BUS.addListener(WorldSelection::onRenderLevelStage);
     NeoForge.EVENT_BUS.addListener(BuildPackClientBootstrap::onRenderGui);
+    NeoForge.EVENT_BUS.addListener(BuildPackClientBootstrap::onTooltipColor);
     // Mods-list "Config" entry: opens the pack manager from the title screen (and the pause
     // menu), so pack developers can build and edit packs without entering a world.
     modContainer.registerExtensionPoint(IConfigScreenFactory.class,
@@ -71,5 +75,16 @@ public final class BuildPackClientBootstrap {
 
   private static void onRenderGui(RenderGuiEvent.Post event) {
     WorldSelection.renderHud(event.getGuiGraphics());
+  }
+
+  /** Tooltips on this mod's screens use the theme's popup colors instead of vanilla purple. */
+  private static void onTooltipColor(RenderTooltipEvent.Color event) {
+    Screen screen = Minecraft.getInstance().screen;
+    if (screen == null || !screen.getClass().getName().startsWith("com.github.simcityexpansion.")) {
+      return;
+    }
+    event.setBackground(BuildPackTheme.POPUP_BG);
+    event.setBorderStart(BuildPackTheme.POPUP_BORDER);
+    event.setBorderEnd(BuildPackTheme.withAlpha(BuildPackTheme.WIDGET_BORDER, 0xC0));
   }
 }

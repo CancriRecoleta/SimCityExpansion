@@ -170,21 +170,20 @@ public final class BlockStatePropertyScreen extends Screen {
 
   @Override
   public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-    g.fill(0, 0, width, height, 0xC0000000);
-    BuildPackTheme.fillPanel(g, left(), top(), W, panelH(), 0xF0101010);
+    BuildPackTheme.dialog(g, width, height, left(), top(), W, panelH());
     g.drawString(font, Component.translatable("buildpack.props.heading",
         BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString()),
-        left() + 10, top() + 10, BuildPackTheme.VALUE, true);
+        left() + 10, top() + 10, BuildPackTheme.VALUE, false);
     int y = top() + 26;
     List<Property<?>> properties = properties();
     for (Property<?> property : properties) {
       g.drawString(font, property.getName(), left() + 10,
-          y + (ROW_H - font.lineHeight) / 2, BuildPackTheme.LABEL, true);
+          y + (ROW_H - font.lineHeight) / 2, BuildPackTheme.LABEL, false);
       y += ROW_H + ROW_GAP;
     }
     if (properties.isEmpty()) {
       g.drawString(font, Component.translatable("buildpack.props.none"),
-          left() + 10, y + 4, BuildPackTheme.HINT, true);
+          left() + 10, y + 4, BuildPackTheme.HINT, false);
     }
     super.render(g, mouseX, mouseY, partialTick);
   }

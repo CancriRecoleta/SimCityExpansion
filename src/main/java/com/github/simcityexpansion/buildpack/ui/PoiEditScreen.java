@@ -92,14 +92,14 @@ public final class PoiEditScreen extends Screen {
       typeButton.active = editable;
       addRenderableWidget(typeButton);
 
-      EditBox capacity = new EditBox(font, x + TYPE_W + 3, y, CAPACITY_W, ROW_H, Component.empty());
+      EditBox capacity = new ThemedEditBox(font, x + TYPE_W + 3, y, CAPACITY_W, ROW_H, Component.empty());
       capacity.setMaxLength(8);
       capacity.setValue(row.capacity);
       capacity.setResponder(value -> row.capacity = value);
       capacity.setEditable(editable);
       addRenderableWidget(capacity);
 
-      EditBox id = new EditBox(font, x + TYPE_W + CAPACITY_W + 6, y, idW, ROW_H,
+      EditBox id = new ThemedEditBox(font, x + TYPE_W + CAPACITY_W + 6, y, idW, ROW_H,
           Component.translatable("buildpack.poi.id_hint"));
       id.setHint(Component.translatable("buildpack.poi.id_hint"));
       id.setMaxLength(64);
@@ -173,13 +173,12 @@ public final class PoiEditScreen extends Screen {
 
   @Override
   public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-    g.fill(0, 0, width, height, 0xC0000000);
-    BuildPackTheme.fillPanel(g, left(), top(), W, panelH(), 0xF0101010);
+    BuildPackTheme.dialog(g, width, height, left(), top(), W, panelH());
     g.drawString(font, Component.translatable("buildpack.poi.heading"),
-        left() + 10, top() + 10, BuildPackTheme.VALUE, true);
+        left() + 10, top() + 10, BuildPackTheme.VALUE, false);
     if (rows.isEmpty()) {
       g.drawString(font, Component.translatable("buildpack.poi.empty"),
-          left() + 10, top() + 28, BuildPackTheme.HINT, true);
+          left() + 10, top() + 28, BuildPackTheme.HINT, false);
     }
     super.render(g, mouseX, mouseY, partialTick);
   }
