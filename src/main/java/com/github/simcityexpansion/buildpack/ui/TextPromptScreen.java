@@ -88,7 +88,7 @@ public final class TextPromptScreen extends Screen {
   @Override
   public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
     BuildPackTheme.dialog(g, width, height, left(), top(), W, H);
-    g.drawString(font, prompt, left() + 10, top() + 12, BuildPackTheme.VALUE, false);
+    g.drawString(font, prompt, left() + 10, top() + 12, BuildPackTheme.value(), false);
     super.render(g, mouseX, mouseY, partialTick);
   }
 

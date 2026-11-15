@@ -2,35 +2,48 @@ package com.github.simcityexpansion.buildpack.ui.definition;
 
 import java.util.Arrays;
 
+import com.github.simcityexpansion.buildpack.ui.BuildPackTheme;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.network.chat.TextColor;
 
 /**
- * Single-pass JSON syntax scanner for editor highlighting: assigns a color to every character
+ * Single-pass JSON syntax scanner for editor highlighting: assigns a token kind to every character
  * (object keys, string values, numbers, keywords, punctuation), tolerant of half-typed input —
  * an unterminated string simply colors to the end of the text, everything else falls back to the
- * default color. Colors follow a common dark-editor palette and read well on the mod's panels.
+ * default kind. Kinds are colored at draw time with GitHub's dark or light syntax palette, so the
+ * highlighting follows the UI theme without rescanning.
  */
-/* Colors follow GitHub's dark syntax theme, matching the Primer palette of the UI. */
 public final class JsonHighlighter {
   private JsonHighlighter() {}
 
-  /** Default text (unclassified characters). */
-  public static final int DEFAULT = 0xFFC9D1D9;
-  /** Object key strings. */
-  public static final int KEY = 0xFF7EE787;
-  /** String values. */
-  public static final int STRING = 0xFFA5D6FF;
-  /** Numbers. */
-  public static final int NUMBER = 0xFF79C0FF;
-  /** {@code true} / {@code false} / {@code null}. */
-  public static final int KEYWORD = 0xFFFF7B72;
-  /** Braces, brackets, colons, commas. */
-  public static final int PUNCTUATION = 0xFF8B949E;
+  /** Token kind: default text (unclassified characters). */
+  public static final int DEFAULT = 0;
+  /** Token kind: object key strings. */
+  public static final int KEY = 1;
+  /** Token kind: string values. */
+  public static final int STRING = 2;
+  /** Token kind: numbers. */
+  public static final int NUMBER = 3;
+  /** Token kind: {@code true} / {@code false} / {@code null}. */
+  public static final int KEYWORD = 4;
+  /** Token kind: braces, brackets, colons, commas. */
+  public static final int PUNCTUATION = 5;
 
-  /** Scans the whole text and returns one color per character. */
+  /** GitHub dark syntax colors, indexed by token kind. */
+  private static final int[] DARK_COLORS =
+      {0xFFC9D1D9, 0xFF7EE787, 0xFFA5D6FF, 0xFF79C0FF, 0xFFFF7B72, 0xFF8B949E};
+  /** GitHub light syntax colors, indexed by token kind. */
+  private static final int[] LIGHT_COLORS =
+      {0xFF1F2328, 0xFF116329, 0xFF0A3069, 0xFF0550AE, 0xFFCF222E, 0xFF57606A};
+
+  /** ARGB color of a token kind in the active theme. */
+  public static int color(int token) {
+    return (BuildPackTheme.light() ? LIGHT_COLORS : DARK_COLORS)[token];
+  }
+
+  /** Scans the whole text and returns one token kind per character. */
   public static int[] scan(String text) {
     int length = text.length();
     int[] colors = new int[length];
@@ -71,8 +84,8 @@ public final class JsonHighlighter {
   }
 
   /**
-   * Builds a styled component for the substring {@code [begin, end)} using the scanned colors
-   * (consecutive same-color characters become one styled run).
+   * Builds a styled component for the substring {@code [begin, end)} using the scanned token kinds
+   * (consecutive same-kind characters become one styled run, colored for the active theme).
    */
   public static Component styled(String text, int[] colors, int begin, int end) {
     MutableComponent line = Component.empty();
@@ -80,7 +93,7 @@ public final class JsonHighlighter {
     for (int i = begin + 1; i <= end; i++) {
       if (i == end || colors[i] != colors[runStart]) {
         line.append(Component.literal(text.substring(runStart, i)).setStyle(
-            Style.EMPTY.withColor(TextColor.fromRgb(colors[runStart] & 0xFFFFFF))));
+            Style.EMPTY.withColor(TextColor.fromRgb(color(colors[runStart]) & 0xFFFFFF))));
         runStart = i;
       }
     }

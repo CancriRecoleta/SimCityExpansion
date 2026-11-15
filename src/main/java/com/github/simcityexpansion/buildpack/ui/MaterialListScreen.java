@@ -63,7 +63,7 @@ public final class MaterialListScreen extends Screen {
     BuildPackTheme.panel(g, PAD, boxY(), width - PAD * 2, boxHeight());
     g.drawString(font, Component.translatable(
         "buildpack.materials.screen_heading", buildingName, materials.size()),
-        PAD + 10, PAD, BuildPackTheme.TITLE, false);
+        PAD + 10, PAD, BuildPackTheme.title(), false);
     super.render(g, mouseX, mouseY, partialTick);
   }
 

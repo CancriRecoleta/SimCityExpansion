@@ -65,10 +65,10 @@ public final class BlockPickerScreen extends Screen {
     BuildPackTheme.screenSurface(g, width, height);
     BuildPackTheme.panel(g, PAD, boxY(), width - PAD * 2, boxHeight());
     g.drawString(font, Component.translatable("buildpack.editor.remove_title"),
-        PAD + 10, PAD, BuildPackTheme.TITLE, false);
+        PAD + 10, PAD, BuildPackTheme.title(), false);
     g.drawString(font, Component.translatable("buildpack.editor.remove_hint"),
         PAD + 90, height - PAD - BUTTON_H + (BUTTON_H - font.lineHeight) / 2,
-        BuildPackTheme.HINT, false);
+        BuildPackTheme.hint(), false);
     super.render(g, mouseX, mouseY, partialTick);
   }
 

@@ -123,13 +123,13 @@ public final class ArrayRepeatScreen extends Screen {
   public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
     BuildPackTheme.dialog(g, width, height, left(), top(), W, H);
     g.drawString(font, Component.translatable("buildpack.array.heading"),
-        left() + 10, top() + 10, BuildPackTheme.VALUE, false);
+        left() + 10, top() + 10, BuildPackTheme.value(), false);
     g.drawString(font, Component.translatable("buildpack.array.count"),
-        left() + 10, top() + 31, BuildPackTheme.LABEL, false);
+        left() + 10, top() + 31, BuildPackTheme.label(), false);
     g.drawString(font, Component.translatable("buildpack.array.offset"),
-        left() + 10, top() + 55, BuildPackTheme.LABEL, false);
+        left() + 10, top() + 55, BuildPackTheme.label(), false);
     g.drawString(font, Component.translatable("buildpack.array.hint"),
-        left() + 10, top() + 76, BuildPackTheme.HINT, false);
+        left() + 10, top() + 76, BuildPackTheme.hint(), false);
     super.render(g, mouseX, mouseY, partialTick);
   }
 

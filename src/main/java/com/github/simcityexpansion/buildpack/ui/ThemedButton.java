@@ -74,31 +74,31 @@ public final class ThemedButton extends AbstractButton {
     int textColor;
     if (style == Style.TAB) {
       if (!active) {
-        textColor = BuildPackTheme.TEXT_MUTED;
+        textColor = BuildPackTheme.textMuted();
       } else {
         if (hover > 0.01F && sel < 0.99F) {
           Shapes.roundRect(g, x + 1, y + 1, w - 2, h - 3, BuildPackTheme.CONTROL_RADIUS,
-              BuildPackTheme.withAlpha(BuildPackTheme.ACCENT, (int) (0x26 * hover * (1F - sel))));
+              BuildPackTheme.withAlpha(BuildPackTheme.accent(), (int) (0x26 * hover * (1F - sel))));
         }
-        int idle = BuildPackTheme.lerpColor(BuildPackTheme.TEXT_SECONDARY,
-            BuildPackTheme.ACCENT_LIGHT, hover);
-        textColor = BuildPackTheme.lerpColor(idle, BuildPackTheme.TEXT_PRIMARY, sel);
+        int idle = BuildPackTheme.lerpColor(BuildPackTheme.textSecondary(),
+            BuildPackTheme.accentLight(), hover);
+        textColor = BuildPackTheme.lerpColor(idle, BuildPackTheme.textPrimary(), sel);
       }
     } else {
       int bg;
       if (!active) {
-        bg = BuildPackTheme.BUTTON_BG_DISABLED;
-        textColor = BuildPackTheme.BUTTON_TEXT_DISABLED;
+        bg = BuildPackTheme.buttonBgDisabled();
+        textColor = BuildPackTheme.buttonTextDisabled();
       } else if (style == Style.PRIMARY) {
-        bg = BuildPackTheme.lerpColor(BuildPackTheme.ACCENT, BuildPackTheme.ACCENT_HOVER, hover);
+        bg = BuildPackTheme.lerpColor(BuildPackTheme.accent(), BuildPackTheme.accentHover(), hover);
         textColor = 0xFFFFFFFF;
       } else {
-        int tinted = BuildPackTheme.withAlpha(BuildPackTheme.ACCENT, 0x30 + (int) (0x28 * hover));
-        int solid = BuildPackTheme.lerpColor(BuildPackTheme.ACCENT, BuildPackTheme.ACCENT_HOVER,
+        int tinted = BuildPackTheme.withAlpha(BuildPackTheme.accent(), 0x30 + (int) (0x28 * hover));
+        int solid = BuildPackTheme.lerpColor(BuildPackTheme.accent(), BuildPackTheme.accentHover(),
             hover);
         bg = BuildPackTheme.lerpColor(tinted, solid, sel);
-        int idleText = BuildPackTheme.lerpColor(BuildPackTheme.ACCENT_LIGHT,
-            BuildPackTheme.TEXT_PRIMARY, hover);
+        int idleText = BuildPackTheme.lerpColor(BuildPackTheme.accentLight(),
+            BuildPackTheme.textPrimary(), hover);
         textColor = BuildPackTheme.lerpColor(idleText, 0xFFFFFFFF, sel);
       }
       Shapes.pill(g, x, y, w, h, bg);

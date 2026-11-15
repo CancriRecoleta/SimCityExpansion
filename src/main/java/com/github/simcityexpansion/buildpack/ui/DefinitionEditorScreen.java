@@ -120,7 +120,7 @@ public final class DefinitionEditorScreen extends Screen
 
   private List<Issue> issues = List.of();
   private Component message;
-  private int messageColor = BuildPackTheme.VALUE;
+  private int messageColor = BuildPackTheme.value();
   private Kind pendingTemplate;
   private boolean pendingDelete;
   private boolean pendingDiscard;
@@ -303,7 +303,7 @@ public final class DefinitionEditorScreen extends Screen
             Component.translatable("buildpack.definition.replace_all"), () -> {
               if (jsonBox != null) {
                 setMessage(Component.translatable("buildpack.definition.msg.replaced",
-                    jsonBox.replaceAll(replaceText)), BuildPackTheme.MESSAGE_OK);
+                    jsonBox.replaceAll(replaceText)), BuildPackTheme.messageOk());
               }
             }));
         fx += actionW + GAP;
@@ -365,12 +365,12 @@ public final class DefinitionEditorScreen extends Screen
       jsonBox.setValue(GSON.toJson(parsed));
       jsonBox.setErrorLine(-1);
       setMessage(Component.translatable("buildpack.definition.msg.formatted"),
-          BuildPackTheme.MESSAGE_OK);
+          BuildPackTheme.messageOk());
     } catch (RuntimeException e) {
       markSyntaxErrorLine();
       setMessage(Component.translatable("buildpack.definition.issue.syntax",
           e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()),
-          BuildPackTheme.MESSAGE_ERROR);
+          BuildPackTheme.messageError());
     }
   }
 
@@ -494,7 +494,7 @@ public final class DefinitionEditorScreen extends Screen
     if (!tryBindVisual()) {
       setMessage(Component.translatable(SimukraftDefinitions.parses(text)
           ? "buildpack.definition.msg.unknown_kind_visual"
-          : "buildpack.definition.msg.cannot_visual"), BuildPackTheme.MESSAGE_ERROR);
+          : "buildpack.definition.msg.cannot_visual"), BuildPackTheme.messageError());
       return;
     }
     mode = Mode.VISUAL;
@@ -551,7 +551,7 @@ public final class DefinitionEditorScreen extends Screen
     NbtStructure structure = pickStructure();
     if (structure == null) {
       setMessage(Component.translatable("buildpack.definition.msg.no_structure"),
-          BuildPackTheme.MESSAGE_WARN);
+          BuildPackTheme.messageWarn());
       return;
     }
     syncTextFromVisual();
@@ -604,7 +604,7 @@ public final class DefinitionEditorScreen extends Screen
     NbtStructure structure = pickStructure();
     if (structure == null) {
       setMessage(Component.translatable("buildpack.definition.msg.no_structure"),
-          BuildPackTheme.MESSAGE_WARN);
+          BuildPackTheme.messageWarn());
       return;
     }
     boolean opened = PositionPickerScreen.open(structure,
@@ -615,7 +615,7 @@ public final class DefinitionEditorScreen extends Screen
         });
     if (!opened) {
       setMessage(Component.translatable("buildpack.definition.msg.no_structure"),
-          BuildPackTheme.MESSAGE_WARN);
+          BuildPackTheme.messageWarn());
     }
   }
 
@@ -666,14 +666,14 @@ public final class DefinitionEditorScreen extends Screen
     if (!text.isBlank() && pendingTemplate != kind) {
       pendingTemplate = kind;
       setMessage(Component.translatable("buildpack.definition.msg.confirm_template"),
-          BuildPackTheme.MESSAGE_WARN);
+          BuildPackTheme.messageWarn());
       return;
     }
     if (jsonBox != null) {
       jsonBox.setValue(templateFor(kind));
     }
     pendingTemplate = null;
-    setMessage(null, BuildPackTheme.VALUE);
+    setMessage(null, BuildPackTheme.value());
   }
 
   // ---- Validate / save / delete ----
@@ -692,11 +692,11 @@ public final class DefinitionEditorScreen extends Screen
     if (issues.isEmpty()) {
       Kind kind = SimukraftDefinitions.detect(text);
       setMessage(Component.translatable("buildpack.definition.msg.valid",
-          kind == null ? "?" : kind.displayName()), BuildPackTheme.MESSAGE_OK);
+          kind == null ? "?" : kind.displayName()), BuildPackTheme.messageOk());
     } else {
       long errors = issues.stream().filter(Issue::error).count();
       setMessage(Component.translatable("buildpack.definition.msg.issues", issues.size(), errors),
-          errors > 0 ? BuildPackTheme.MESSAGE_ERROR : BuildPackTheme.MESSAGE_WARN);
+          errors > 0 ? BuildPackTheme.messageError() : BuildPackTheme.messageWarn());
     }
   }
 
@@ -708,14 +708,14 @@ public final class DefinitionEditorScreen extends Screen
     syncTextFromVisual();
     if (text.isBlank()) {
       setMessage(Component.translatable("buildpack.definition.msg.empty"),
-          BuildPackTheme.MESSAGE_WARN);
+          BuildPackTheme.messageWarn());
       return;
     }
     issues = SimukraftDefinitions.validate(text, sizeX, sizeY, sizeZ);
     if (!SimukraftDefinitions.parses(text)) {
       markSyntaxErrorLine();
       setMessage(Component.translatable("buildpack.definition.msg.syntax_block"),
-          BuildPackTheme.MESSAGE_ERROR);
+          BuildPackTheme.messageError());
       return;
     }
     try {
@@ -724,7 +724,7 @@ public final class DefinitionEditorScreen extends Screen
     } catch (IOException e) {
       I18nLog.warn(LOGGER, e, "buildpack.log.definition_write_failed", building.zipPath());
       setMessage(Component.translatable("buildpack.definition.msg.write_failed",
-          LocalizedIOException.messageOf(e)), BuildPackTheme.MESSAGE_ERROR);
+          LocalizedIOException.messageOf(e)), BuildPackTheme.messageError());
       return;
     }
     SimukraftBridge.requestCatalogReload();
@@ -735,10 +735,10 @@ public final class DefinitionEditorScreen extends Screen
     }
     if (issues.isEmpty()) {
       setMessage(Component.translatable("buildpack.definition.msg.saved",
-          building.baseName() + ".json"), BuildPackTheme.MESSAGE_OK);
+          building.baseName() + ".json"), BuildPackTheme.messageOk());
     } else {
       setMessage(Component.translatable("buildpack.definition.msg.saved_issues", issues.size()),
-          BuildPackTheme.MESSAGE_WARN);
+          BuildPackTheme.messageWarn());
     }
     onChanged.run();
   }
@@ -753,7 +753,7 @@ public final class DefinitionEditorScreen extends Screen
     if (!pendingDelete) {
       pendingDelete = true;
       setMessage(Component.translatable("buildpack.definition.msg.confirm_delete"),
-          BuildPackTheme.MESSAGE_WARN);
+          BuildPackTheme.messageWarn());
       return;
     }
     pendingDelete = false;
@@ -762,7 +762,7 @@ public final class DefinitionEditorScreen extends Screen
     } catch (IOException e) {
       I18nLog.warn(LOGGER, e, "buildpack.log.definition_write_failed", building.zipPath());
       setMessage(Component.translatable("buildpack.definition.msg.write_failed",
-          LocalizedIOException.messageOf(e)), BuildPackTheme.MESSAGE_ERROR);
+          LocalizedIOException.messageOf(e)), BuildPackTheme.messageError());
       return;
     }
     SimukraftBridge.requestCatalogReload();
@@ -772,7 +772,7 @@ public final class DefinitionEditorScreen extends Screen
       deleteButton.visible = false;
     }
     setMessage(Component.translatable("buildpack.definition.msg.deleted"),
-        BuildPackTheme.MESSAGE_OK);
+        BuildPackTheme.messageOk());
     onChanged.run();
   }
 
@@ -840,11 +840,11 @@ public final class DefinitionEditorScreen extends Screen
           width - MARGIN * 2 - treeW - GAP, contentBottom - contentY);
     }
     super.render(g, mouseX, mouseY, partialTick);
-    g.drawString(font, title, MARGIN, MARGIN - 4, BuildPackTheme.TITLE, false);
+    g.drawString(font, title, MARGIN, MARGIN - 4, BuildPackTheme.title(), false);
     if (!editable) {
       Component readonly = Component.translatable("buildpack.definition.readonly");
       g.drawString(font, readonly, width - MARGIN - font.width(readonly), MARGIN - 4,
-          BuildPackTheme.MESSAGE_WARN, false);
+          BuildPackTheme.messageWarn(), false);
     }
 
     if (mode == Mode.VISUAL && visual.root() != null) {
@@ -852,12 +852,12 @@ public final class DefinitionEditorScreen extends Screen
         visual.renderLabels(g);
       } else {
         g.drawString(font, Component.translatable("buildpack.definition.visual.select_hint"),
-            formX(), contentY + 6, BuildPackTheme.HINT, false);
+            formX(), contentY + 6, BuildPackTheme.hint(), false);
       }
     } else if (mode == Mode.VISUAL) {
       Component hint = Component.translatable("buildpack.definition.visual.empty");
       g.drawString(font, hint, (width - font.width(hint)) / 2,
-          contentY + (contentBottom - contentY) / 2 - BUTTON_H - 14, BuildPackTheme.LABEL, false);
+          contentY + (contentBottom - contentY) / 2 - BUTTON_H - 14, BuildPackTheme.label(), false);
     }
 
     int statusY = height - MARGIN - BUTTON_H - GAP - STATUS_ROWS * ROW_H;
@@ -873,7 +873,7 @@ public final class DefinitionEditorScreen extends Screen
       }
       Component clipped = clip(info, (width - MARGIN * 2) / 2);
       int infoWidth = font.width(clipped);
-      g.drawString(font, clipped, width - MARGIN - infoWidth, rowY, BuildPackTheme.HINT, false);
+      g.drawString(font, clipped, width - MARGIN - infoWidth, rowY, BuildPackTheme.hint(), false);
       messageWidth -= infoWidth + 8;
     }
     if (message != null) {
@@ -890,8 +890,8 @@ public final class DefinitionEditorScreen extends Screen
           ? Component.translatable("buildpack.definition.issue.more",
               issues.size() - (STATUS_ROWS - 2))
           : issue.text();
-      int color = last ? BuildPackTheme.LABEL
-          : issue.error() ? BuildPackTheme.MESSAGE_ERROR : BuildPackTheme.MESSAGE_WARN;
+      int color = last ? BuildPackTheme.label()
+          : issue.error() ? BuildPackTheme.messageError() : BuildPackTheme.messageWarn();
       g.drawString(font, clip(line, width - MARGIN * 2), MARGIN, rowY, color, false);
       rowY += ROW_H;
       shown++;
@@ -924,7 +924,7 @@ public final class DefinitionEditorScreen extends Screen
     if (editable && dirty && !pendingDiscard) {
       pendingDiscard = true;
       setMessage(Component.translatable("buildpack.definition.msg.confirm_discard"),
-          BuildPackTheme.MESSAGE_WARN);
+          BuildPackTheme.messageWarn());
       return;
     }
     minecraft.setScreen(parent);

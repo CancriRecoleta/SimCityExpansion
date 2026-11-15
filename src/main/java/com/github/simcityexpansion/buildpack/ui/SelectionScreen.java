@@ -132,13 +132,13 @@ public final class SelectionScreen extends Screen {
   public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
     BuildPackTheme.dialog(g, width, height, left(), top(), W, H);
     g.drawString(font, Component.translatable("buildpack.selection.title"),
-        left() + 10, top() + 10, BuildPackTheme.TITLE, false);
+        left() + 10, top() + 10, BuildPackTheme.title(), false);
     int colW = (W - 20 - LABEL_W * 2) / 2;
     g.drawString(font, Component.translatable("buildpack.selection.min"),
-        left() + 10 + LABEL_W + (colW - font.width("min")) / 2, top() + 20, BuildPackTheme.LABEL, false);
+        left() + 10 + LABEL_W + (colW - font.width("min")) / 2, top() + 20, BuildPackTheme.label(), false);
     g.drawString(font, Component.translatable("buildpack.selection.max"),
         left() + 10 + LABEL_W * 2 + colW + (colW - font.width("max")) / 2, top() + 20,
-        BuildPackTheme.LABEL, false);
+        BuildPackTheme.label(), false);
     int y = top() + 28;
     rowLabel(g, "X", y);
     y += 22;
@@ -159,7 +159,7 @@ public final class SelectionScreen extends Screen {
     String text = Component.translatable("buildpack.preview.sel",
         dx + "×" + dy + "×" + dz, (long) dx * dy * dz).getString();
     g.drawString(font, text, left() + 10, top() + H - 40,
-        valid ? BuildPackTheme.VALUE : BuildPackTheme.MESSAGE_ERROR, false);
+        valid ? BuildPackTheme.value() : BuildPackTheme.messageError(), false);
   }
 
   private boolean isValid(EditBox box) {
@@ -172,7 +172,7 @@ public final class SelectionScreen extends Screen {
   }
 
   private void rowLabel(GuiGraphics g, String axis, int y) {
-    g.drawString(font, axis, left() + 12, y + 4, BuildPackTheme.VALUE, false);
+    g.drawString(font, axis, left() + 12, y + 4, BuildPackTheme.value(), false);
   }
 
   @Override

@@ -137,6 +137,10 @@ block type, with missing blocks flagged), and a `.sk` metadata form (editable on
 batch install, and two-click delete. When you browse a pack that ships an icon, the icon
 is shown in the preview area.
 
+The ⚙ button in the title row opens **Settings**: dark or light theme, panel opacity, the
+manager's UI scale, capture-contents and selection-HUD preferences, and a shortcut to the
+key bindings. Settings are saved to `simcity_expansion/ui.json`.
+
 ## Structure editor
 
 Open a structure in the editor to refine it before installing:

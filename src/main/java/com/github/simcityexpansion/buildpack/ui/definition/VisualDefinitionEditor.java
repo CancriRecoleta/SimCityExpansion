@@ -415,7 +415,7 @@ public final class VisualDefinitionEditor {
     }
     for (FieldLabel label : labels) {
       g.drawString(font, label.text(), label.x(),
-          label.y() + (ROW_H - font.lineHeight) / 2, BuildPackTheme.LABEL, false);
+          label.y() + (ROW_H - font.lineHeight) / 2, BuildPackTheme.label(), false);
     }
   }
 

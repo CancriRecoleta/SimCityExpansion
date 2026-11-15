@@ -236,6 +236,8 @@ public final class BuildPackScreen extends Screen {
 
   @Override
   protected void init() {
+    // The scale may have been changed on the settings screen while this screen was hidden.
+    uiScale = UiScale.preference();
     computeLayout();
     int row1Y = row2Y - ROW2_GAP - BTN_H;
 
@@ -308,6 +310,12 @@ public final class BuildPackScreen extends Screen {
     // narrow widths).
     action("guide", viewW() - PAD - GUIDE_W, PAD - 2, GUIDE_W, PackGuideScreen::open)
         .setHeight(TAB_H - 2);
+    IconButton settingsButton = new IconButton(viewW() - PAD - GUIDE_W - GAP - (TAB_H - 2),
+        PAD - 2, TAB_H - 2, "⚙", Component.translatable("buildpack.action.settings"),
+        () -> SettingsScreen.open(this));
+    settingsButton.setTooltip(
+        Tooltip.create(Component.translatable("buildpack.tooltip.settings")));
+    addRenderableWidget(settingsButton);
     int closeX = viewW() - PAD - CLOSE_W;
     int scaleUpX = closeX - GAP - SCALE_W;
     int scaleDownX = scaleUpX - GAP - SCALE_W;
@@ -353,23 +361,23 @@ public final class BuildPackScreen extends Screen {
       BuildPackTheme.panel(g, leftX, treeY, leftW, bodyBottom - treeY);
       BuildPackTheme.panel(g, rightX, searchY, INFO_W, bodyBottom - searchY);
       g.drawString(font, Component.translatable("buildpack.title").withStyle(ChatFormatting.BOLD),
-          leftX + 2, PAD, BuildPackTheme.TITLE, false);
+          leftX + 2, PAD, BuildPackTheme.title(), false);
       BuildPackTheme.divider(g, leftX, leftX + leftW, tabsY + TAB_H - 0.5F);
 
       infoPanel.renderText(g);
 
       int statusY = row2Y + (BTN_H - font.lineHeight) / 2;
       int textX = statusX;
-      g.drawString(font, count, textX, statusY, BuildPackTheme.COUNT, false);
+      g.drawString(font, count, textX, statusY, BuildPackTheme.count(), false);
       textX += font.width(count.getString()) + 8;
       if (scanning) {
         Component scan = Component.translatable("buildpack.status.scanning");
-        g.drawString(font, scan, textX, statusY, BuildPackTheme.HINT, false);
+        g.drawString(font, scan, textX, statusY, BuildPackTheme.hint(), false);
         textX += font.width(scan.getString()) + 8;
       }
       if (!message.getString().isEmpty()) {
         g.drawString(font, message, textX, statusY,
-            messageError ? BuildPackTheme.MESSAGE_ERROR : BuildPackTheme.MESSAGE_OK, false);
+            messageError ? BuildPackTheme.messageError() : BuildPackTheme.messageOk(), false);
       }
 
       super.render(g, lmx, lmy, partialTick);
@@ -378,7 +386,7 @@ public final class BuildPackScreen extends Screen {
       int activeX = leftX + currentTab.ordinal() * (tabW + GAP);
       float underlineX = anim.approach("tab.underline.x", activeX + 4, 18F);
       float underlineW = anim.approach("tab.underline.w", tabW - 8, 18F);
-      Shapes.pill(g, underlineX, tabsY + TAB_H - 2.5F, underlineW, 2.5F, BuildPackTheme.ACCENT);
+      Shapes.pill(g, underlineX, tabsY + TAB_H - 2.5F, underlineW, 2.5F, BuildPackTheme.accent());
 
       if (contextMenu != null) {
         contextMenu.render(g, lmx, lmy);
@@ -1317,6 +1325,13 @@ public final class BuildPackScreen extends Screen {
   }
 
   /** Adjusts and persists the UI scale, then re-lays out all widgets for the new scale. */
+  /** Re-applies the persisted UI scale (changed live from the settings screen). */
+  void reloadScale() {
+    if (UiScale.preference() != uiScale) {
+      rebuildWidgets();
+    }
+  }
+
   private void changeScale(float delta) {
     float applied = UiScale.setPreference(uiScale + delta);
     if (applied != uiScale) {

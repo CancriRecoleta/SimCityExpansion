@@ -175,10 +175,10 @@ public final class PoiEditScreen extends Screen {
   public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
     BuildPackTheme.dialog(g, width, height, left(), top(), W, panelH());
     g.drawString(font, Component.translatable("buildpack.poi.heading"),
-        left() + 10, top() + 10, BuildPackTheme.VALUE, false);
+        left() + 10, top() + 10, BuildPackTheme.value(), false);
     if (rows.isEmpty()) {
       g.drawString(font, Component.translatable("buildpack.poi.empty"),
-          left() + 10, top() + 28, BuildPackTheme.HINT, false);
+          left() + 10, top() + 28, BuildPackTheme.hint(), false);
     }
     super.render(g, mouseX, mouseY, partialTick);
   }

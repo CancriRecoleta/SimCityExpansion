@@ -64,10 +64,10 @@ public final class ContextMenu {
       float hover = hoverAnims[i].approach(hovered ? 1F : 0F, 16F);
       if (hover > 0.01F) {
         BuildPackTheme.rowHighlight(g, x + 2, rowY, width - 4, ROW_H,
-            BuildPackTheme.withAlpha(BuildPackTheme.ACCENT, (int) (0x30 * hover)));
+            BuildPackTheme.withAlpha(BuildPackTheme.accent(), (int) (0x30 * hover)));
       }
-      int color = BuildPackTheme.lerpColor(BuildPackTheme.TEXT_SECONDARY,
-          BuildPackTheme.TEXT_PRIMARY, hover);
+      int color = BuildPackTheme.lerpColor(BuildPackTheme.textSecondary(),
+          BuildPackTheme.textPrimary(), hover);
       g.drawString(font, items.get(i).label(), x + PAD + 3,
           rowY + (ROW_H - font.lineHeight) / 2 + 1, color, false);
     }

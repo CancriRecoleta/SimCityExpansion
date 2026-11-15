@@ -204,7 +204,7 @@ public final class BlockPaletteScreen extends Screen {
     BuildPackTheme.screenSurface(g, width, height);
     BuildPackTheme.panel(g, PAD, boxY(), width - PAD * 2, boxHeight());
     g.drawString(font, Component.translatable("buildpack.palette.title"),
-        PAD + 10, PAD, BuildPackTheme.TITLE, false);
+        PAD + 10, PAD, BuildPackTheme.title(), false);
 
     tabHover = null;
     int ty = tabRowY();
@@ -213,11 +213,11 @@ public final class BlockPaletteScreen extends Screen {
       boolean active = i == activeTab;
       boolean hover = mouseX >= tx && mouseX < tx + 18 && mouseY >= ty && mouseY < ty + 18;
       Shapes.roundRect(g, tx, ty, 18, 18, 4F, active
-          ? BuildPackTheme.withAlpha(BuildPackTheme.ACCENT, 0x50)
-          : BuildPackTheme.withAlpha(BuildPackTheme.WIDGET_BG, 0xC0));
+          ? BuildPackTheme.withAlpha(BuildPackTheme.accent(), 0x50)
+          : BuildPackTheme.withAlpha(BuildPackTheme.widgetBg(), 0xC0));
       if (active || hover) {
         BuildPackTheme.border(g, tx, ty, 18, 18,
-            active ? BuildPackTheme.ACCENT : BuildPackTheme.WIDGET_BORDER_HOVER);
+            active ? BuildPackTheme.accent() : BuildPackTheme.widgetBorderHover());
       }
       g.renderItem(tabs.get(i).icon(), tx + 1, ty + 1);
       if (hover) {

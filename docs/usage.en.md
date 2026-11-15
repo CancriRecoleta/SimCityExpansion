@@ -89,6 +89,10 @@ v directory tree           | [preview: embedded thumbnail or top-down]
 - **Open Folder** — context-aware: the Installed tab opens `simukraftbuilding/`, the others
   open the import directory.
 - **Sort** — by name, by modified time (newest first), or by size (largest first).
+- **Settings** (the ⚙ button next to Guide) — dark or light theme, panel opacity, manager UI
+  scale (also Ctrl + mouse wheel), whether captures include block-entity contents, the
+  selection HUD, and a shortcut to the key bindings. Changes apply immediately and are saved
+  to `simcity_expansion/ui.json`.
 
 ## Zip build packs
 

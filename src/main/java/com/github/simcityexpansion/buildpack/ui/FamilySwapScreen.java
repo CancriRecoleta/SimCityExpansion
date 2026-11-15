@@ -105,13 +105,13 @@ public final class FamilySwapScreen extends Screen {
   public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
     BuildPackTheme.dialog(g, width, height, left(), top(), W, H);
     g.drawString(font, Component.translatable("buildpack.swap.heading"),
-        left() + 10, top() + 10, BuildPackTheme.VALUE, false);
+        left() + 10, top() + 10, BuildPackTheme.value(), false);
     g.drawString(font, Component.translatable("buildpack.swap.from"),
-        left() + 10, top() + 31, BuildPackTheme.LABEL, false);
+        left() + 10, top() + 31, BuildPackTheme.label(), false);
     g.drawString(font, Component.translatable("buildpack.swap.to"),
-        left() + 10, top() + 53, BuildPackTheme.LABEL, false);
+        left() + 10, top() + 53, BuildPackTheme.label(), false);
     g.drawString(font, Component.translatable("buildpack.swap.hint"),
-        left() + 10, top() + H - 40, BuildPackTheme.HINT, false);
+        left() + 10, top() + H - 40, BuildPackTheme.hint(), false);
     super.render(g, mouseX, mouseY, partialTick);
   }
 

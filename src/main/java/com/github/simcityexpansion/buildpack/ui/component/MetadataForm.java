@@ -175,10 +175,10 @@ public final class MetadataForm {
       return;
     }
     g.drawString(font, Component.translatable("buildpack.form.title"),
-        titleX, titleY, BuildPackTheme.TITLE, false);
+        titleX, titleY, BuildPackTheme.title(), false);
     for (FieldLabel label : labels) {
       g.drawString(font, label.text(), label.x(),
-          label.y() + (ROW_H - font.lineHeight) / 2, BuildPackTheme.LABEL, false);
+          label.y() + (ROW_H - font.lineHeight) / 2, BuildPackTheme.label(), false);
     }
   }
 }

@@ -99,7 +99,7 @@ public final class DoctorReportScreen extends Screen {
     if (findings.isEmpty()) {
       for (FormattedCharSequence seq
           : font.split(Component.translatable("buildpack.doctor.ok"), wrapWidth)) {
-        lines.add(new Line(seq, BuildPackTheme.MESSAGE_OK, lines.isEmpty()));
+        lines.add(new Line(seq, BuildPackTheme.messageOk(), lines.isEmpty()));
       }
     }
     for (Finding finding : findings) {
@@ -122,9 +122,9 @@ public final class DoctorReportScreen extends Screen {
 
   private static int colorOf(Severity severity) {
     return switch (severity) {
-      case ERROR -> BuildPackTheme.MESSAGE_ERROR;
-      case WARN -> BuildPackTheme.MESSAGE_WARN;
-      case INFO -> BuildPackTheme.LABEL;
+      case ERROR -> BuildPackTheme.messageError();
+      case WARN -> BuildPackTheme.messageWarn();
+      case INFO -> BuildPackTheme.label();
     };
   }
 
@@ -140,7 +140,7 @@ public final class DoctorReportScreen extends Screen {
     int[] counts = BuildingDoctor.counts(findings);
     g.drawString(font, Component.translatable(
             "buildpack.doctor.screen_heading", buildingName, counts[0], counts[1]),
-        PAD + 2, PAD, BuildPackTheme.TITLE, false);
+        PAD + 2, PAD, BuildPackTheme.title(), false);
 
     g.enableScissor(PAD + 1, boxY() + 1, width - PAD - 1, boxY() + boxHeight() - 1);
     int y = boxY() + 4 - (int) scroll;

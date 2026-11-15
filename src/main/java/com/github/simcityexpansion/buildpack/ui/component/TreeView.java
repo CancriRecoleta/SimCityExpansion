@@ -39,14 +39,38 @@ public final class TreeView extends AbstractWidget {
   private static final int CHECK_SIZE = 9;
   private static final int CHECK_BOX = 11;
   private static final int PAGE_BAR_H = 13;
-  private static final int TEXT_COLOR = BuildPackTheme.TEXT_SECONDARY;
-  private static final int TEXT_SELECTED = BuildPackTheme.TEXT_PRIMARY;
-  private static final int ARROW_COLOR = BuildPackTheme.TEXT_MUTED;
-  private static final int HOVER_COLOR = BuildPackTheme.ROW_HOVER;
-  private static final int SELECT_COLOR = BuildPackTheme.ROW_SELECTED;
-  private static final int PAGE_INFO_COLOR = BuildPackTheme.TEXT_MUTED;
-  private static final int PAGE_BTN_COLOR = BuildPackTheme.ACCENT_LIGHT;
-  private static final int PAGE_BTN_DISABLED = BuildPackTheme.WIDGET_BORDER_HOVER & 0x80FFFFFF;
+
+  private static int textColor() {
+    return BuildPackTheme.textSecondary();
+  }
+
+  private static int textSelected() {
+    return BuildPackTheme.textPrimary();
+  }
+
+  private static int arrowColor() {
+    return BuildPackTheme.textMuted();
+  }
+
+  private static int hoverColor() {
+    return BuildPackTheme.rowHover();
+  }
+
+  private static int selectColor() {
+    return BuildPackTheme.rowSelected();
+  }
+
+  private static int pageInfoColor() {
+    return BuildPackTheme.textMuted();
+  }
+
+  private static int pageBtnColor() {
+    return BuildPackTheme.accentLight();
+  }
+
+  private static int pageBtnDisabled() {
+    return BuildPackTheme.widgetBorderHover() & 0x80FFFFFF;
+  }
 
   /** A single visible row: node + indent depth + whether it is an expandable branch. */
   private record Row(TreeNode<String, Object> node, int depth, boolean branch) {}
@@ -192,10 +216,10 @@ public final class TreeView extends AbstractWidget {
           && mouseY >= rowY && mouseY < rowY + ROW_HEIGHT;
       boolean isSelected = row.node == selected;
       if (isSelected) {
-        BuildPackTheme.rowHighlight(g, x + 1, rowY, w - 2, ROW_HEIGHT, SELECT_COLOR);
-        Shapes.pill(g, x + 1, rowY + 2, 2, ROW_HEIGHT - 4, BuildPackTheme.ACCENT);
+        BuildPackTheme.rowHighlight(g, x + 1, rowY, w - 2, ROW_HEIGHT, selectColor());
+        Shapes.pill(g, x + 1, rowY + 2, 2, ROW_HEIGHT - 4, BuildPackTheme.accent());
       } else if (hovered) {
-        BuildPackTheme.rowHighlight(g, x + 1, rowY, w - 2, ROW_HEIGHT, HOVER_COLOR);
+        BuildPackTheme.rowHighlight(g, x + 1, rowY, w - 2, ROW_HEIGHT, hoverColor());
       }
 
       int rowX = x + PAD_LEFT + row.depth * INDENT;
@@ -214,7 +238,7 @@ public final class TreeView extends AbstractWidget {
       int textX = iconX + ICON + 2;
       int textY = rowY + (ROW_HEIGHT - font.lineHeight) / 2 + 1;
       g.drawString(font, row.node.getKey(), textX, textY,
-          isSelected || hovered ? TEXT_SELECTED : TEXT_COLOR, false);
+          isSelected || hovered ? textSelected() : textColor(), false);
     }
     g.disableScissor();
 
@@ -226,9 +250,9 @@ public final class TreeView extends AbstractWidget {
   /** 7px anti-aliased disclosure arrow: down (▼) when expanded, right (▶) when collapsed. */
   private static void drawArrow(GuiGraphics g, int x, int y, boolean open) {
     if (open) {
-      Shapes.triangle(g, x + 0.5F, y + 1.5F, x + 6.5F, y + 1.5F, x + 3.5F, y + 5.5F, ARROW_COLOR);
+      Shapes.triangle(g, x + 0.5F, y + 1.5F, x + 6.5F, y + 1.5F, x + 3.5F, y + 5.5F, arrowColor());
     } else {
-      Shapes.triangle(g, x + 1.5F, y + 0.5F, x + 1.5F, y + 6.5F, x + 5.5F, y + 3.5F, ARROW_COLOR);
+      Shapes.triangle(g, x + 1.5F, y + 0.5F, x + 1.5F, y + 6.5F, x + 5.5F, y + 3.5F, arrowColor());
     }
   }
 
@@ -239,10 +263,10 @@ public final class TreeView extends AbstractWidget {
     String prev = Component.translatable("buildpack.tree.prev_page").getString();
     String next = Component.translatable("buildpack.tree.next_page").getString();
     String info = Component.translatable("buildpack.tree.page_info", page + 1, pages).getString();
-    g.drawString(font, prev, x + 2, textY, page > 0 ? PAGE_BTN_COLOR : PAGE_BTN_DISABLED, false);
+    g.drawString(font, prev, x + 2, textY, page > 0 ? pageBtnColor() : pageBtnDisabled(), false);
     g.drawString(font, next, x + w - font.width(next) - 2, textY,
-        page < pages - 1 ? PAGE_BTN_COLOR : PAGE_BTN_DISABLED, false);
-    g.drawString(font, info, x + (w - font.width(info)) / 2, textY, PAGE_INFO_COLOR, false);
+        page < pages - 1 ? pageBtnColor() : pageBtnDisabled(), false);
+    g.drawString(font, info, x + (w - font.width(info)) / 2, textY, pageInfoColor(), false);
   }
 
   // ---- Interaction ----
@@ -414,7 +438,7 @@ public final class TreeView extends AbstractWidget {
   /** 9px rounded checkbox; fills with the accent and shows a check mark when checked. */
   private static void drawCheckbox(GuiGraphics g, int x, int y, boolean on) {
     if (on) {
-      Shapes.roundRect(g, x, y, CHECK_SIZE, CHECK_SIZE, 2.5F, BuildPackTheme.ACCENT);
+      Shapes.roundRect(g, x, y, CHECK_SIZE, CHECK_SIZE, 2.5F, BuildPackTheme.accent());
       CHECK_X[0] = x + 2.2F;
       CHECK_Y[0] = y + 4.6F;
       CHECK_X[1] = x + 3.9F;
@@ -423,9 +447,9 @@ public final class TreeView extends AbstractWidget {
       CHECK_Y[2] = y + 2.7F;
       Shapes.polyline(g, CHECK_X, CHECK_Y, 0, 3, 1.4F, 0xFFFFFFFF);
     } else {
-      Shapes.roundRect(g, x, y, CHECK_SIZE, CHECK_SIZE, 2.5F, BuildPackTheme.INPUT_BG);
+      Shapes.roundRect(g, x, y, CHECK_SIZE, CHECK_SIZE, 2.5F, BuildPackTheme.inputBg());
       Shapes.roundRectStroke(g, x, y, CHECK_SIZE, CHECK_SIZE, 2.5F, Math.max(Shapes.stroke(), 1F),
-          BuildPackTheme.withAlpha(BuildPackTheme.WIDGET_BORDER_HOVER, 0xB0));
+          BuildPackTheme.withAlpha(BuildPackTheme.widgetBorderHover(), 0xB0));
     }
   }
 

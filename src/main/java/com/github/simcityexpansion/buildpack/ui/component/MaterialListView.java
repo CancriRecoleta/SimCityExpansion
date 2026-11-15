@@ -26,14 +26,38 @@ public final class MaterialListView extends AbstractWidget {
   private static final int ROW_HEIGHT = 12;
   private static final int PAD_LEFT = 4;
   private static final int PAGE_BAR_H = 13;
-  private static final int ROW_COLOR = BuildPackTheme.TEXT_SECONDARY;
-  private static final int MISSING_COLOR = BuildPackTheme.MESSAGE_ERROR;
-  private static final int COUNT_COLOR = BuildPackTheme.TEXT_PRIMARY;
-  private static final int ALT_ROW_BG = BuildPackTheme.ROW_ALT;
-  private static final int PAGE_INFO_COLOR = BuildPackTheme.TEXT_MUTED;
-  private static final int PAGE_BTN_COLOR = BuildPackTheme.ACCENT_LIGHT;
-  private static final int PAGE_BTN_DISABLED = BuildPackTheme.WIDGET_BORDER_HOVER & 0x80FFFFFF;
-  private static final int HOVER_COLOR = BuildPackTheme.ROW_HOVER;
+
+  private static int rowColor() {
+    return BuildPackTheme.textSecondary();
+  }
+
+  private static int missingColor() {
+    return BuildPackTheme.messageError();
+  }
+
+  private static int countColor() {
+    return BuildPackTheme.textPrimary();
+  }
+
+  private static int altRowBg() {
+    return BuildPackTheme.rowAlt();
+  }
+
+  private static int pageInfoColor() {
+    return BuildPackTheme.textMuted();
+  }
+
+  private static int pageBtnColor() {
+    return BuildPackTheme.accentLight();
+  }
+
+  private static int pageBtnDisabled() {
+    return BuildPackTheme.widgetBorderHover() & 0x80FFFFFF;
+  }
+
+  private static int hoverColor() {
+    return BuildPackTheme.rowHover();
+  }
 
   private List<MaterialEntry> materials = List.of();
   private int page;
@@ -92,16 +116,16 @@ public final class MaterialListView extends AbstractWidget {
       boolean hovered = onSelect != null && mouseX >= x && mouseX < x + w
           && mouseY >= rowY && mouseY < rowY + ROW_HEIGHT;
       if (hovered) {
-        BuildPackTheme.rowHighlight(g, x + 1, rowY, w - 2, ROW_HEIGHT, HOVER_COLOR);
+        BuildPackTheme.rowHighlight(g, x + 1, rowY, w - 2, ROW_HEIGHT, hoverColor());
       } else if ((i & 1) == 1) {
-        BuildPackTheme.rowHighlight(g, x + 1, rowY, w - 2, ROW_HEIGHT, ALT_ROW_BG);
+        BuildPackTheme.rowHighlight(g, x + 1, rowY, w - 2, ROW_HEIGHT, altRowBg());
       }
       int textY = rowY + (ROW_HEIGHT - font.lineHeight) / 2 + 1;
       String count = UiFormats.integer(m.count());
-      g.drawString(font, count, x + PAD_LEFT, textY, COUNT_COLOR, false);
+      g.drawString(font, count, x + PAD_LEFT, textY, countColor(), false);
       int nameX = x + PAD_LEFT + font.width("00000") + 6;
       String name = m.missing() ? m.blockId() : m.displayName().getString();
-      g.drawString(font, name, nameX, textY, m.missing() ? MISSING_COLOR : ROW_COLOR, false);
+      g.drawString(font, name, nameX, textY, m.missing() ? missingColor() : rowColor(), false);
     }
     g.disableScissor();
 
@@ -116,10 +140,10 @@ public final class MaterialListView extends AbstractWidget {
     String prev = Component.translatable("buildpack.tree.prev_page").getString();
     String next = Component.translatable("buildpack.tree.next_page").getString();
     String info = Component.translatable("buildpack.tree.page_info", page + 1, pages).getString();
-    g.drawString(font, prev, x + 2, textY, page > 0 ? PAGE_BTN_COLOR : PAGE_BTN_DISABLED, false);
+    g.drawString(font, prev, x + 2, textY, page > 0 ? pageBtnColor() : pageBtnDisabled(), false);
     g.drawString(font, next, x + w - font.width(next) - 2, textY,
-        page < pages - 1 ? PAGE_BTN_COLOR : PAGE_BTN_DISABLED, false);
-    g.drawString(font, info, x + (w - font.width(info)) / 2, textY, PAGE_INFO_COLOR, false);
+        page < pages - 1 ? pageBtnColor() : pageBtnDisabled(), false);
+    g.drawString(font, info, x + (w - font.width(info)) / 2, textY, pageInfoColor(), false);
   }
 
   // ---- Interaction (pagination + optional row selection) ----

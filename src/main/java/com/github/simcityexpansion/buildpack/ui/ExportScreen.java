@@ -244,7 +244,7 @@ public final class ExportScreen extends Screen {
   public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
     BuildPackTheme.dialog(g, width, height, left(), top(), W, H);
     g.drawString(font, Component.translatable("buildpack.export.heading", buildings.size()),
-        left() + 10, top() + 10, BuildPackTheme.TITLE, false);
+        left() + 10, top() + 10, BuildPackTheme.title(), false);
     label(g, "buildpack.export.field.name", top() + 26);
     label(g, "buildpack.export.field.version", top() + 48);
     label(g, "buildpack.export.field.author", top() + 70);
@@ -257,14 +257,14 @@ public final class ExportScreen extends Screen {
     BuildPackTheme.previewPanel(g, boxX - 1, boxY - 1, ICON_BOX + 2, ICON_BOX + 2);
 
     if (!status.getString().isEmpty()) {
-      g.drawString(font, status, left() + 10, top() + H - 40, BuildPackTheme.MESSAGE_ERROR, false);
+      g.drawString(font, status, left() + 10, top() + H - 40, BuildPackTheme.messageError(), false);
     }
     super.render(g, mouseX, mouseY, partialTick);
   }
 
   private void label(GuiGraphics g, String key, int y) {
     g.drawString(font, Component.translatable(key), left() + 10,
-        y + (18 - font.lineHeight) / 2, BuildPackTheme.LABEL, false);
+        y + (18 - font.lineHeight) / 2, BuildPackTheme.label(), false);
   }
 
   @Override

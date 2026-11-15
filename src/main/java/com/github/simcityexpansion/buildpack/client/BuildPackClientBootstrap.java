@@ -83,8 +83,8 @@ public final class BuildPackClientBootstrap {
     if (screen == null || !screen.getClass().getName().startsWith("com.github.simcityexpansion.")) {
       return;
     }
-    event.setBackground(BuildPackTheme.POPUP_BG);
-    event.setBorderStart(BuildPackTheme.POPUP_BORDER);
-    event.setBorderEnd(BuildPackTheme.withAlpha(BuildPackTheme.WIDGET_BORDER, 0xC0));
+    event.setBackground(BuildPackTheme.popupBg());
+    event.setBorderStart(BuildPackTheme.popupBorder());
+    event.setBorderEnd(BuildPackTheme.withAlpha(BuildPackTheme.widgetBorder(), 0xC0));
   }
 }

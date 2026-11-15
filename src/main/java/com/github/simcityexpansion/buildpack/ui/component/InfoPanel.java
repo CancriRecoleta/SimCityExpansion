@@ -416,7 +416,7 @@ public final class InfoPanel {
     UiScale.enableScissor(g, infoX, infoY, infoX + infoW, infoY + INFO_REGION_H);
     int rowY = infoY;
     for (Component row : rows) {
-      g.drawString(font, row, infoX, rowY, BuildPackTheme.LABEL, false);
+      g.drawString(font, row, infoX, rowY, BuildPackTheme.label(), false);
       rowY += INFO_ROW_H;
     }
     g.disableScissor();

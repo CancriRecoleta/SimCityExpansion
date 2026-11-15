@@ -101,11 +101,11 @@ public final class StructurePreviewScreen extends Screen {
     BuildPackTheme.previewPanel(g, PAD, boxY(), width - PAD * 2, boxHeight());
     g.drawString(font, Component.translatable("buildpack.preview.screen_heading",
         structure.sizeX, structure.sizeY, structure.sizeZ, structure.countNonAir()),
-        PAD + 10, PAD, BuildPackTheme.TITLE, false);
+        PAD + 10, PAD, BuildPackTheme.title(), false);
     int hintX = PAD + (BUTTON_W + GAP) * 4 + 4;
     g.drawString(font, Component.translatable("buildpack.preview.controls"),
         hintX, height - PAD - BUTTON_H + (BUTTON_H - font.lineHeight) / 2,
-        BuildPackTheme.HINT, false);
+        BuildPackTheme.hint(), false);
     super.render(g, mouseX, mouseY, partialTick);
     renderLegend(g);
   }
@@ -118,7 +118,7 @@ public final class StructurePreviewScreen extends Screen {
           Component.translatable("buildpack.overlay." + group.key(), group.cells().size());
       int textX = width - PAD - 6 - font.width(label);
       g.fill(textX - 11, y, textX - 3, y + 8, group.color() | 0xFF000000);
-      g.drawString(font, label, textX, y, BuildPackTheme.VALUE, false);
+      g.drawString(font, label, textX, y, BuildPackTheme.value(), false);
       y += LEGEND_ROW_H;
     }
   }

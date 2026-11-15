@@ -66,7 +66,7 @@ public final class CategoryPickerScreen extends Screen {
   public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
     BuildPackTheme.dialog(g, width, height, left(), top(), W, panelH());
     g.drawString(font, Component.translatable("buildpack.category.title"),
-        left() + 10, top() + 10, BuildPackTheme.TITLE, false);
+        left() + 10, top() + 10, BuildPackTheme.title(), false);
     super.render(g, mouseX, mouseY, partialTick);
   }
 

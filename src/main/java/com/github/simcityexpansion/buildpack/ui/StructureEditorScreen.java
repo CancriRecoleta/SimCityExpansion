@@ -997,13 +997,13 @@ public final class StructureEditorScreen extends Screen {
     int ly = py + 9;
     for (String line : lines) {
       if (line.startsWith("#")) {
-        g.drawString(font, line.substring(1), px + 12, ly, BuildPackTheme.MESSAGE_WARN, false);
+        g.drawString(font, line.substring(1), px + 12, ly, BuildPackTheme.messageWarn(), false);
       } else {
         int eq = line.indexOf('=');
         String key = eq < 0 ? line : line.substring(0, eq);
         String desc = eq < 0 ? "" : line.substring(eq + 1);
-        g.drawString(font, key, px + 12, ly, BuildPackTheme.ACCENT_LIGHT, false);
-        g.drawString(font, desc, px + 12 + keyW + gap, ly, BuildPackTheme.VALUE, false);
+        g.drawString(font, key, px + 12, ly, BuildPackTheme.accentLight(), false);
+        g.drawString(font, desc, px + 12 + keyW + gap, ly, BuildPackTheme.value(), false);
       }
       ly += lineH;
     }
@@ -1023,13 +1023,13 @@ public final class StructureEditorScreen extends Screen {
     BuildPackTheme.previewPanel(g, PAD, bodyY(), leftW, bodyHeight());
     BuildPackTheme.panel(g, toolX(), bodyY(), TOOL_W, bodyHeight());
     g.drawString(font, Component.translatable("buildpack.editor.title"),
-        PAD + 10, PAD, BuildPackTheme.TITLE, false);
+        PAD + 10, PAD, BuildPackTheme.title(), false);
     String stats = Component.translatable("buildpack.editor.stats",
         work.sizeX + "×" + work.sizeY + "×" + work.sizeZ, workBlocks, deltaText(),
         undo.size()).getString();
-    g.drawString(font, stats, width - PAD - font.width(stats), PAD, BuildPackTheme.LABEL, false);
+    g.drawString(font, stats, width - PAD - font.width(stats), PAD, BuildPackTheme.label(), false);
     for (SectionLabel label : sections) {
-      g.drawString(font, label.text(), label.x(), label.y(), BuildPackTheme.TITLE, false);
+      g.drawString(font, label.text(), label.x(), label.y(), BuildPackTheme.title(), false);
     }
     super.render(g, mouseX, mouseY, partialTick);
     ItemStack paint = paintStack();
@@ -1039,10 +1039,10 @@ public final class StructureEditorScreen extends Screen {
     }
     String hint = Component.translatable("buildpack.editor.legend_hint").getString();
     g.drawString(font, hint, PAD + leftW - font.width(hint) - 3,
-        bodyY() + bodyHeight() - font.lineHeight - 2, BuildPackTheme.HINT, false);
+        bodyY() + bodyHeight() - font.lineHeight - 2, BuildPackTheme.hint(), false);
     if (!status.getString().isEmpty()) {
       g.drawString(font, status, PAD, height - PAD - STATUS_H,
-          statusError ? BuildPackTheme.MESSAGE_ERROR : BuildPackTheme.MESSAGE_OK, false);
+          statusError ? BuildPackTheme.messageError() : BuildPackTheme.messageOk(), false);
     }
     if (showLegend) {
       drawLegend(g);

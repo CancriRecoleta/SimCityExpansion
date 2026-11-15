@@ -61,7 +61,7 @@ public final class PackGuideScreen extends Screen {
   public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
     BuildPackTheme.panel(g, MARGIN, areaTop(), width - MARGIN * 2, areaBottom() - areaTop());
     super.render(g, mouseX, mouseY, partialTick);
-    g.drawString(font, title, MARGIN, MARGIN - 6, BuildPackTheme.TITLE, false);
+    g.drawString(font, title, MARGIN, MARGIN - 6, BuildPackTheme.title(), false);
 
     int textX = MARGIN + PAD;
     int textW = width - (MARGIN + PAD) * 2;
@@ -69,12 +69,12 @@ public final class PackGuideScreen extends Screen {
     g.enableScissor(MARGIN + 1, areaTop() + 1, width - MARGIN - 1, areaBottom() - 1);
     for (int step = 1; step <= STEPS; step++) {
       g.drawString(font, Component.translatable("buildpack.guide.s" + step + ".title"),
-          textX, y, BuildPackTheme.ACCENT, false);
+          textX, y, BuildPackTheme.accent(), false);
       y += font.lineHeight + TITLE_GAP;
       List<FormattedCharSequence> lines =
           font.split(Component.translatable("buildpack.guide.s" + step + ".body"), textW);
       for (FormattedCharSequence line : lines) {
-        g.drawString(font, line, textX, y, BuildPackTheme.LABEL, false);
+        g.drawString(font, line, textX, y, BuildPackTheme.label(), false);
         y += font.lineHeight + 1;
       }
       y += SECTION_GAP;

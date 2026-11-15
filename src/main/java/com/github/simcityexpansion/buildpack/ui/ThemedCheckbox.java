@@ -73,9 +73,9 @@ public final class ThemedCheckbox extends AbstractButton {
     int x = getX();
     int y = getY();
     float ty = y + (getHeight() - TRACK_H) / 2F;
-    int offTrack = BuildPackTheme.withAlpha(BuildPackTheme.WIDGET_BORDER_HOVER,
+    int offTrack = BuildPackTheme.withAlpha(BuildPackTheme.widgetBorderHover(),
         0x80 + (int) (0x30 * hover));
-    int track = BuildPackTheme.lerpColor(offTrack, BuildPackTheme.MESSAGE_OK, t);
+    int track = BuildPackTheme.lerpColor(offTrack, BuildPackTheme.messageOk(), t);
     if (!active) {
       track = BuildPackTheme.withAlpha(track, 0x60);
     }
@@ -84,8 +84,8 @@ public final class ThemedCheckbox extends AbstractButton {
     Shapes.circle(g, x + 1.5F + knob / 2 + t * (TRACK_W - TRACK_H), ty + TRACK_H / 2F, knob / 2,
         active ? 0xFFFFFFFF : 0xFFB0B0B0);
 
-    int textColor = !active ? BuildPackTheme.TEXT_MUTED
-        : BuildPackTheme.lerpColor(BuildPackTheme.TEXT_SECONDARY, BuildPackTheme.TEXT_PRIMARY,
+    int textColor = !active ? BuildPackTheme.textMuted()
+        : BuildPackTheme.lerpColor(BuildPackTheme.textSecondary(), BuildPackTheme.textPrimary(),
             hover);
     int textX = x + TRACK_W + LABEL_GAP;
     UiScale.enableScissor(g, textX, y, x + getWidth(), y + getHeight());

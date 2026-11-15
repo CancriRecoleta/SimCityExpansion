@@ -11,6 +11,7 @@ import com.github.simcityexpansion.buildpack.convert.NbtStructure;
 import com.github.simcityexpansion.buildpack.convert.StructureNbtWriter;
 import com.github.simcityexpansion.buildpack.convert.WorldCapture;
 import com.github.simcityexpansion.buildpack.model.ImportScanner;
+import com.github.simcityexpansion.buildpack.ui.UiSettings;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Minecraft;
@@ -43,7 +44,6 @@ public final class WorldSelection {
 
   private static BlockPos cornerA;
   private static BlockPos cornerB;
-  private static boolean captureBlockEntities = true;
 
   private static final int CAPTURE_BUDGET = 100_000;
   private static WorldCapture.Job activeJob;
@@ -109,7 +109,8 @@ public final class WorldSelection {
     if (!WorldCapture.regionLoaded(mc.level, min, max)) {
       return new StructureResult(null, Component.translatable("buildpack.select.unloaded"));
     }
-    NbtStructure structure = WorldCapture.capture(mc.level, min, max, captureBlockEntities);
+    NbtStructure structure =
+        WorldCapture.capture(mc.level, min, max, UiSettings.captureBlockEntities());
     return new StructureResult(structure, Component.empty());
   }
 
@@ -147,7 +148,7 @@ public final class WorldSelection {
     if (!WorldCapture.regionLoaded(mc.level, min, max)) {
       return new CaptureResult(Component.translatable("buildpack.select.unloaded"), false);
     }
-    activeJob = WorldCapture.job(mc.level, min, max, captureBlockEntities);
+    activeJob = WorldCapture.job(mc.level, min, max, UiSettings.captureBlockEntities());
     jobLevel = mc.level;
     jobBase = "capture_" + min.getX() + "_" + min.getY() + "_" + min.getZ();
     jobAuthor = mc.player.getGameProfile().getName();
@@ -205,7 +206,8 @@ public final class WorldSelection {
 
   /** Toggles whether captures include block-entity contents (chest contents, sign text, etc.). */
   public static void toggleBlockEntities() {
-    captureBlockEntities = !captureBlockEntities;
+    boolean captureBlockEntities = !UiSettings.captureBlockEntities();
+    UiSettings.setCaptureBlockEntities(captureBlockEntities);
     actionBar(Component.translatable("buildpack.select.contents",
         Component.translatable(captureBlockEntities
             ? "buildpack.select.on" : "buildpack.select.off")));
@@ -218,6 +220,9 @@ public final class WorldSelection {
       return;
     }
     if (cornerA == null && cornerB == null) {
+      return;
+    }
+    if (activeJob == null && !UiSettings.selectionHud()) {
       return;
     }
     Font font = mc.font;
@@ -244,7 +249,7 @@ public final class WorldSelection {
           + " → " + max.getX() + "," + max.getY() + "," + max.getZ();
       g.drawString(font, bounds, x, y + font.lineHeight + 1, 0xFFB0B0B0, true);
       g.drawString(font, Component.translatable("buildpack.select.contents",
-          Component.translatable(captureBlockEntities
+          Component.translatable(UiSettings.captureBlockEntities()
               ? "buildpack.select.on" : "buildpack.select.off")),
           x, y + (font.lineHeight + 1) * 2, 0xFFB0B0B0, true);
     } else {

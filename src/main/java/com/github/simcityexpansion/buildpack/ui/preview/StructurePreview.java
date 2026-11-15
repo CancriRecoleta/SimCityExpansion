@@ -135,7 +135,7 @@ public final class StructurePreview {
         Font font = Minecraft.getInstance().font;
         String none = Component.translatable("buildpack.preview.none").getString();
         g.drawString(font, none, getX() + (w - font.width(none)) / 2,
-            getY() + (h - font.lineHeight) / 2, BuildPackTheme.NONE, true);
+            getY() + (h - font.lineHeight) / 2, BuildPackTheme.none(), true);
         return;
       }
       float scale = Math.min((float) MAX_SIZE / Math.max(imgW, imgH),
