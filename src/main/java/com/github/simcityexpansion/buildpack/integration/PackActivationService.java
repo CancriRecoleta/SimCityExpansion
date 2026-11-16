@@ -23,6 +23,7 @@ import com.github.simcityexpansion.buildpack.install.InstallRegistry;
 import com.github.simcityexpansion.buildpack.install.LegacyMigration;
 import com.github.simcityexpansion.buildpack.install.PackInstaller;
 import com.github.simcityexpansion.buildpack.install.PackReader;
+import com.github.simcityexpansion.buildpack.install.PackageFiles;
 import com.github.simcityexpansion.buildpack.install.SimukraftZips;
 import com.github.simcityexpansion.buildpack.install.SkFileReader;
 import com.github.simcityexpansion.buildpack.install.SkFileWriter;
@@ -122,7 +123,7 @@ public final class PackActivationService {
       return;
     }
     Map<String, PackArchive> byId = new HashMap<>();
-    for (Path zip : ImportScanner.scanZips()) {
+    for (Path zip : ImportScanner.scanPacks()) {
       try {
         PackArchive pack = PackReader.read(zip);
         byId.putIfAbsent(pack.manifest().id(), pack);
@@ -377,8 +378,9 @@ public final class PackActivationService {
     return cacheZip.resolveSibling(cacheZip.getFileName() + SIGNATURE_SUFFIX);
   }
 
+  /** Change signature of a pack source (zip or extracted directory); a change forces reconversion. */
   private static String signatureOf(Path zip) throws IOException {
-    return Files.size(zip) + ":" + Files.getLastModifiedTime(zip).toMillis();
+    return PackageFiles.signature(zip);
   }
 
   private static String readSignature(Path cacheZip) {

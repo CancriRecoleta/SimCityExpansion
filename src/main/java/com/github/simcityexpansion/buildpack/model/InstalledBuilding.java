@@ -7,13 +7,13 @@ import java.util.Map;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * A building installed in one of the zip packages SimuKraft 2.0 reads from
- * {@code simukraftbuilding/*.zip} (discovered by scanning {@code buildings/<category>/*.sk}
- * entries inside each zip).
+ * A building installed in one of the packages SimuKraft reads from {@code simukraftbuilding/} —
+ * a {@code *.zip} or an extracted package directory such as {@code official_building/}
+ * (discovered by scanning {@code buildings/<category>/*.sk} entries inside each package).
  *
  * @param category category the building belongs to (from the entry path inside the zip)
  * @param name the {@code name} field from the .sk entry (falls back to the entry base name if absent)
- * @param zipPath the zip package the building lives in
+ * @param zipPath the package the building lives in (a zip file or a package directory)
  * @param baseName base name of the .sk entry (without extension)
  * @param hasStructure whether a same-base {@code .nbt} structure entry exists in the zip
  * @param hasJson whether a same-base SimuKraft native {@code .json} definition exists in the zip

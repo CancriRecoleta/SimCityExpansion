@@ -192,6 +192,10 @@ Buildings are grouped into five fixed categories: `residential`, `commercial`,
 - **Manifest** — `pack.json` (format 2) carries `id`, `name`, `version`, `author`,
   `description`, an optional `icon`, and a `generated` timestamp.
 
+Packs are read **zipped or extracted**: a folder in `import/` with `pack.json` at its root
+(for example a copy of SimuKraft 2.3's `simukraftbuilding/official_building/`) is listed,
+previewed, installed, and activated exactly like the equivalent `.zip`.
+
 The full pack specification (directory layout, `pack.json`, `.sk` / `.meta.json` metadata,
 native job/trade JSON, `icon.png`, and `index.json`) is documented in
 [docs/pack-format.zh.md](docs/pack-format.zh.md).
@@ -215,12 +219,14 @@ blocks.
 ```
 <game dir>/
 ├── simcity_expansion/
-│   ├── import/                 import directory (drop loose files and zip packs here)
+│   ├── import/                 import directory (drop loose files and packs here, zipped or as folders)
 │   ├── export/                 exported build packs
 │   ├── cache/                  cache zip packages for activated packs
 │   └── installed_packs.json    installed-pack registry
-├── simukraftbuilding/          SimuKraft 2.0 building-package directory (install target)
-│   ├── official_building.zip   SimuKraft's built-in package (read-only)
+├── simukraftbuilding/          SimuKraft building-package directory (install target)
+│   ├── official_building/      SimuKraft 2.3+ built-in package, extracted (read-only)
+│   ├── official_building.zip   SimuKraft ≤2.2 built-in package (read-only; ignored once the folder exists)
+│   ├── <name>/                 any other extracted package with a buildings/ folder (read-only)
 │   ├── sce_local.zip           individually installed buildings (managed by this mod)
 │   ├── sce_pack_<id>.zip       one managed package per installed build pack
 │   └── legacy_backup/          pre-2.0 loose files, backed up by the migration

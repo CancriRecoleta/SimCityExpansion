@@ -1,19 +1,15 @@
 package com.github.simcityexpansion.buildpack.install;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
 
 import com.github.simcityexpansion.buildpack.BuildPack;
 import com.github.simcityexpansion.buildpack.LocalizedIOException;
@@ -28,10 +24,11 @@ import com.google.gson.JsonParser;
 import net.minecraft.network.chat.Component;
 
 /**
- * Reader for zip build packs. Layout:
+ * Reader for build packs, either zipped or extracted into a directory of the same layout (read
+ * through {@link PackageFiles}). Layout:
  *
  * <pre>
- * mypack.zip
+ * mypack.zip  (or mypack/)
  * ├── pack.json                      required: {format,id,name,version,author,description,icon?}
  * ├── icon.png                       optional: pack icon (referenced by pack.json "icon")
  * ├── index.json                     optional: file manifest written on export; ignored on read
@@ -46,19 +43,17 @@ import net.minecraft.network.chat.Component;
 public final class PackReader {
   private PackReader() {}
 
-  /** Parses a zip build pack; throws {@link IOException} if the manifest is missing or invalid. */
+  /**
+   * Parses a build pack — a zip archive or an extracted directory with the same layout (such as
+   * SimuKraft 2.3's bundled official package); throws {@link IOException} if the manifest is
+   * missing or invalid.
+   */
   public static PackArchive read(Path zipPath) throws IOException {
-    try (ZipFile zip = new ZipFile(zipPath.toFile())) {
+    try (PackageFiles zip = PackageFiles.open(zipPath)) {
       PackManifest manifest = readManifest(zip);
 
       Map<String, BuildingFiles> grouped = new HashMap<>();
-      Enumeration<? extends ZipEntry> entries = zip.entries();
-      while (entries.hasMoreElements()) {
-        ZipEntry entry = entries.nextElement();
-        if (entry.isDirectory()) {
-          continue;
-        }
-        String path = entry.getName().replace('\\', '/');
+      for (String path : zip.entries()) {
         String[] parts = path.split("/");
         // buildings/<category>/<file name>
         if (parts.length != 3 || !"buildings".equals(parts[0])) {
@@ -108,20 +103,14 @@ public final class PackReader {
     }
   }
 
-  private static PackManifest readManifest(ZipFile zip) throws IOException {
-    ZipEntry manifestEntry = zip.getEntry("pack.json");
-    if (manifestEntry == null) {
-      throw new LocalizedIOException(
-          Component.translatable("buildpack.error.pack_no_manifest"));
-    }
-    if (manifestEntry.getSize() > BuildPack.MAX_PACK_JSON_BYTES) {
-      throw new LocalizedIOException(
-          Component.translatable("buildpack.error.entry_too_large", "pack.json"));
-    }
+  private static PackManifest readManifest(PackageFiles zip) throws IOException {
+    byte[] manifestBytes = zip.readOptional("pack.json", BuildPack.MAX_PACK_JSON_BYTES)
+        .orElseThrow(() -> new LocalizedIOException(
+            Component.translatable("buildpack.error.pack_no_manifest")));
     JsonObject json;
-    try (InputStreamReader reader = new InputStreamReader(
-        zip.getInputStream(manifestEntry), StandardCharsets.UTF_8)) {
-      json = JsonParser.parseReader(reader).getAsJsonObject();
+    try {
+      json = JsonParser.parseString(stripBom(new String(manifestBytes, StandardCharsets.UTF_8)))
+          .getAsJsonObject();
     } catch (RuntimeException e) {
       throw new LocalizedIOException(Component.translatable(
           "buildpack.error.pack_bad_manifest", String.valueOf(e.getMessage())));
@@ -144,31 +133,35 @@ public final class PackReader {
         icon.isBlank() ? null : icon);
   }
 
-  /** Reads all bytes of a single entry from a zip file (used by the UI to read buildings directly without extracting the archive). */
+  /**
+   * Reads all bytes of a single entry from a zip or directory pack (used by the UI to read
+   * buildings directly without extracting the archive).
+   */
   public static byte[] readEntryBytes(Path zipPath, String entryName) throws IOException {
-    try (ZipFile zip = new ZipFile(zipPath.toFile())) {
-      ZipEntry entry = zip.getEntry(entryName);
-      if (entry == null) {
-        throw new LocalizedIOException(
-            Component.translatable("buildpack.error.zip_entry_missing", entryName));
-      }
-      if (entry.getSize() > BuildPack.MAX_PACK_ENTRY_BYTES) {
-        throw new LocalizedIOException(
-            Component.translatable("buildpack.error.entry_too_large", entryName));
-      }
-      try (InputStream stream = zip.getInputStream(entry)) {
-        byte[] bytes = stream.readNBytes((int) BuildPack.MAX_PACK_ENTRY_BYTES + 1);
-        if (bytes.length > BuildPack.MAX_PACK_ENTRY_BYTES) {
-          throw new LocalizedIOException(
-              Component.translatable("buildpack.error.entry_too_large", entryName));
-        }
-        return bytes;
-      }
+    try (PackageFiles zip = PackageFiles.open(zipPath)) {
+      return zip.read(entryName);
     }
+  }
+
+  /**
+   * Whether {@code path} looks like a build pack: a {@code .zip} file, or a directory with a
+   * {@code pack.json} at its root (an extracted pack).
+   */
+  public static boolean isPackPath(Path path) {
+    if (Files.isDirectory(path)) {
+      return Files.isRegularFile(path.resolve("pack.json"));
+    }
+    return Files.isRegularFile(path)
+        && path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".zip");
   }
 
   private static String getString(JsonObject json, String key, String fallback) {
     return json.has(key) ? json.get(key).getAsString() : fallback;
+  }
+
+  /** Drops a leading UTF-8 byte-order mark (hand-edited manifests on Windows often carry one). */
+  private static String stripBom(String text) {
+    return text.startsWith("﻿") ? text.substring(1) : text;
   }
 
   private static final class BuildingFiles {
@@ -192,7 +185,7 @@ public final class PackReader {
      * definition. Only v1 legacy packs are ambiguous; there the two are distinguished heuristically
      * by content (gameplay keys such as offers/containers/job indicate a native definition).
      */
-    void classifyPlainJson(ZipFile zip, int format) {
+    void classifyPlainJson(PackageFiles zip, int format) {
       if (plainJsonEntry == null) {
         return;
       }
@@ -200,9 +193,10 @@ public final class PackReader {
         simukraftJsonEntry = plainJsonEntry;
         return;
       }
-      try (InputStreamReader reader = new InputStreamReader(
-          zip.getInputStream(zip.getEntry(plainJsonEntry)), StandardCharsets.UTF_8)) {
-        JsonObject json = JsonParser.parseReader(reader).getAsJsonObject();
+      try {
+        byte[] bytes = zip.read(plainJsonEntry);
+        JsonObject json = JsonParser.parseString(stripBom(new String(bytes, StandardCharsets.UTF_8)))
+            .getAsJsonObject();
         if (json.has("offers") || json.has("containers") || json.has("job")) {
           simukraftJsonEntry = plainJsonEntry;
         } else {

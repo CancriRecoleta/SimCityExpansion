@@ -1,8 +1,6 @@
 package com.github.simcityexpansion.buildpack.install;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,8 +11,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
 
 import com.github.simcityexpansion.buildpack.BuildPack;
 import com.github.simcityexpansion.buildpack.I18nLog;
@@ -68,7 +64,7 @@ public final class PackInstaller {
 
     Map<String, byte[]> entries = new LinkedHashMap<>();
     int installed = 0;
-    try (ZipFile zip = new ZipFile(pack.zipPath().toFile())) {
+    try (PackageFiles zip = PackageFiles.open(pack.zipPath())) {
       Map<String, String> hashes = readIndexHashes(zip);
       for (PackBuildingEntry building : pack.buildings()) {
         try {
@@ -124,7 +120,7 @@ public final class PackInstaller {
    */
   public static InstallResult installSingle(PackArchive pack, PackBuildingEntry building) {
     List<Component> messages = new ArrayList<>();
-    try (ZipFile zip = new ZipFile(pack.zipPath().toFile())) {
+    try (PackageFiles zip = PackageFiles.open(pack.zipPath())) {
       Map<BuildingCategory, Set<String>> taken = SimukraftZips.baseNamesByCategory(Set.of());
       Map<String, byte[]> entries = new LinkedHashMap<>();
       String finalName = installBuilding(zip, readIndexHashes(zip), pack.manifest().name(),
@@ -177,7 +173,8 @@ public final class PackInstaller {
    * Normalizes one building into zip entries: converted {@code .nbt}, guaranteed {@code .sk}, and
    * the optional native {@code .json}; returns the final base name used inside the package.
    */
-  private static String installBuilding(ZipFile zip, Map<String, String> hashes, String packName,
+  private static String installBuilding(PackageFiles zip, Map<String, String> hashes,
+      String packName,
       PackBuildingEntry building, Map<BuildingCategory, Set<String>> taken,
       Map<String, byte[]> entries, List<String> installedFiles, List<Component> messages)
       throws IOException {
@@ -319,10 +316,11 @@ public final class PackInstaller {
     return out.toString().getBytes(StandardCharsets.UTF_8);
   }
 
-  /** Parses this mod's building metadata JSON from a zip entry. */
-  public static BuildingMetadata readJsonMeta(ZipFile zip, String entryName) throws IOException {
-    ZipEntry entry = zip.getEntry(entryName);
-    return entry == null ? new BuildingMetadata() : readJsonMeta(readEntry(zip, entryName));
+  /** Parses this mod's building metadata JSON from a pack entry (zip or directory pack). */
+  public static BuildingMetadata readJsonMeta(PackageFiles zip, String entryName)
+      throws IOException {
+    return zip.contains(entryName) ? readJsonMeta(readEntry(zip, entryName))
+        : new BuildingMetadata();
   }
 
   /** Parses this mod's building metadata JSON from raw bytes (shared with UI code that reads zip entries directly). */
@@ -356,39 +354,29 @@ public final class PackInstaller {
     return json.has(key) && json.get(key).isJsonPrimitive() ? json.get(key).getAsString() : "";
   }
 
-  private static byte[] readEntry(ZipFile zip, String entryName) throws IOException {
-    ZipEntry entry = zip.getEntry(entryName);
-    if (entry == null) {
-      throw new LocalizedIOException(
-          Component.translatable("buildpack.error.zip_entry_missing", entryName));
-    }
-    // Reject oversized entries (zip bombs): check the declared size first, then bound the actual read.
-    if (entry.getSize() > BuildPack.MAX_PACK_ENTRY_BYTES) {
-      throw new LocalizedIOException(
-          Component.translatable("buildpack.error.entry_too_large", entryName));
-    }
-    try (InputStream stream = zip.getInputStream(entry)) {
-      byte[] bytes = stream.readNBytes((int) BuildPack.MAX_PACK_ENTRY_BYTES + 1);
-      if (bytes.length > BuildPack.MAX_PACK_ENTRY_BYTES) {
-        throw new LocalizedIOException(
-            Component.translatable("buildpack.error.entry_too_large", entryName));
-      }
-      return bytes;
-    }
+  /**
+   * Reads one pack entry; oversized entries (zip bombs) are rejected by declared size first and
+   * then by bounding the actual read (see {@link PackageFiles#readOptional(String)}).
+   */
+  private static byte[] readEntry(PackageFiles zip, String entryName) throws IOException {
+    return zip.read(entryName);
   }
 
   /**
    * Reads the SHA-256 file manifest from {@code index.json} ({@code entry path -> hex hash}); returns
    * an empty map when the pack has no index or it cannot be read.
    */
-  private static Map<String, String> readIndexHashes(ZipFile zip) {
-    ZipEntry entry = zip.getEntry("index.json");
-    if (entry == null || entry.getSize() > BuildPack.MAX_PACK_JSON_BYTES) {
-      return Map.of();
-    }
-    try (InputStreamReader reader = new InputStreamReader(
-        zip.getInputStream(entry), StandardCharsets.UTF_8)) {
-      JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
+  private static Map<String, String> readIndexHashes(PackageFiles zip) {
+    try {
+      if (zip.size("index.json") > BuildPack.MAX_PACK_JSON_BYTES) {
+        return Map.of();
+      }
+      byte[] bytes = zip.readOptional("index.json", BuildPack.MAX_PACK_JSON_BYTES).orElse(null);
+      if (bytes == null) {
+        return Map.of();
+      }
+      JsonObject root = JsonParser.parseString(new String(bytes, StandardCharsets.UTF_8))
+          .getAsJsonObject();
       if (!root.has("files") || !root.get("files").isJsonArray()) {
         return Map.of();
       }

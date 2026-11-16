@@ -25,23 +25,23 @@ import java.util.zip.ZipOutputStream;
 
 import com.github.simcityexpansion.buildpack.BuildPack;
 import com.github.simcityexpansion.buildpack.I18nLog;
-import com.github.simcityexpansion.buildpack.LocalizedIOException;
 import com.github.simcityexpansion.buildpack.model.BuildingCategory;
 import com.github.simcityexpansion.buildpack.model.FileNames;
-import net.minecraft.network.chat.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Read/write access to the zip building packages SimuKraft 2.0 loads from
- * {@code simukraftbuilding/*.zip} (internal layout {@code buildings/<category>/<file>} with
- * {@code .sk}/{@code .nbt}/{@code .json} files).
+ * Read/write access to the building packages SimuKraft loads from {@code simukraftbuilding/}:
+ * {@code *.zip} archives and, since SimuKraft 2.3, extracted package <b>directories</b> (any
+ * subdirectory containing {@code buildings/}, e.g. the bundled {@code official_building/}). Both
+ * share the internal layout {@code buildings/<category>/<file>} with {@code .sk}/{@code .nbt}/
+ * {@code .json} files and are read through {@link PackageFiles}.
  *
  * <p>This mod writes only to its <b>managed</b> zips (file name prefixed {@code sce_}):
  * {@code sce_local.zip} collects individually installed buildings (loose imports, editor saves,
  * captures, single-building pack installs) and {@code sce_pack_<id>.zip} holds one installed build
- * pack each. Other zips (SimuKraft's {@code official_building.zip}, packs dropped in by hand) are
- * read for listing and conflict detection but never modified.
+ * pack each. Other packages (SimuKraft's official package, packs dropped in by hand, every
+ * directory package) are read for listing and conflict detection but never modified.
  *
  * <p>All mutation goes through {@link #updateZip}, which rewrites the zip beside the original and
  * atomically moves it into place, serialized by a class-wide lock (the GUI thread, background
@@ -58,8 +58,11 @@ public final class SimukraftZips {
   /** Managed zip collecting individually installed buildings. */
   public static final String LOCAL_ZIP_NAME = "sce_local.zip";
 
-  /** SimuKraft's own built-in package (never modified). */
-  public static final String OFFICIAL_ZIP_NAME = "official_building.zip";
+  /** SimuKraft's built-in package as a directory (2.3+, extracted from the SimuKraft jar). */
+  public static final String OFFICIAL_DIR_NAME = "official_building";
+
+  /** SimuKraft's built-in package as a zip (2.2 and older; ignored by 2.3+ when the directory exists). */
+  public static final String OFFICIAL_ZIP_NAME = OFFICIAL_DIR_NAME + ".zip";
 
   private static final Object LOCK = new Object();
 
@@ -78,14 +81,20 @@ public final class SimukraftZips {
     return "sce_pack_" + FileNames.sanitize(packId, "pack").toLowerCase(Locale.ROOT) + ".zip";
   }
 
-  /** Whether this mod owns (and may rewrite/delete) the given zip. */
+  /**
+   * Whether this mod owns (and may rewrite/delete) the given package. Only zips are ever managed:
+   * this mod never writes directory packages, so a directory is read-only whatever its name.
+   */
   public static boolean isManaged(Path zip) {
-    return zip.getFileName().toString().toLowerCase(Locale.ROOT).startsWith(MANAGED_PREFIX);
+    return !Files.isDirectory(zip)
+        && zip.getFileName().toString().toLowerCase(Locale.ROOT).startsWith(MANAGED_PREFIX);
   }
 
-  /** Whether the zip is SimuKraft's built-in official package. */
+  /** Whether the package is SimuKraft's built-in official package (zip or directory form). */
   public static boolean isOfficial(Path zip) {
-    return zip.getFileName().toString().equalsIgnoreCase(OFFICIAL_ZIP_NAME);
+    String name = zip.getFileName().toString();
+    return Files.isDirectory(zip)
+        ? name.equalsIgnoreCase(OFFICIAL_DIR_NAME) : name.equalsIgnoreCase(OFFICIAL_ZIP_NAME);
   }
 
   /** Zip-internal entry path of a building file ({@code buildings/<category>/<fileName>}). */
@@ -109,57 +118,55 @@ public final class SimukraftZips {
         .map(category -> new BuildingEntry(category, parts[2]));
   }
 
-  /** All zip packages in the SimuKraft building root, sorted by file name (case-insensitive). */
-  public static List<Path> listZips() {
+  /**
+   * All building packages in the SimuKraft building root, sorted by file name (case-insensitive) —
+   * the same set SimuKraft 2.3 scans: regular {@code *.zip} files and directories that contain a
+   * {@code buildings/} subdirectory, except that {@code official_building.zip} is skipped while the
+   * {@code official_building/} directory exists (SimuKraft then ignores the legacy zip).
+   */
+  public static List<Path> listPackages() {
     Path root = BuildPack.simukraftDir();
     if (!Files.isDirectory(root)) {
       return List.of();
     }
-    List<Path> zips = new ArrayList<>();
+    boolean officialDirectory = Files.isDirectory(root.resolve(OFFICIAL_DIR_NAME));
+    List<Path> packages = new ArrayList<>();
     try (var stream = Files.list(root)) {
-      stream.filter(Files::isRegularFile)
-          .filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".zip"))
-          .forEach(zips::add);
+      stream.filter(path -> isPackagePath(path, officialDirectory)).forEach(packages::add);
     } catch (IOException e) {
       I18nLog.warn(LOGGER, e, "buildpack.log.installed_scan_failed", root);
     }
-    zips.sort(Comparator.comparing(path -> path.getFileName().toString().toLowerCase(Locale.ROOT)));
-    return zips;
+    packages.sort(Comparator.comparing(
+        path -> path.getFileName().toString().toLowerCase(Locale.ROOT)));
+    return packages;
+  }
+
+  private static boolean isPackagePath(Path path, boolean officialDirectory) {
+    String name = path.getFileName().toString().toLowerCase(Locale.ROOT);
+    if (Files.isDirectory(path)) {
+      // "*.tmp" is SimuKraft's staging directory while it re-extracts the official package.
+      return !name.endsWith(".tmp") && Files.isDirectory(path.resolve("buildings"));
+    }
+    if (officialDirectory && name.equals(OFFICIAL_ZIP_NAME)) {
+      return false;
+    }
+    return Files.isRegularFile(path) && name.endsWith(".zip");
   }
 
   /**
-   * Lists the entry names of a zip (regular entries only, {@code \} normalized to {@code /});
-   * returns an empty list when the zip does not exist.
+   * Lists the entry names of a package (regular files only, {@code /}-separated); returns an empty
+   * list when it does not exist. Works for zips and directory packages alike.
    */
   public static List<String> listEntries(Path zip) throws IOException {
-    if (!Files.isRegularFile(zip)) {
-      return List.of();
-    }
-    List<String> names = new ArrayList<>();
-    try (ZipFile zipFile = new ZipFile(zip.toFile())) {
-      Enumeration<? extends ZipEntry> entries = zipFile.entries();
-      while (entries.hasMoreElements()) {
-        ZipEntry entry = entries.nextElement();
-        if (!entry.isDirectory()) {
-          names.add(entry.getName().replace('\\', '/'));
-        }
-      }
-    }
-    return names;
+    return PackageFiles.listEntries(zip);
   }
 
-  /** Reads one entry's bytes (bounded by {@link BuildPack#MAX_PACK_ENTRY_BYTES}); empty when absent. */
+  /**
+   * Reads one entry's bytes (bounded by {@link BuildPack#MAX_PACK_ENTRY_BYTES}) from a zip or
+   * directory package; empty when absent.
+   */
   public static Optional<byte[]> readEntry(Path zip, String entryName) throws IOException {
-    if (!Files.isRegularFile(zip)) {
-      return Optional.empty();
-    }
-    try (ZipFile zipFile = new ZipFile(zip.toFile())) {
-      ZipEntry entry = zipFile.getEntry(entryName);
-      if (entry == null || entry.isDirectory()) {
-        return Optional.empty();
-      }
-      return Optional.of(readBounded(zipFile, entry));
-    }
+    return PackageFiles.readEntry(zip, entryName);
   }
 
   /**
@@ -172,6 +179,10 @@ public final class SimukraftZips {
    */
   public static Set<String> updateZip(Path zip, Map<String, byte[]> put,
       Collection<String> remove) throws IOException {
+    if (Files.isDirectory(zip)) {
+      // Directory packages are never managed; refuse rather than clobber one with a zip.
+      throw new IOException("Refusing to rewrite directory package " + zip);
+    }
     synchronized (LOCK) {
       Set<String> removed = new HashSet<>(remove);
       Map<String, byte[]> replaced = new LinkedHashMap<>(put);
@@ -230,8 +241,8 @@ public final class SimukraftZips {
   }
 
   /**
-   * Lowercase base names (per category) of every {@code .sk}/{@code .nbt} entry across all zips in
-   * the building root except {@code exclude}. SimuKraft merges packages into one catalog keyed by
+   * Lowercase base names (per category) of every {@code .sk}/{@code .nbt} entry across all
+   * packages (zips and directories) in the building root except {@code exclude}. SimuKraft merges packages into one catalog keyed by
    * base name (last package wins), so new names must be unique across <b>all</b> packages, not just
    * the zip being written.
    */
@@ -240,7 +251,7 @@ public final class SimukraftZips {
     for (BuildingCategory category : BuildingCategory.values()) {
       names.put(category, new HashSet<>());
     }
-    for (Path zip : listZips()) {
+    for (Path zip : listPackages()) {
       if (exclude.stream().anyMatch(path -> sameFile(path, zip))) {
         continue;
       }
@@ -262,21 +273,6 @@ public final class SimukraftZips {
 
   private static boolean sameFile(Path a, Path b) {
     return a.toAbsolutePath().normalize().equals(b.toAbsolutePath().normalize());
-  }
-
-  private static byte[] readBounded(ZipFile zip, ZipEntry entry) throws IOException {
-    if (entry.getSize() > BuildPack.MAX_PACK_ENTRY_BYTES) {
-      throw new LocalizedIOException(
-          Component.translatable("buildpack.error.entry_too_large", entry.getName()));
-    }
-    try (InputStream stream = zip.getInputStream(entry)) {
-      byte[] bytes = stream.readNBytes((int) BuildPack.MAX_PACK_ENTRY_BYTES + 1);
-      if (bytes.length > BuildPack.MAX_PACK_ENTRY_BYTES) {
-        throw new LocalizedIOException(
-            Component.translatable("buildpack.error.entry_too_large", entry.getName()));
-      }
-      return bytes;
-    }
   }
 
   /**

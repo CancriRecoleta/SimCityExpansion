@@ -66,12 +66,12 @@ import org.slf4j.LoggerFactory;
  * packages into {@code simukraftbuilding/} (the SimuKraft 2.0 layout).
  *
  * <pre>
- * /buildpack list                              List structures and zip packs in the import directory
+ * /buildpack list                              List structures and build packs in the import directory
  * /buildpack install &lt;file&gt; [category] [name]  Install a loose file (default category: other)
- * /buildpack installpack &lt;zip&gt;                 Install a zip build pack
+ * /buildpack installpack &lt;zip|dir&gt;             Install a build pack (zip or extracted directory)
  * /buildpack packs                             List installed build packs
  * /buildpack uninstallpack &lt;packId&gt;            Uninstall a build pack by registry ID
- * /buildpack activate &lt;zip&gt;                    Serve a pack to SimuKraft virtually (no install)
+ * /buildpack activate &lt;zip|dir&gt;                Serve a pack to SimuKraft virtually (no install)
  * /buildpack deactivate &lt;packId&gt;               Stop serving an activated pack
  * /buildpack active                            List currently active packs
  * /buildpack migrate                           Pack pre-2.0 loose building files into the managed zip
@@ -199,7 +199,7 @@ public final class BuildPackCommands {
     for (ImportFile file : ImportScanner.scan()) {
       entries.add(relativize(importDir, file.path()));
     }
-    for (Path zip : ImportScanner.scanZips()) {
+    for (Path zip : ImportScanner.scanPacks()) {
       entries.add(relativize(importDir, zip));
     }
     if (entries.isEmpty()) {
@@ -280,7 +280,7 @@ public final class BuildPackCommands {
   }
 
   private static int installPack(CommandSourceStack source, String relative) {
-    Path zip = resolveImportFile(relative);
+    Path zip = resolveImportPack(relative);
     if (zip == null) {
       source.sendFailure(Component.translatable("buildpack.cmd.file_not_found", relative));
       return 0;
@@ -342,7 +342,7 @@ public final class BuildPackCommands {
 
   /** Activates a pack (converted into the cache and served to SimuKraft virtually, not installed). */
   private static int activate(CommandSourceStack source, String relative) {
-    Path zip = resolveImportFile(relative);
+    Path zip = resolveImportPack(relative);
     if (zip == null) {
       source.sendFailure(Component.translatable("buildpack.cmd.file_not_found", relative));
       return 0;
@@ -533,7 +533,7 @@ public final class BuildPackCommands {
       }
       String entry = SimukraftZips.entryPath(category, parts[2] + ".nbt");
       byte[] bytes = null;
-      for (Path zip : SimukraftZips.listZips()) {
+      for (Path zip : SimukraftZips.listPackages()) {
         byte[] found = SimukraftZips.readEntry(zip, entry).orElse(null);
         if (found != null) {
           bytes = found;
@@ -572,6 +572,20 @@ public final class BuildPackCommands {
     Path importDir = ImportScanner.ensureImportDir().toAbsolutePath().normalize();
     Path resolved = importDir.resolve(normalized).normalize();
     if (!resolved.startsWith(importDir) || !Files.isRegularFile(resolved)) {
+      return null;
+    }
+    return resolved;
+  }
+
+  /**
+   * Resolves a build pack inside the import directory: a zip file or an extracted pack directory
+   * (one with a {@code pack.json}); null when absent or outside the import directory.
+   */
+  private static Path resolveImportPack(String relative) {
+    Path importDir = ImportScanner.ensureImportDir().toAbsolutePath().normalize();
+    Path resolved = importDir.resolve(relative.replace('\\', '/')).normalize();
+    if (!resolved.startsWith(importDir) || resolved.equals(importDir)
+        || !(Files.isRegularFile(resolved) || PackReader.isPackPath(resolved))) {
       return null;
     }
     return resolved;
@@ -636,7 +650,7 @@ public final class BuildPackCommands {
       CommandContext<CommandSourceStack> context,
       SuggestionsBuilder builder) {
     Path importDir = ImportScanner.ensureImportDir();
-    List<String> names = ImportScanner.scanZips().stream()
+    List<String> names = ImportScanner.scanPacks().stream()
         .map(zip -> quoteIfNeeded(relativize(importDir, zip)))
         .toList();
     return SharedSuggestionProvider.suggest(names, builder);

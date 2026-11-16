@@ -440,7 +440,7 @@ public final class BuildPackScreen extends Screen {
 
     List<PackArchive> parsed = new ArrayList<>();
     List<String> invalid = new ArrayList<>();
-    for (Path zip : ImportScanner.scanZips()) {
+    for (Path zip : ImportScanner.scanPacks()) {
       try {
         parsed.add(PackReader.read(zip));
       } catch (IOException | RuntimeException e) {

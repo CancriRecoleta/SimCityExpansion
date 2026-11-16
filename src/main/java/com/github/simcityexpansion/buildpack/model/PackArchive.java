@@ -4,9 +4,10 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * A parsed zip build pack.
+ * A parsed build pack (zipped, or extracted into a directory).
  *
- * @param zipPath path to the zip file
+ * @param zipPath path to the zip file, or to the pack directory for an extracted pack (read it
+ *     through {@link com.github.simcityexpansion.buildpack.install.PackageFiles})
  * @param manifest pack.json manifest
  * @param buildings all building entries contained in the pack
  */

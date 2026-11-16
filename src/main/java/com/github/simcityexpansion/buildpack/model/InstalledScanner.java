@@ -1,43 +1,42 @@
 package com.github.simcityexpansion.buildpack.model;
 
 import java.io.IOException;
-import java.io.InputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
 
 import com.github.simcityexpansion.buildpack.BuildPack;
 import com.github.simcityexpansion.buildpack.I18nLog;
 import com.github.simcityexpansion.buildpack.install.InstallRegistry;
+import com.github.simcityexpansion.buildpack.install.PackageFiles;
 import com.github.simcityexpansion.buildpack.install.SimukraftZips;
 import com.github.simcityexpansion.buildpack.install.SkFileReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Scans the zip building packages in the SimuKraft building root
- * ({@code simukraftbuilding/*.zip}, entries {@code buildings/<category>/*.sk}) and lists installed
- * buildings — the same view SimuKraft 2.0 itself assembles. Includes SimuKraft's built-in
- * {@code official_building.zip} and foreign zips (shown read-only, {@code managed=false}).
+ * Scans the building packages in the SimuKraft building root — {@code simukraftbuilding/*.zip}
+ * and extracted package directories such as SimuKraft 2.3's {@code official_building/} (entries
+ * {@code buildings/<category>/*.sk}) — and lists installed buildings, the same view SimuKraft
+ * itself assembles. SimuKraft's official package, foreign zips and every directory package are
+ * shown read-only ({@code managed=false}).
  */
 public final class InstalledScanner {
   private InstalledScanner() {}
 
   private static final Logger LOGGER = LoggerFactory.getLogger(InstalledScanner.class);
 
-  /** Lists all installed buildings across every zip package, sorted by category then name. */
+  /** Lists all installed buildings across every package, sorted by category then name. */
   public static List<InstalledBuilding> scan(InstallRegistry registry) {
     List<InstalledBuilding> result = new ArrayList<>();
-    for (Path zip : SimukraftZips.listZips()) {
-      scanZip(zip, registry, result);
+    for (Path zip : SimukraftZips.listPackages()) {
+      scanPackage(zip, registry, result);
     }
     result.sort(Comparator
         .comparing((InstalledBuilding b) -> b.category().ordinal())
@@ -45,20 +44,17 @@ public final class InstalledScanner {
     return result;
   }
 
-  private static void scanZip(Path zip, InstallRegistry registry, List<InstalledBuilding> result) {
-    String packId = registry.packOwningZip(zip.getFileName().toString()).orElse(null);
+  private static void scanPackage(Path zip, InstallRegistry registry,
+      List<InstalledBuilding> result) {
+    // Registry records only point at zips this mod wrote; directory packages are always read-only.
+    String packId = Files.isDirectory(zip) ? null
+        : registry.packOwningZip(zip.getFileName().toString()).orElse(null);
     boolean managed = SimukraftZips.isManaged(zip) || packId != null;
     // base key ("<category ordinal>/<lowercase base>") -> discovered files of one building
     Map<String, Entry> grouped = new LinkedHashMap<>();
     Map<String, byte[]> skBytes = new HashMap<>();
-    try (ZipFile zipFile = new ZipFile(zip.toFile())) {
-      Enumeration<? extends ZipEntry> entries = zipFile.entries();
-      while (entries.hasMoreElements()) {
-        ZipEntry zipEntry = entries.nextElement();
-        if (zipEntry.isDirectory()) {
-          continue;
-        }
-        String path = zipEntry.getName().replace('\\', '/');
+    try (PackageFiles files = PackageFiles.open(zip)) {
+      for (String path : files.entries()) {
         SimukraftZips.BuildingEntry parsed = SimukraftZips.parseEntry(path).orElse(null);
         if (parsed == null) {
           continue;
@@ -70,12 +66,11 @@ public final class InstalledScanner {
         Entry entry = grouped.computeIfAbsent(key, ignored -> new Entry(category, base));
         if (lower.endsWith(".sk")) {
           entry.hasSk = true;
-          if (zipEntry.getSize() <= BuildPack.MAX_PACK_JSON_BYTES) {
-            try (InputStream stream = zipFile.getInputStream(zipEntry)) {
-              skBytes.put(key, stream.readAllBytes());
-            } catch (IOException e) {
-              I18nLog.warn(LOGGER, e, "buildpack.log.sk_read_failed", path);
-            }
+          try {
+            files.readOptional(path, BuildPack.MAX_PACK_JSON_BYTES)
+                .ifPresent(bytes -> skBytes.put(key, bytes));
+          } catch (IOException e) {
+            I18nLog.warn(LOGGER, e, "buildpack.log.sk_read_failed", path);
           }
         } else if (lower.endsWith(".nbt")) {
           entry.hasStructure = true;
